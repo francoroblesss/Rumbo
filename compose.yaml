@@ -1,0 +1,146 @@
+# Levanta Rumbo completo en local: infraestructura + microservicios + gateway.
+#   cp .env.example .env
+#   docker compose up --build
+# Puertos publicados: gateway 8080 (único punto de entrada) y paneles de infraestructura.
+# Los microservicios no publican puertos: solo se llega a ellos a través del gateway.
+
+x-servicio-go: &servicio-go
+  restart: unless-stopped
+  environment: &entorno-comun
+    RABBITMQ_URI: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+
+services:
+  # ---------------- Infraestructura ----------------
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: rumbo
+      POSTGRES_USER: rumbo_admin
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD}
+      OPERACIONES_DB_PASSWORD: ${OPERACIONES_DB_PASSWORD}
+      RECURSOS_DB_PASSWORD: ${RECURSOS_DB_PASSWORD}
+    volumes:
+      - postgres-datos:/var/lib/postgresql/data
+      - ./infra/postgres:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rumbo_admin -d rumbo"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  mongo:
+    image: mongo:7
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: rumbo_admin
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ADMIN_PASSWORD}
+      IDENTIDAD_DB_PASSWORD: ${IDENTIDAD_DB_PASSWORD}
+      NOTIFICACIONES_DB_PASSWORD: ${NOTIFICACIONES_DB_PASSWORD}
+      INTEGRACION_DB_PASSWORD: ${INTEGRACION_DB_PASSWORD}
+    volumes:
+      - mongo-datos:/data/db
+      - ./infra/mongo:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports:
+      - "5672:5672"
+      - "15672:15672" # panel de administración
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  # ---------------- Microservicios ----------------
+  identidad:
+    <<: *servicio-go
+    build: ./servicios/identidad
+    environment:
+      PUERTO: "8081"
+      MONGO_URI: mongodb://identidad:${IDENTIDAD_DB_PASSWORD}@mongo:27017/identidad?authSource=identidad
+      TOKEN_SECRETO: ${TOKEN_SECRETO}
+    depends_on:
+      mongo: { condition: service_healthy }
+
+  operaciones:
+    <<: *servicio-go
+    build: ./servicios/operaciones
+    environment:
+      <<: *entorno-comun
+      PUERTO: "8082"
+      POSTGRES_URI: postgres://operaciones:${OPERACIONES_DB_PASSWORD}@postgres:5432/operaciones
+      RECURSOS_URL: http://recursos:8083
+      IDENTIDAD_URL: http://identidad:8081
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+
+  recursos:
+    <<: *servicio-go
+    build: ./servicios/recursos
+    environment:
+      <<: *entorno-comun
+      PUERTO: "8083"
+      POSTGRES_URI: postgres://recursos:${RECURSOS_DB_PASSWORD}@postgres:5432/recursos
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+
+  notificaciones:
+    <<: *servicio-go
+    build: ./servicios/notificaciones
+    environment:
+      <<: *entorno-comun
+      PUERTO: "8084"
+      MONGO_URI: mongodb://notificaciones:${NOTIFICACIONES_DB_PASSWORD}@mongo:27017/notificaciones?authSource=notificaciones
+    depends_on:
+      mongo: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+
+  integracion:
+    <<: *servicio-go
+    build: ./servicios/integracion
+    environment:
+      <<: *entorno-comun
+      PUERTO: "8085"
+      MONGO_URI: mongodb://integracion:${INTEGRACION_DB_PASSWORD}@mongo:27017/integracion?authSource=integracion
+      OPERACIONES_URL: http://operaciones:8082
+    depends_on:
+      mongo: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+
+  gateway:
+    <<: *servicio-go
+    build: ./servicios/gateway
+    environment:
+      PUERTO: "8080"
+      TOKEN_SECRETO: ${TOKEN_SECRETO}
+      IDENTIDAD_URL: http://identidad:8081
+      OPERACIONES_URL: http://operaciones:8082
+      RECURSOS_URL: http://recursos:8083
+      NOTIFICACIONES_URL: http://notificaciones:8084
+      INTEGRACION_URL: http://integracion:8085
+    ports:
+      - "8080:8080"
+    depends_on:
+      - identidad
+      - operaciones
+      - recursos
+      - notificaciones
+      - integracion
+
+volumes:
+  postgres-datos:
+  mongo-datos:

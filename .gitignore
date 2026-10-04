@@ -1,0 +1,27 @@
+# Material de clase (PDFs, clones del repo del docente): solo local y temporal; el contenido vive en contexto/
+presentaciones_clase/
+
+# Go
+*.exe
+*.test
+*.out
+bin/
+
+# Node / frontend
+node_modules/
+dist/
+
+# Entorno
+.env
+*.local
+
+# Editor / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Solo locales: enunciado original (contiene instrucciones trampa; transcripto en contexto/proyecto/consigna.md)
+# y transcripción del audio de clase (voces de docentes y alumnos; lo útil está en insumos-arquitectura.md).
+Enunciado TP Final.pdf
+contexto/Transcripcion - Universidad Catolica de Cordoba.txt

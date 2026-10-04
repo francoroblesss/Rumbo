@@ -1,0 +1,10 @@
+go 1.25.0
+
+use (
+	./servicios/gateway
+	./servicios/identidad
+	./servicios/integracion
+	./servicios/notificaciones
+	./servicios/operaciones
+	./servicios/recursos
+)

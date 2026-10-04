@@ -1,0 +1,6 @@
+# Los scripts que corren dentro de contenedores Linux necesitan finales de línea LF,
+# aunque el repo se clone en Windows.
+*.sh text eol=lf
+*.js text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf

@@ -32,6 +32,7 @@ docker compose up --build     # levanta infraestructura, microservicios y gatewa
 | --- | --- |
 | API Gateway (único punto de entrada) | http://localhost:8080 |
 | Panel de RabbitMQ | http://localhost:15672 |
+| MySQL (por ejemplo, desde SQL Workbench) | `localhost:13306` |
 | Aplicación web (desarrollo) | `cd frontend && npm install && npm run dev` → http://localhost:5173 |
 
 ## Estructura del repositorio
@@ -39,8 +40,8 @@ docker compose up --build     # levanta infraestructura, microservicios y gatewa
 servicios/        un módulo Go por microservicio + el gateway (go.work los agrupa)
   gateway/        API Gateway: ruteo, correlation id, autenticación y límite de tráfico
   identidad/      Identidad y clientes (capas)          → MongoDB
-  operaciones/    Operaciones, núcleo (hexagonal)        → PostgreSQL
-  recursos/       Recursos y preliquidación (capas)      → PostgreSQL
+  operaciones/    Operaciones, núcleo (hexagonal)        → MySQL
+  recursos/       Recursos y preliquidación (capas)      → MySQL
   notificaciones/ Notificaciones (capas)                 → MongoDB
   integracion/    Integración de carga (capas)           → MongoDB
 frontend/         aplicación web (React + Vite + TypeScript)

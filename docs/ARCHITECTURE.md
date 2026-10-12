@@ -16,7 +16,7 @@
 
 - Una **aplicación web** y un **API Gateway** como punto de entrada único (token firmado, ruteo, límite de pedidos, correlation id).
 - **Cinco microservicios en Go:** Identidad y clientes, Operaciones (núcleo), Recursos, Notificaciones e Integración de carga.
-- **Almacenamiento:** una base de datos por microservicio: dos en **PostgreSQL** y tres en **MongoDB**. Cada servicio accede solo a la suya. (El diagrama todavía dice "esquema" para PostgreSQL: pendiente de actualizar a "base".)
+- **Almacenamiento:** una base de datos por microservicio: dos en **MySQL** y tres en **MongoDB**. Cada servicio accede solo a la suya. (El diagrama todavía dice "PostgreSQL" y "esquema": pendiente de actualizar a "MySQL" y "base".)
 - **RabbitMQ** para la mensajería asíncrona.
 - El **motor de búsqueda** figura como pendiente (D6). La caché (D7) y el balanceo de carga (D12) se agregan cuando se decidan.
 
@@ -41,7 +41,7 @@ La consigna pide al menos dos estilos de arquitectura distintos. La justificaci�
 
 | Servicio | Estilo | Estructura |
 | --- | --- | --- |
-| **Operaciones** | **Hexagonal** (teórico 8): es el núcleo, tiene las reglas e invariantes más complejas y la mayor cantidad de dependencias externas (PostgreSQL, Recursos, Identidad, clima, broker) | `dominio/` (entidades y reglas, sin tags json/db) · `aplicacion/` (casos de uso) · `puertos/` (contratos de entrada y salida) · `adaptadores/` (`api` HTTP, `postgres`, `mensajeria`, `recursos`, `identidad`, `clima`) |
+| **Operaciones** | **Hexagonal** (teórico 8): es el núcleo, tiene las reglas e invariantes más complejas y la mayor cantidad de dependencias externas (MySQL, Recursos, Identidad, clima, broker) | `dominio/` (entidades y reglas, sin tags json/db) · `aplicacion/` (casos de uso) · `puertos/` (contratos de entrada y salida) · `adaptadores/` (`api` HTTP, `mysql`, `mensajeria`, `recursos`, `identidad`, `clima`) |
 | **Identidad y clientes**, **Recursos**, **Notificaciones**, **Integración de carga** | **Capas** (Handler → Service → Repository, estilo del práctico): lógica más simple y una sola base cada uno | `controllers/` · `services/` · `repositories/` · `models/` · `database/` · `messaging/` (si usa el broker) · `clients/` (Integración → Operaciones) |
 | **API Gateway** | Reverse proxy con middlewares | `proxy/` (ruteo, 502/504, deadline de 5 s) · `correlacion/` · `autenticacion/` y `limite/` (pendientes, con librerías) |
 
@@ -49,12 +49,12 @@ Cada servicio es un módulo Go independiente (`servicios/<servicio>/`) con su `D
 <!-- Pendiente por servicio: API expuesta y eventos publicados/consumidos en detalle (D5, Entrega 2). -->
 
 ## 4. Datos y persistencia
-Detalle en [ADR-003](adr/ADR-003-persistencia.md) (D3).
+Detalle en [ADR-003](adr/ADR-003-persistencia.md) (D3); el motor relacional es MySQL desde [ADR-005](adr/ADR-005-mysql-como-motor-relacional.md).
 
 | Servicio | Almacenamiento | Motivo principal |
 | --- | --- | --- |
-| Operaciones | PostgreSQL, base `operaciones` | Reserva de recursos con ACID; muchas relaciones; exclusion constraints contra asignaciones superpuestas; outbox e idempotencia en la misma transacción |
-| Recursos | PostgreSQL, base `recursos` | Preliquidación (montos, correcciones, cierres): finanzas y auditoría |
+| Operaciones | MySQL, base `operaciones` | Reserva de recursos con ACID; muchas relaciones; transacción con bloqueo por recurso (`SELECT … FOR UPDATE`) contra asignaciones superpuestas; outbox e idempotencia en la misma transacción |
+| Recursos | MySQL, base `recursos` | Preliquidación (montos, correcciones, cierres): finanzas y auditoría |
 | Identidad y clientes | MongoDB, base `identidad` | Padrón con esquema variable por tipo de servicio (discriminador + JSON Schema) |
 | Notificaciones | MongoDB, base `notificaciones` | Avisos independientes, leídos por usuario y fecha |
 | Integración de carga | MongoDB, base `integracion` | Solicitud externa leída como unidad; solicitud, idempotencia y "pendiente de envío" en una escritura atómica por documento |
@@ -99,7 +99,7 @@ Detalle en [ADR-004](adr/ADR-004-comunicacion-entre-servicios.md) (D5).
 | --- | --- | --- |
 | `gateway` | **8080** | Único punto de entrada |
 | `identidad`, `operaciones`, `recursos`, `notificaciones`, `integracion` | — | Solo accesibles a través del gateway (puertos internos 8081 a 8085) |
-| `postgres` | 5432 | Bases `operaciones` y `recursos` |
+| `mysql` | 13306 (en el host; 3306 dentro de Docker) | Bases `operaciones` y `recursos` |
 | `mongo` | 27017 | Bases `identidad`, `notificaciones` e `integracion` |
 | `rabbitmq` | 5672 · 15672 (panel) | Broker |
 

@@ -30,4 +30,4 @@ La estructura de la consigna §3 está en la raíz del repo: `README.md`, `SPEC.
 6. Narrar los casos completos de `insumos-arquitectura.md` §4 antes de implementar Operaciones.
 
 ## Próximas decisiones (Entrega 2, vie 23/10)
-D2 (estilos internos: ya hay una estructura preliminar), D6 (búsqueda), D7 (caché), D9 (consumo del clima, cuando se conozca el contrato), D10 (resiliencia), D12 (balanceo), D13 (capacidad y costos), validación de D1/D3/D5, primera versión de D11. D4 (consistencia) se apoya en la exclusion constraint prevista en ADR-003. Bonus: anunciarlos en la Entrega 2.
+D2 (estilos internos: ya hay una estructura preliminar), D6 (búsqueda), D7 (caché), D9 (consumo del clima, cuando se conozca el contrato), D10 (resiliencia), D12 (balanceo), D13 (capacidad y costos), validación de D1/D3/D5, primera versión de D11. D4 (consistencia) se apoya en la transacción con bloqueo por recurso prevista en ADR-005 (MySQL). Bonus: anunciarlos en la Entrega 2.

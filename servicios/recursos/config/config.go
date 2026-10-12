@@ -8,18 +8,18 @@ import (
 // Config reúne la configuración del servicio. Se lee de variables de entorno para que
 // funcione igual en Docker Compose (host = nombre del servicio) y en local (localhost).
 type Config struct {
-	Puerto      string // puerto HTTP
-	PostgresURI string // base propia del servicio
-	RabbitURI   string // broker de mensajes
+	Puerto    string // puerto HTTP
+	MySQLDSN  string // base propia del servicio
+	RabbitURI string // broker de mensajes
 }
 
 // Cargar lee la configuración del entorno. Las URIs con credenciales no tienen valor por
 // defecto: los secretos nunca se escriben en el código (consigna §2.12) y salen de .env.
 func Cargar() Config {
 	return Config{
-		Puerto:      valor("PUERTO", "8083"),
-		PostgresURI: obligatorio("POSTGRES_URI"),
-		RabbitURI:   obligatorio("RABBITMQ_URI"),
+		Puerto:    valor("PUERTO", "8083"),
+		MySQLDSN:  obligatorio("MYSQL_DSN"),
+		RabbitURI: obligatorio("RABBITMQ_URI"),
 	}
 }
 

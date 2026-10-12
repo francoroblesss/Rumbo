@@ -16,12 +16,12 @@ import (
 func main() {
 	cfg := config.Cargar()
 
-	// 1. Infraestructura: base propia en PostgreSQL y broker.
-	pool, err := database.Conectar(context.Background(), cfg.PostgresURI)
+	// 1. Infraestructura: base propia en MySQL y broker.
+	db, err := database.Conectar(context.Background(), cfg.MySQLDSN)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer pool.Close()
+	defer db.Close()
 
 	conexionRabbit, err := messaging.ConectarConReintentos(cfg.RabbitURI, 5)
 	if err != nil {

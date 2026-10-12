@@ -16,7 +16,7 @@
 
 - Una **aplicación web** y un **API Gateway** como punto de entrada único (token firmado, ruteo, límite de pedidos, correlation id).
 - **Cinco microservicios en Go:** Identidad y clientes, Operaciones (núcleo), Recursos, Notificaciones e Integración de carga.
-- **Almacenamiento:** una base de datos por microservicio: dos en **MySQL** y tres en **MongoDB**. Cada servicio accede solo a la suya. (El diagrama todavía dice "PostgreSQL" y "esquema": pendiente de actualizar a "MySQL" y "base".)
+- **Almacenamiento:** una base de datos por microservicio: dos en **MySQL** y tres en **MongoDB**. Cada servicio accede solo a la suya.
 - **RabbitMQ** para la mensajería asíncrona.
 - El **motor de búsqueda** figura como pendiente (D6). La caché (D7) y el balanceo de carga (D12) se agregan cuando se decidan.
 

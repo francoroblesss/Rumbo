@@ -21,7 +21,7 @@ Rumbo presta servicios de traslado a organizaciones (clínicas, colegios, empres
 Además, otros sistemas pueden **solicitar el traslado de una cosa desde un origen hasta un destino** a través del contrato publicado en [`docs/contracts/`](docs/contracts/README.md) (versión vigente: `/v2`).
 
 ## Ejecución local
-Requisitos: Docker Desktop (con Docker Compose v2). Para desarrollar sin Docker: Go 1.25+ y Node.js 20+.
+Requisitos: Docker Desktop (con Docker Compose v2). Para desarrollar sin Docker: Go 1.26+ (o cualquier Go ≥ 1.21, que descarga la 1.26 solo) y Node.js 20+.
 
 ```bash
 cp .env.example .env          # una sola vez; cambiar las contraseñas de desarrollo
@@ -32,12 +32,15 @@ docker compose up --build     # levanta infraestructura, microservicios y gatewa
 | --- | --- |
 | API Gateway (único punto de entrada) | http://localhost:8080 — contrato público en `/v2/...`, API interna en `/api/v1/<servicio>/...` |
 | Panel de RabbitMQ | http://localhost:15672 |
+| Grafana: logs, métricas, trazas y tablero (`admin`/`admin`) | http://localhost:3000 |
+| Mock del clima que consume Rumbo | http://localhost:4020 |
 | MySQL (por ejemplo, desde SQL Workbench) | `localhost:13306` |
 | Aplicación web (desarrollo) | `cd frontend && npm install && npm run dev` → http://localhost:5173 |
 
 ## Estructura del repositorio
 ```
 servicios/        un módulo Go por microservicio + el gateway (go.work los agrupa)
+  comun/          piezas compartidas: observabilidad, mensajería, identidad y errores (docs/interfaces-internas.md)
   gateway/        API Gateway: ruteo, correlation id, autenticación y límite de tráfico
   identidad/      Identidad y clientes (capas)          → MongoDB
   operaciones/    Operaciones, núcleo (hexagonal)        → MySQL
@@ -73,5 +76,6 @@ El proyecto sigue un enfoque guiado por especificación: primero el dominio y la
 | [`SPEC.md`](SPEC.md) | Alcance, funcionalidades, reglas de negocio y criterios de aceptación |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Arquitectura general: servicios, datos, comunicaciones y despliegue, con diagramas |
 | [`docs/adr/`](docs/adr/README.md) | Registro de decisiones arquitectónicas (un ADR por decisión) |
-| [`docs/contracts/`](docs/contracts/README.md) | Capacidad publicada: contrato versionado, ejemplos y errores |
+| [`docs/contracts/`](docs/contracts/README.md) | Capacidad publicada: contrato versionado, ejemplos y errores; contratos consumidos en `docs/contracts/consumidos/` |
+| [`docs/interfaces-internas.md`](docs/interfaces-internas.md) | Contrato interno entre servicios: mensajes, endpoints internos, identidad, errores, logs, métricas y trazas |
 | [`docs/POSTMORTEM.md`](docs/POSTMORTEM.md) | Informe de la caída provocada |

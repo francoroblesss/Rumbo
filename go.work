@@ -1,6 +1,7 @@
-go 1.25.0
+go 1.26.0
 
 use (
+	./servicios/comun
 	./servicios/gateway
 	./servicios/identidad
 	./servicios/integracion

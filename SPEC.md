@@ -2,7 +2,7 @@
 
 > Define las funcionalidades, las reglas de negocio y los criterios de aceptación del sistema (consigna §3).
 > Cada funcionalidad (`F-xx`) indica qué reglas (`R-xx`) aplica; los criterios de aceptación (`CA-xx`) referencian ambas.
-> Versión 1 — Entrega 1 (2026-10-04).
+> Versión 1 — Entrega 1 (2026-10-04). Revisión 2026-10-11: capacidad publicada genérica (F-28, ADR-006).
 
 ## 1. Alcance
 
@@ -19,7 +19,7 @@ Rumbo es una plataforma única de gestión operativa de **traslados programados 
 - Avisos dentro de Rumbo para clientes, choferes y operadores.
 - Búsqueda de traslados.
 - Preliquidación mensual de choferes.
-- Capacidad publicada para otros sistemas: **Solicitar traslado de carga** (`docs/contracts/`).
+- Capacidad publicada para otros sistemas: **Solicitar traslado** de una cosa desde un origen hasta un destino (`docs/contracts/`, versión 2).
 - Consumo de condiciones climáticas del sistema de aeropuerto (flujo a definir con su contrato).
 
 ### 1.3 Fuera de alcance
@@ -94,7 +94,7 @@ Rumbo es una plataforma única de gestión operativa de **traslados programados 
 | F-25 | **Generar traslados de los planes** para los próximos 7 días (automático). | R-10, R-12 |
 | F-26 | **Bandeja de avisos** para cliente, chofer y operador. | R-38 |
 | F-27 | **Buscar traslados** con texto libre, filtros, orden y paginación. | R-39, R-40 |
-| F-28 | **Capacidad publicada "Solicitar traslado de carga"** para sistemas externos (contrato en `docs/contracts/`). | R-02, R-04, R-06 a R-09, R-15 a R-17 |
+| F-28 | **Capacidad publicada "Solicitar traslado"** para sistemas externos: trasladar una **cosa** desde un **origen** hasta un **destino** (tres datos obligatorios; hora y demás opcionales). Contrato v2 en `docs/contracts/`. | R-02, R-04, R-06 a R-09, R-15 a R-17 |
 | F-29 | **Uso de condiciones climáticas** del sistema de aeropuerto. | Se define al conocer su contrato |
 
 ## 4. Reglas de negocio
@@ -233,8 +233,14 @@ RECIBIDA ──operador──> ACEPTADA                   (crea traslados o plan
 ### Búsqueda, avisos e integración
 - **CA-25** (F-27, R-39) **Dado** un cliente, **cuando** busca traslados por un nombre que existe en otra organización, **entonces** no obtiene resultados de esa organización.
 - **CA-26** (F-27) **Dados** más de 20 traslados que cumplen un filtro, **cuando** se busca, **entonces** los resultados vienen paginados y ordenados por fecha y hora.
-- **CA-27** (F-28) **Dado** el sistema externo de stock, **cuando** repite la misma solicitud con la misma clave de idempotencia, **entonces** se registra una sola solicitud y recibe la misma respuesta.
+- **CA-27** (F-28) **Dado** el sistema externo, **cuando** repite la misma solicitud con la misma clave de idempotencia, **entonces** se registra una sola solicitud y recibe la misma respuesta.
 - **CA-28** (F-26, R-38) **Dado** un recorrido reasignado a otro chofer, **cuando** se confirma, **entonces** ambos choferes reciben un aviso en su bandeja.
+- **CA-29** (F-28, R-07) **Dado** el sistema externo, **cuando** solicita un traslado solo con cosa, origen y destino (sin hora), **entonces** queda `RECIBIDA` y, al revisarla, el operador le propone un horario (`CONTRAPROPUESTA`) en lugar de fijarlo por su cuenta.
 
 ## 7. Bonus anunciados
 Se anuncian en la Entrega 2 (consigna §7). Candidato identificado: actualizaciones en tiempo real del recorrido (seguimiento del chofer).
+
+## 8. Registro de cambios
+| Fecha | Cambio | Motivo |
+| --- | --- | --- |
+| 2026-10-11 | F-28: la capacidad publicada pasa de "Solicitar traslado de carga" (carga con bultos y peso obligatorios) a **"Solicitar traslado"** genérico: `cosa`, `origen` y `destino` obligatorios; sin hora pedida, Rumbo propone una con una contrapropuesta. Se agrega CA-29 | Corrección de la Entrega 1 (ADR-006) |

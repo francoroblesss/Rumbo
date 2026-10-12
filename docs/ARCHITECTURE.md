@@ -8,7 +8,7 @@
 
 - Rumbo tiene cuatro tipos de usuario, que lo usan a través de la web: **cliente** (de una organización), **operador**, **chofer** y **administrador**.
 - Se integra con dos sistemas de otros grupos:
-  - el **sistema de stock** consume la capacidad publicada "Solicitar traslado de carga" (API REST `/v1`);
+  - el **sistema de gestión de almacenamiento** (otro grupo) consume la capacidad publicada **"Solicitar traslado"** (API REST `/v2`): trasladar una cosa desde un origen hasta un destino;
   - Rumbo consume las **condiciones climáticas** del **sistema de aeropuerto**.
 
 ## 2. Diagrama de contenedores
@@ -29,7 +29,7 @@ Cinco microservicios detrás de un API Gateway. Justificación en [ADR-001](adr/
 | **Operaciones** | Recibir lo que hay que trasladar, planificarlo, asignarlo y seguir su ejecución | Solicitudes, planes, traslados y tramos, recorridos y paradas, asignaciones, incidentes |
 | **Recursos** | Con qué y con quién se traslada, y cuánto le corresponde a cada chofer | Choferes (jornada, ausencias), vehículos (capacidad, accesibilidad, propietario), actividad, tarifas, preliquidaciones |
 | **Notificaciones** | Hacer llegar a cada usuario sus avisos | Bandeja de avisos por usuario |
-| **Integración de carga** | Atender el contrato público "Solicitar traslado de carga" y traducirlo al modelo interno | Solicitudes externas (id externo ↔ interno, idempotencia, último estado conocido) |
+| **Integración de carga** | Atender el contrato público "Solicitar traslado" (v2) y traducirlo al modelo interno | Solicitudes externas (id externo ↔ interno, idempotencia, último estado conocido) |
 
 - La operación crítica (**asignación**) vive entera en Operaciones.
 - Operaciones consulta a Recursos (disponibilidad y vehículo) y a Identidad y clientes (padrón, del que guarda una copia en el traslado).
@@ -83,7 +83,8 @@ Detalle en [ADR-004](adr/ADR-004-comunicacion-entre-servicios.md) (D5).
 **Correlación:** el `X-Correlation-ID` se asigna en el gateway y se propaga en HTTP y en los mensajes.
 
 ## 6. Integración con otros grupos
-- **Capacidad publicada — Solicitar traslado de carga** ([ADR-002](adr/ADR-002-contrato-propio.md)): API REST `/v1` descrita en OpenAPI 3.1 ([`contracts/`](contracts/README.md)). Entra por el API Gateway (token firmado) y la atiende el servicio **Integración de carga**, que la entrega a Operaciones. El procesamiento es asíncrono (`202` + estado `RECIBIDA`), el seguimiento es por consulta, los `POST` son idempotentes y los errores usan Problem Details. Hay un mock generado con Prism.
+- **Capacidad publicada — Solicitar traslado** ([ADR-002](adr/ADR-002-contrato-propio.md), versión vigente en [ADR-006](adr/ADR-006-contrato-generico-v2.md)): API REST **`/v2`** descrita en OpenAPI 3.1 ([`contracts/`](contracts/README.md)). Es genérica: tres datos obligatorios (`cosa`, `origen`, `destino`). Entra por el API Gateway (token firmado) y la atiende el servicio **Integración de carga**, que la traduce al modelo interno y la entrega a Operaciones. El procesamiento es asíncrono (`202` + estado `RECIBIDA`); sin hora pedida, Rumbo propone una (`CONTRAPROPUESTA`). El seguimiento es por consulta, los `POST` son idempotentes y los errores usan Problem Details. Hay un mock generado con Prism. La versión 1.0.0 (`/v1`, específica de carga) quedó reemplazada sin haber tenido consumidores.
+- **Rutas del gateway:** contrato público en `/v2/auth/` y `/v2/traslados`; API interna de la aplicación web en `/api/v1/<servicio>/`.
 <!-- Capacidad consumida (D9): sistema de aeropuerto (clima); la llamada sale desde Operaciones. -->
 
 ## 7. Búsqueda, caché y balanceo de carga

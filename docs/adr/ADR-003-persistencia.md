@@ -1,7 +1,7 @@
 # ADR-003 — Persistencia (D3)
 
 - **Fecha:** 2026-10-04
-- **Estado:** aceptada (versión inicial para la Entrega 1; se valida en la Entrega 2)
+- **Estado:** aceptada (versión inicial para la Entrega 1; se valida en la Entrega 2) — **reemplazada parcialmente por [ADR-005](ADR-005-mysql-como-motor-relacional.md)**: el motor relacional pasa de PostgreSQL a MySQL. El resto sigue vigente.
 - **Revisión 2026-10-04:** se agrega el almacenamiento de Integración de carga (ADR-001).
 - **Revisión 2026-10-04:** en PostgreSQL, Operaciones y Recursos pasan de dos *schemas* de una misma base a **dos bases de datos separadas**, por la indicación del profesor en clase de tener **una base de datos por microservicio, no una compartida**. Se mantiene una instancia por motor.
 

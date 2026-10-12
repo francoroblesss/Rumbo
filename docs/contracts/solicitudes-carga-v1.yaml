@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
-  title: Rumbo — Solicitar traslado de carga
+  title: Rumbo — Solicitar traslado de carga (REEMPLAZADO por la versión 2.0.0)
   version: 1.0.0
   description: |
+    **REEMPLAZADO por la versión 2.0.0 (`traslados-v2.yaml`, ADR-006).** Esta versión nunca
+    tuvo consumidores ni se implementó; se conserva como historia del contrato.
+
     Capacidad publicada por Rumbo para que un sistema externo (empresa de stock) solicite
     el traslado de carga entre dos ubicaciones y siga su resultado.
 

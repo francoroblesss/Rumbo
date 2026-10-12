@@ -9,7 +9,7 @@ import (
 // funcione igual en Docker Compose (host = nombre del servicio) y en local (localhost).
 type Config struct {
 	Puerto       string // puerto HTTP
-	PostgresURI  string // base propia del servicio
+	MySQLDSN     string // base propia del servicio
 	RabbitURI    string // broker de mensajes
 	RecursosURL  string // servicio Recursos
 	IdentidadURL string // servicio Identidad y clientes
@@ -20,7 +20,7 @@ type Config struct {
 func Cargar() Config {
 	return Config{
 		Puerto:       valor("PUERTO", "8082"),
-		PostgresURI:  obligatorio("POSTGRES_URI"),
+		MySQLDSN:     obligatorio("MYSQL_DSN"),
 		RabbitURI:    obligatorio("RABBITMQ_URI"),
 		RecursosURL:  valor("RECURSOS_URL", "http://localhost:8083"),
 		IdentidadURL: valor("IDENTIDAD_URL", "http://localhost:8081"),

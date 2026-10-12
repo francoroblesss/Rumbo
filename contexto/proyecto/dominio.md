@@ -197,7 +197,7 @@ Por ahora los avisos llegan **solo dentro de Rumbo**: cada usuario los ve en su 
 - **Cierre:** el administrador revisa la actividad, puede **corregir horas o km con motivo** y **cierra** la preliquidación. Un período cerrado **no se reabre**: los errores posteriores se ajustan en el período siguiente. **Cerrar no es pagar ni emitir un recibo.**
 
 ## 15. Integración con otros grupos
-- **Capacidad que Rumbo publica: "Solicitar traslado de carga".** El sistema del otro grupo (empresa de stock) pide trasladar carga de una sucursal a otra indicando origen, destino, fecha, hora y tolerancia, descripción, bultos, peso y referencia externa. Rumbo responde "solicitud recibida". Desde ahí sigue el flujo normal: revisión (aceptada / contrapropuesta / rechazada), planificación, asignación, ejecución y resultado. El otro sistema **inicia una operación real** dentro de Rumbo, que es lo que exige la consigna.
+- **Capacidad que Rumbo publica: "Solicitar traslado"** (genérica desde el 11/10/2026, ver registro de cambios). Un sistema externo pide **trasladar una cosa desde un origen hasta un destino**: solo `cosa` (descripción y cantidad), `origen` y `destino` son obligatorios; peso, volumen, hora, tolerancia y referencia externa son opcionales. Rumbo responde "solicitud recibida". **Si no se indicó hora, el operador propone una** (contrapropuesta, §6). Desde ahí sigue el flujo normal: revisión, planificación, asignación, ejecución y resultado. Adentro de Rumbo se trata como un traslado de carga. El otro sistema **inicia una operación real** dentro de Rumbo, que es lo que exige la consigna.
 - **Capacidad que Rumbo consume:** la asignan los profesores. Se sabe que es un **sistema de aeropuerto que expone condiciones climáticas**. El flujo de Rumbo en el que impacta **se define al conocer su contrato** (ver §17).
 
 ## 16. Fuera de alcance
@@ -219,3 +219,8 @@ Por ahora los avisos llegan **solo dentro de Rumbo**: cada usuario los ve en su 
 | 1 | ¿Se puede calcular automáticamente tiempos y distancias con un servicio de mapas? | El operador estima los tiempos de cada parada. |
 | 2 | ¿Los avisos deberían llegar también por email u otro canal externo? | Solo dentro de Rumbo (bandeja de notificaciones). |
 | 3 | **Dependencia externa:** contrato del sistema de aeropuerto (clima) y flujo de Rumbo en el que impacta. | Se define al conocer el contrato; tiene que tener consecuencias en un flujo importante (consigna §4.1). |
+
+## Registro de cambios
+| Fecha | Cambio | Motivo |
+| --- | --- | --- |
+| 2026-10-11 | §15: la capacidad publicada pasa de "Solicitar traslado de carga" (empresa de stock; descripción, bultos, peso, hora y referencia obligatorios) a **"Solicitar traslado"** genérico (cosa, origen y destino; el resto opcional; sin hora, contrapropuesta) | Corrección de la Entrega 1 del profesor: "traslado = función con 3 parámetros: cosa, inicio y destino; más abstracto para que gestión de almacenamiento nos consuma" (ADR-006) |

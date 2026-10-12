@@ -7,23 +7,23 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/francoroblesss/Rumbo/servicios/operaciones/adaptadores/mensajeria"
-	"github.com/francoroblesss/Rumbo/servicios/operaciones/adaptadores/postgres"
+	"github.com/francoroblesss/Rumbo/servicios/operaciones/adaptadores/mysql"
 	"github.com/francoroblesss/Rumbo/servicios/operaciones/config"
 )
 
 // Operaciones: núcleo de Rumbo (solicitudes, planes, traslados, recorridos, asignaciones,
 // incidentes). Arquitectura interna hexagonal: dominio y aplicación en el centro, puertos como
-// contratos y adaptadores (HTTP, PostgreSQL, RabbitMQ, Recursos, Identidad, clima) afuera.
+// contratos y adaptadores (HTTP, MySQL, RabbitMQ, Recursos, Identidad, clima) afuera.
 // main es el único lugar que conoce a todos y los conecta.
 func main() {
 	cfg := config.Cargar()
 
-	// 1. Infraestructura: base propia en PostgreSQL y broker.
-	pool, err := postgres.Conectar(context.Background(), cfg.PostgresURI)
+	// 1. Infraestructura: base propia en MySQL y broker.
+	db, err := mysql.Conectar(context.Background(), cfg.MySQLDSN)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer pool.Close()
+	defer db.Close()
 
 	conexionRabbit, err := mensajeria.ConectarConReintentos(cfg.RabbitURI, 5)
 	if err != nil {

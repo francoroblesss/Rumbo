@@ -11,24 +11,22 @@ x-servicio-go: &servicio-go
 
 services:
   # ---------------- Infraestructura ----------------
-  postgres:
-    image: postgres:16-alpine
+  mysql:
+    image: mysql:8.4
     environment:
-      POSTGRES_DB: rumbo
-      POSTGRES_USER: rumbo_admin
-      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       OPERACIONES_DB_PASSWORD: ${OPERACIONES_DB_PASSWORD}
       RECURSOS_DB_PASSWORD: ${RECURSOS_DB_PASSWORD}
     volumes:
-      - postgres-datos:/var/lib/postgresql/data
-      - ./infra/postgres:/docker-entrypoint-initdb.d:ro
+      - mysql-datos:/var/lib/mysql
+      - ./infra/mysql:/docker-entrypoint-initdb.d:ro
     ports:
-      - "5432:5432"
+      - "13306:3306" # en el host 13306, para no chocar con un MySQL instalado localmente
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U rumbo_admin -d rumbo"]
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
       interval: 5s
       timeout: 3s
-      retries: 20
+      retries: 30
 
   mongo:
     image: mongo:7
@@ -80,11 +78,11 @@ services:
     environment:
       <<: *entorno-comun
       PUERTO: "8082"
-      POSTGRES_URI: postgres://operaciones:${OPERACIONES_DB_PASSWORD}@postgres:5432/operaciones
+      MYSQL_DSN: operaciones:${OPERACIONES_DB_PASSWORD}@tcp(mysql:3306)/operaciones?parseTime=true
       RECURSOS_URL: http://recursos:8083
       IDENTIDAD_URL: http://identidad:8081
     depends_on:
-      postgres: { condition: service_healthy }
+      mysql: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
 
   recursos:
@@ -93,9 +91,9 @@ services:
     environment:
       <<: *entorno-comun
       PUERTO: "8083"
-      POSTGRES_URI: postgres://recursos:${RECURSOS_DB_PASSWORD}@postgres:5432/recursos
+      MYSQL_DSN: recursos:${RECURSOS_DB_PASSWORD}@tcp(mysql:3306)/recursos?parseTime=true
     depends_on:
-      postgres: { condition: service_healthy }
+      mysql: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
 
   notificaciones:
@@ -142,5 +140,5 @@ services:
       - integracion
 
 volumes:
-  postgres-datos:
+  mysql-datos:
   mongo-datos:

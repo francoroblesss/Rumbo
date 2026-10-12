@@ -7,12 +7,12 @@ Cada decisión se conserva en un archivo independiente `ADR-NNN-titulo-corto.md`
 | --- | --- | --- | --- |
 | D1 | Límites de los servicios | E1 (validación en E2) | [ADR-001](ADR-001-limites-de-los-servicios.md) |
 | D2 | Arquitectura interna de los servicios | E2 | — |
-| D3 | Persistencia | E1 inicial (validación en E2) | [ADR-003](ADR-003-persistencia.md) |
+| D3 | Persistencia | E1 inicial (validación en E2) | [ADR-003](ADR-003-persistencia.md), motor reemplazado por [ADR-005](ADR-005-mysql-como-motor-relacional.md) |
 | D4 | Consistencia y concurrencia | — | — |
 | D5 | Comunicación entre servicios | E1 inicial (validación en E2) | [ADR-004](ADR-004-comunicacion-entre-servicios.md) |
 | D6 | Búsqueda | E2 | — |
 | D7 | Caché | E2 | — |
-| D8 | Contrato propio | E1 (actualizar en E2 si cambió) | [ADR-002](ADR-002-contrato-propio.md) |
+| D8 | Contrato propio | E1 (actualizar en E2 si cambió) | [ADR-002](ADR-002-contrato-propio.md), contrato reemplazado por [ADR-006](ADR-006-contrato-generico-v2.md) (v2) |
 | D9 | Consumo del proveedor | E2 | — |
 | D10 | Resiliencia | E2 | — |
 | D11 | Observabilidad | E2 primera versión | — |
@@ -20,7 +20,10 @@ Cada decisión se conserva en un archivo independiente `ADR-NNN-titulo-corto.md`
 | D13 | Capacidad y costos | E2 | — |
 
 ## Otras decisiones
-<!-- Decisiones relevantes no contempladas en la tabla. -->
+| ADR | Decisión |
+| --- | --- |
+| [ADR-005](ADR-005-mysql-como-motor-relacional.md) | MySQL como motor relacional (reemplaza parcialmente a ADR-003) |
+| [ADR-006](ADR-006-contrato-generico-v2.md) | Contrato genérico "Solicitar traslado" v2 (reemplaza parcialmente a ADR-002) |
 
 ## Formato
 ```

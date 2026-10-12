@@ -16,16 +16,17 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	// Contrato público (ADR-002): token y solicitudes de carga.
-	mux.Handle("/v1/auth/", proxy.Nuevo(cfg.IdentidadURL, ""))
-	mux.Handle("/v1/solicitudes-carga", proxy.Nuevo(cfg.IntegracionURL, ""))
-	mux.Handle("/v1/solicitudes-carga/", proxy.Nuevo(cfg.IntegracionURL, ""))
+	// Contrato público "Solicitar traslado" v2 (ADR-006): token y traslados.
+	mux.Handle("/v2/auth/", proxy.Nuevo(cfg.IdentidadURL, ""))
+	mux.Handle("/v2/traslados", proxy.Nuevo(cfg.IntegracionURL, ""))
+	mux.Handle("/v2/traslados/", proxy.Nuevo(cfg.IntegracionURL, ""))
 
-	// API interna para la aplicación web: /api/<servicio>/... se reenvía sin el prefijo.
-	mux.Handle("/api/identidad/", proxy.Nuevo(cfg.IdentidadURL, "/api/identidad"))
-	mux.Handle("/api/operaciones/", proxy.Nuevo(cfg.OperacionesURL, "/api/operaciones"))
-	mux.Handle("/api/recursos/", proxy.Nuevo(cfg.RecursosURL, "/api/recursos"))
-	mux.Handle("/api/notificaciones/", proxy.Nuevo(cfg.NotificacionesURL, "/api/notificaciones"))
+	// API interna para la aplicación web, versionada: /api/v1/<servicio>/... se reenvía
+	// al servicio sin el prefijo (ej. /api/v1/recursos/choferes → /choferes en Recursos).
+	mux.Handle("/api/v1/identidad/", proxy.Nuevo(cfg.IdentidadURL, "/api/v1/identidad"))
+	mux.Handle("/api/v1/operaciones/", proxy.Nuevo(cfg.OperacionesURL, "/api/v1/operaciones"))
+	mux.Handle("/api/v1/recursos/", proxy.Nuevo(cfg.RecursosURL, "/api/v1/recursos"))
+	mux.Handle("/api/v1/notificaciones/", proxy.Nuevo(cfg.NotificacionesURL, "/api/v1/notificaciones"))
 
 	servidor := &http.Server{
 		Addr:              ":" + cfg.Puerto,

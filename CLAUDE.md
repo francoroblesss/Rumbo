@@ -30,7 +30,7 @@ El sistema a construir es **Rumbo**: su dominio está en `contexto/proyecto/domi
 | `contexto/Transcripcion - Universidad Catolica de Cordoba.txt` | Transcripción automática del audio de la clase de presentación del proyecto (baja confianza en los tramos `[revisar]`). **Solo local** (en `.gitignore`) |
 | `contexto/proyecto/` | Consigna, dominio, insumos, equipo y estado del proyecto final |
 
-**Código:** `servicios/<servicio>/` (un módulo Go cada uno, agrupados con `go.work`; Operaciones en hexagonal, el resto en capas), `frontend/` (React + Vite + TS), `infra/` (init de PostgreSQL y MongoDB), `compose.yaml` en la raíz. Puertos: gateway 8080, identidad 8081, operaciones 8082, recursos 8083, notificaciones 8084, integracion 8085.
+**Código:** `servicios/<servicio>/` (un módulo Go cada uno, agrupados con `go.work`; Operaciones en hexagonal, el resto en capas), `frontend/` (React + Vite + TS), `infra/` (init de MySQL y MongoDB), `compose.yaml` en la raíz. Puertos: gateway 8080, identidad 8081, operaciones 8082, recursos 8083, notificaciones 8084, integracion 8085.
 
 ## Material fuente
 

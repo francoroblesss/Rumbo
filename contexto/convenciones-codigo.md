@@ -10,7 +10,7 @@ Referencias concretas (código resumido en `practica/`): Clase 2 demo (`practica
 | Go | — | `go 1.25.0` (algunas act. `1.22`) → **`go 1.25.0`** |
 | HTTP | `github.com/gin-gonic/gin` | v1.10 – v1.12 → **v1.12** |
 | MongoDB | `go.mongodb.org/mongo-driver` (v1) · imagen `mongo:4.4.6` | v1.17.9 → **v1.17 · imagen `mongo:7`** |
-| PostgreSQL | `github.com/jackc/pgx/v5` · imagen `postgres:16-alpine` | (no visto en el práctico) → **pgx v5** (ADR-003) |
+| MySQL | `database/sql` + `github.com/go-sql-driver/mysql` · imagen `mysql:8.4` | (MySQL en DSW con GORM) → **go-sql-driver/mysql v1.10, SQL explícito** (ADR-005) |
 | Caché local | `github.com/karlseguin/ccache/v3` | v3.0.8 |
 | Memcached | `github.com/bradfitz/gomemcache/memcache` · imagen `memcached` | — |
 | RabbitMQ | `github.com/rabbitmq/amqp091-go` · imagen `rabbitmq:3-management` | v1.14.0 → **v1.15** |
@@ -35,7 +35,7 @@ Un módulo Go por servicio (carpeta propia, `go.mod` propio, `main.go` propio, *
 ├── database/               # conexión (ConnectDB)
 └── services/<entidad>/*_test.go  # tests del service con el mock
 ```
-**En Rumbo:** esa estructura en capas la usan Identidad, Recursos, Notificaciones e Integración de carga. **Operaciones es hexagonal** (teórico 8): `dominio/` (sin tags json/db), `aplicacion/` (casos de uso), `puertos/` (interfaces de entrada y salida) y `adaptadores/` (`api`, `postgres`, `mensajeria`, `recursos`, `identidad`, `clima`). El gateway usa `net/http` + `httputil.ReverseProxy`. Todos los módulos se agrupan con `go.work` en la raíz.
+**En Rumbo:** esa estructura en capas la usan Identidad, Recursos, Notificaciones e Integración de carga. **Operaciones es hexagonal** (teórico 8): `dominio/` (sin tags json/db), `aplicacion/` (casos de uso), `puertos/` (interfaces de entrada y salida) y `adaptadores/` (`api`, `mysql`, `mensajeria`, `recursos`, `identidad`, `clima`). El gateway usa `net/http` + `httputil.ReverseProxy`. Todos los módulos se agrupan con `go.work` en la raíz.
 
 Dos estilos de código coexisten en la cátedra; elegir uno por proyecto y mantenerlo:
 - **Estilo Clase 2/3:** structs con campos exportados (`ItemsService{Repo: ...}`), receptores por valor en repos, métodos `GetByID`, `GetItemByID`, `CreateItem`.
@@ -52,7 +52,7 @@ Dos estilos de código coexisten en la cátedra; elegir uno por proyecto y mante
 - **Errores**: envolver con `fmt.Errorf("contexto: %w", err)`; mensajes en español.
 - **Llamadas HTTP salientes**: `http.NewRequestWithContext` + `http.Client{Timeout: ...}`. Nunca sin timeout.
 - **RabbitMQ**: declarar exchange/cola idempotentemente, mensajes JSON persistentes, `PublishWithContext` con timeout, **ACK manual después del efecto**, QoS en consumidores, consumidores idempotentes. Evento con `id`, `tipo`, `version`, `ocurrido_en`, `correlation_id` (teórico 4).
-- **Config por env**: en Rumbo la variable es `PUERTO` (la cátedra usa `PORT`, CLASE_3), con default; URIs de PostgreSQL/Mongo/Rabbit por env para que funcionen en Docker Compose (nombre de servicio como host) y en local (`localhost`). Se leen en `config/config.go` con `config.Cargar()`.
+- **Config por env**: en Rumbo la variable es `PUERTO` (la cátedra usa `PORT`, CLASE_3), con default; DSN de MySQL y URIs de Mongo/Rabbit por env (`MYSQL_DSN`, `MONGO_URI`, `RABBITMQ_URI`) para que funcionen en Docker Compose (nombre de servicio como host) y en local (`localhost`). Se leen en `config/config.go` con `config.Cargar()`.
 - **Stateless**: nada de sesión/estado de usuario en memoria de la API (para poder poner réplicas detrás de NGINX).
 - **Comentarios**: la cátedra comenta en español explicando el *porqué* (didáctico). Mantener ese tono, sin exagerar.
 - **Logs**: `log.Println` / `log.Printf` con prefijos legibles; `log.Fatal` solo en arranque.

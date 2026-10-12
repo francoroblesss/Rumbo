@@ -25,7 +25,7 @@ La elección tiene que explicar responsabilidades, relaciones y propiedad de los
 | Mensajería / evento de dominio (§2.5) | Cambios de estado de solicitudes, traslados y recorridos. Los avisos al cliente, al chofer y al operador. |
 | Búsqueda (§2.6, D6) | Miles de traslados, filtrables por cliente, fecha, estado, chofer, tipo de servicio y origen/destino. |
 | Caché (§2.7, D7) | Información muy consultada y relativamente estable, por ejemplo disponibilidad/calendario o los recorridos del día. **No se elige todavía**: la consigna exige una necesidad observable y medir el impacto. |
-| Integración: capacidad propia (§4, D8) | "Solicitar traslado de carga" (`dominio.md` §15). |
+| Integración: capacidad propia (§4, D8) | "Solicitar traslado" genérico, v2 (`dominio.md` §15, ADR-006). |
 | Integración: consumo (§4, D9) | Clima del sistema de aeropuerto; el flujo se define al conocer su contrato. |
 | Resiliencia (§2.9, D10) | ¿Qué hace Rumbo si el sistema del aeropuerto está caído o lento? Se demuestra con una caída provocada. |
 | Bonus (§7) | Seguimiento en tiempo real (GPS) quedó fuera de alcance y es candidato a desafío adicional. |
@@ -67,3 +67,12 @@ Fuente: `contexto/Transcripcion - Universidad Catolica de Cordoba.txt` (transcri
 | 00:13:01 – 00:14:00 | Desplegar con opciones simples y gratuitas, no AWS: GitHub Pages, Vercel, Netlify, Render, Railway y otras que se ven en el teórico | Despliegue de Integración de carga |
 | 00:14:47 – 00:16:07 | Se puede usar IA, pero con documentación tipo *specs* y alguna metodología: reglas de negocio, decisiones, arquitectura de **alto y bajo nivel** y organización interna de los servicios | `ARCHITECTURE.md` (sección de bajo nivel), README |
 | 00:25:11 – 00:25:40 | Los bonus tienen que funcionar y no salvan un proyecto flojo | Bonus (§7) |
+
+## 6. Devolución de la Entrega 1 (profesor, 2026-10-09)
+| Comentario | Qué se hizo |
+| --- | --- |
+| "Traslado = función con 3 parámetros: cosa, inicio y destino. Para que gestión de almacenamiento nos consuma tiene que ser más abstracto que cerrado (cambiar persona por cosa en los parámetros)" | Contrato genérico v2: `cosa`, `origen` y `destino` obligatorios, el resto opcional (ADR-006) |
+| "Fijarse los endpoints v1, hay que actualizar versiones (que no quede desfasada la documentación con el código)" | Nueva versión mayor `/v2`; v1 marcada como reemplazada; API interna versionada `/api/v1/…`; documentación y gateway alineados (ADR-006) |
+| "Cambiar Postgre a MySQL (más simple)" | MySQL 8.4 con transacción + `SELECT … FOR UPDATE` por recurso (ADR-005) |
+| "No jugársela con las comunicaciones, tiempos, etc. (está bien, pero prestar atención)" | Sin cambios por ahora. En la Entrega 2, al **validar D5**, ajustar los timeouts (800 ms, 2 s, 5 s) con **latencias medidas** y documentar de dónde sale cada número |
+| "Tiene bastante contexto, bien" · "el profe Tomi banca nuestro proyecto" | Seguir con la misma modalidad: dominio y decisiones documentados antes del código |

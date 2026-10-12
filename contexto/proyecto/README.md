@@ -23,9 +23,8 @@ La estructura de la consigna §3 está en la raíz del repo: `README.md`, `SPEC.
 
 ## Pendientes
 1. **Agregar a los docentes como colaboradores** del repo (cuando el grupo pase sus usuarios).
-2. **Diagramas:** PostgreSQL → MySQL, "esquema" → "base" y la capacidad publicada como "Solicitar traslado" `/v2`.
-3. Completar `equipo.md`.
-4. Narrar los casos completos de `insumos-arquitectura.md` §4 antes de implementar Operaciones.
+2. Completar `equipo.md`.
+3. Narrar los casos completos de `insumos-arquitectura.md` §4 antes de implementar Operaciones.
 
 ## Próximas decisiones (Entrega 2, vie 23/10)
 D2 (estilos internos: ya hay una estructura preliminar), D6 (búsqueda), D7 (caché), D9 (consumo del clima, cuando se conozca el contrato), D10 (resiliencia), D12 (balanceo), D13 (capacidad y costos), validación de D1/D3/D5 (en D5: ajustar timeouts con latencias medidas, por la devolución del profesor), primera versión de D11. D4 (consistencia) se apoya en la transacción con bloqueo por recurso prevista en ADR-005 (MySQL). Bonus: anunciarlos en la Entrega 2.

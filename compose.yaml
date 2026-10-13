@@ -1,6 +1,10 @@
 # Levanta Rumbo completo en local: infraestructura + microservicios + gateway.
 #   cp .env.example .env
 #   docker compose up --build
+# Para ahorrar memoria se puede levantar solo una parte (las dependencias se levantan solas):
+#   docker compose up --build operaciones
+# La observabilidad (Grafana LGTM, ~1 GB de RAM) es opcional: se activa con el perfil
+# "observabilidad" (ver .env.example: COMPOSE_PROFILES y OTEL_EXPORTER_OTLP_ENDPOINT).
 # Puertos publicados: gateway 8080 (único punto de entrada) y paneles de infraestructura.
 # Los microservicios no publican puertos: solo se llega a ellos a través del gateway.
 
@@ -8,12 +12,13 @@ x-servicio-go: &servicio-go
   restart: unless-stopped
   environment: &entorno-comun
     RABBITMQ_URI: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
-    OTEL_EXPORTER_OTLP_ENDPOINT: http://lgtm:4318
+    OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
 
 services:
   # ---------------- Infraestructura ----------------
   mysql:
     image: mysql:8.4
+    mem_limit: 768m
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       OPERACIONES_DB_PASSWORD: ${OPERACIONES_DB_PASSWORD}
@@ -21,6 +26,8 @@ services:
     volumes:
       - mysql-datos:/var/lib/mysql
       - ./infra/mysql:/docker-entrypoint-initdb.d:ro
+    # Acota el buffer pool (por defecto 128 MB, pero otros cachés crecen con la carga).
+    command: ["--innodb-buffer-pool-size=256M", "--performance-schema=OFF"]
     ports:
       - "13306:3306" # en el host 13306, para no chocar con un MySQL instalado localmente
     healthcheck:
@@ -31,6 +38,9 @@ services:
 
   mongo:
     image: mongo:7
+    mem_limit: 768m
+    # Sin tope, WiredTiger toma ~50 % de la RAM que ve para su caché.
+    command: ["--wiredTigerCacheSizeGB", "0.25"]
     environment:
       MONGO_INITDB_ROOT_USERNAME: rumbo_admin
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ADMIN_PASSWORD}
@@ -50,6 +60,7 @@ services:
 
   rabbitmq:
     image: rabbitmq:3-management
+    mem_limit: 512m
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
@@ -72,6 +83,8 @@ services:
   # solo contenedor, con un colector OpenTelemetry que recibe OTLP en 4317 (gRPC) y 4318 (HTTP).
   lgtm:
     image: grafana/otel-lgtm:latest
+    profiles: ["observabilidad"]
+    mem_limit: 1536m
     ports:
       - "3000:3000" # Grafana (admin/admin)
       - "4317:4317"
@@ -98,7 +111,7 @@ services:
       dockerfile: identidad/Dockerfile
     environment:
       PUERTO: "8081"
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://lgtm:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       MONGO_URI: mongodb://identidad:${IDENTIDAD_DB_PASSWORD}@mongo:27017/identidad?authSource=identidad
       TOKEN_SECRETO: ${TOKEN_SECRETO}
       ADMIN_EMAIL: ${ADMIN_EMAIL}
@@ -174,7 +187,7 @@ services:
       dockerfile: gateway/Dockerfile
     environment:
       PUERTO: "8080"
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://lgtm:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       TOKEN_SECRETO: ${TOKEN_SECRETO}
       IDENTIDAD_URL: http://identidad:8081
       OPERACIONES_URL: http://operaciones:8082

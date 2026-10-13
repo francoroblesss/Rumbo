@@ -45,4 +45,4 @@ Windows 11, Go 1.26 (`C:\Program Files\Go`; los módulos declaran `go 1.26.0` po
 
 **Git:** GitHub Flow (ver README → Forma de trabajo): ramas `feat/` `fix/` `docs/` `adr/`, PR a `main` con CI (`.github/workflows/ci.yml`), commits en español con prefijo de tipo, tags por entrega.
 
-Para probar el sistema: `cp .env.example .env` (una vez) y `docker compose up --build`. Si Docker Desktop está cerrado, hay que iniciarlo primero.
+Para probar el sistema: `cp .env.example .env` (una vez) y `docker compose up --build`. Si Docker Desktop está cerrado, hay que iniciarlo primero. Grafana LGTM es opcional (perfil `observabilidad`, ver `.env.example`); para ahorrar memoria se puede levantar un subconjunto (`docker compose up --build <servicio>`).

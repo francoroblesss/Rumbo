@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        servicio: [gateway, identidad, operaciones, recursos, notificaciones, integracion]
+        servicio: [comun, gateway, identidad, operaciones, recursos, notificaciones, integracion]
     defaults:
       run:
         working-directory: servicios/${{ matrix.servicio }}

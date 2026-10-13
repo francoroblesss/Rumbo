@@ -1,9 +1,12 @@
 # Imagen multi-stage: se compila con Go y se ejecuta solo el binario en una imagen mínima.
-FROM golang:1.25-alpine AS compilacion
-WORKDIR /app
-COPY go.* ./
+# El contexto de build es servicios/ (ver compose.yaml) para poder incluir el módulo comun/.
+FROM golang:1.26-alpine AS compilacion
+WORKDIR /src
+COPY comun/ comun/
+COPY recursos/go.mod recursos/go.sum recursos/
+WORKDIR /src/recursos
 RUN go mod download
-COPY . .
+COPY recursos/ .
 RUN CGO_ENABLED=0 go build -o /servicio .
 
 FROM alpine:3.20

@@ -1,6 +1,10 @@
 # Levanta Rumbo completo en local: infraestructura + microservicios + gateway.
 #   cp .env.example .env
 #   docker compose up --build
+# Para ahorrar memoria se puede levantar solo una parte (las dependencias se levantan solas):
+#   docker compose up --build operaciones
+# La observabilidad (Grafana LGTM, ~1 GB de RAM) es opcional: se activa con el perfil
+# "observabilidad" (ver .env.example: COMPOSE_PROFILES y OTEL_EXPORTER_OTLP_ENDPOINT).
 # Puertos publicados: gateway 8080 (único punto de entrada) y paneles de infraestructura.
 # Los microservicios no publican puertos: solo se llega a ellos a través del gateway.
 
@@ -8,11 +12,13 @@ x-servicio-go: &servicio-go
   restart: unless-stopped
   environment: &entorno-comun
     RABBITMQ_URI: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+    OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
 
 services:
   # ---------------- Infraestructura ----------------
   mysql:
     image: mysql:8.4
+    mem_limit: 768m
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       OPERACIONES_DB_PASSWORD: ${OPERACIONES_DB_PASSWORD}
@@ -20,6 +26,8 @@ services:
     volumes:
       - mysql-datos:/var/lib/mysql
       - ./infra/mysql:/docker-entrypoint-initdb.d:ro
+    # Acota el buffer pool (por defecto 128 MB, pero otros cachés crecen con la carga).
+    command: ["--innodb-buffer-pool-size=256M", "--performance-schema=OFF"]
     ports:
       - "13306:3306" # en el host 13306, para no chocar con un MySQL instalado localmente
     healthcheck:
@@ -30,6 +38,9 @@ services:
 
   mongo:
     image: mongo:7
+    mem_limit: 768m
+    # Sin tope, WiredTiger toma ~50 % de la RAM que ve para su caché.
+    command: ["--wiredTigerCacheSizeGB", "0.25"]
     environment:
       MONGO_INITDB_ROOT_USERNAME: rumbo_admin
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ADMIN_PASSWORD}
@@ -49,6 +60,7 @@ services:
 
   rabbitmq:
     image: rabbitmq:3-management
+    mem_limit: 512m
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
@@ -61,33 +73,77 @@ services:
       timeout: 5s
       retries: 20
 
+  memcached:
+    image: memcached:1.6-alpine
+    command: ["memcached", "-m", "64"]
+    ports:
+      - "11211:11211"
+
+  # Observabilidad (D11): Grafana + Prometheus (métricas) + Loki (logs) + Tempo (trazas) en un
+  # solo contenedor, con un colector OpenTelemetry que recibe OTLP en 4317 (gRPC) y 4318 (HTTP).
+  lgtm:
+    image: grafana/otel-lgtm:latest
+    profiles: ["observabilidad"]
+    mem_limit: 1536m
+    ports:
+      - "3000:3000" # Grafana (admin/admin)
+      - "4317:4317"
+      - "4318:4318"
+    volumes:
+      - lgtm-datos:/data
+      - ./infra/grafana/dashboards:/otel-lgtm/dashboards-rumbo:ro
+
+  # Mock del contrato de clima que consume Operaciones (D9), generado con Prism a partir de la
+  # copia fijada del contrato del otro grupo. En producción se reemplaza por la URL real.
+  clima-mock:
+    image: stoplight/prism:5
+    command: ["mock", "-h", "0.0.0.0", "-p", "4010", "-m", "false", "/contratos/clima-v1.yaml"]
+    volumes:
+      - ./docs/contracts/consumidos/clima-v1.yaml:/contratos/clima-v1.yaml:ro
+    ports:
+      - "4020:4010"
+
   # ---------------- Microservicios ----------------
   identidad:
     <<: *servicio-go
-    build: ./servicios/identidad
+    build:
+      context: ./servicios
+      dockerfile: identidad/Dockerfile
     environment:
       PUERTO: "8081"
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       MONGO_URI: mongodb://identidad:${IDENTIDAD_DB_PASSWORD}@mongo:27017/identidad?authSource=identidad
       TOKEN_SECRETO: ${TOKEN_SECRETO}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      EXTERNO_CLIENT_ID: ${EXTERNO_CLIENT_ID}
+      EXTERNO_CLIENT_SECRET: ${EXTERNO_CLIENT_SECRET}
     depends_on:
       mongo: { condition: service_healthy }
 
   operaciones:
     <<: *servicio-go
-    build: ./servicios/operaciones
+    build:
+      context: ./servicios
+      dockerfile: operaciones/Dockerfile
     environment:
       <<: *entorno-comun
       PUERTO: "8082"
-      MYSQL_DSN: operaciones:${OPERACIONES_DB_PASSWORD}@tcp(mysql:3306)/operaciones?parseTime=true
+      MYSQL_DSN: operaciones:${OPERACIONES_DB_PASSWORD}@tcp(mysql:3306)/operaciones?parseTime=true&multiStatements=true
       RECURSOS_URL: http://recursos:8083
       IDENTIDAD_URL: http://identidad:8081
+      CLIMA_URL: http://clima-mock:4010
+      CLIMA_API_KEY: ${CLIMA_API_KEY}
+      CLIMA_ICAO: SACO
     depends_on:
       mysql: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
 
   recursos:
     <<: *servicio-go
-    build: ./servicios/recursos
+    build:
+      context: ./servicios
+      dockerfile: recursos/Dockerfile
     environment:
       <<: *entorno-comun
       PUERTO: "8083"
@@ -98,7 +154,9 @@ services:
 
   notificaciones:
     <<: *servicio-go
-    build: ./servicios/notificaciones
+    build:
+      context: ./servicios
+      dockerfile: notificaciones/Dockerfile
     environment:
       <<: *entorno-comun
       PUERTO: "8084"
@@ -109,21 +167,27 @@ services:
 
   integracion:
     <<: *servicio-go
-    build: ./servicios/integracion
+    build:
+      context: ./servicios
+      dockerfile: integracion/Dockerfile
     environment:
       <<: *entorno-comun
       PUERTO: "8085"
       MONGO_URI: mongodb://integracion:${INTEGRACION_DB_PASSWORD}@mongo:27017/integracion?authSource=integracion
       OPERACIONES_URL: http://operaciones:8082
+      MEMCACHED_ADDR: memcached:11211
     depends_on:
       mongo: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
 
   gateway:
     <<: *servicio-go
-    build: ./servicios/gateway
+    build:
+      context: ./servicios
+      dockerfile: gateway/Dockerfile
     environment:
       PUERTO: "8080"
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       TOKEN_SECRETO: ${TOKEN_SECRETO}
       IDENTIDAD_URL: http://identidad:8081
       OPERACIONES_URL: http://operaciones:8082
@@ -141,4 +205,5 @@ services:
 
 volumes:
   mysql-datos:
+  lgtm-datos:
   mongo-datos:

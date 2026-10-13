@@ -30,7 +30,7 @@ El sistema a construir es **Rumbo**: su dominio está en `contexto/proyecto/domi
 | `contexto/Transcripcion - Universidad Catolica de Cordoba.txt` | Transcripción automática del audio de la clase de presentación del proyecto (baja confianza en los tramos `[revisar]`). **Solo local** (en `.gitignore`) |
 | `contexto/proyecto/` | Consigna, dominio, insumos, equipo y estado del proyecto final |
 
-**Código:** `servicios/<servicio>/` (un módulo Go cada uno, agrupados con `go.work`; Operaciones en hexagonal, el resto en capas), `frontend/` (React + Vite + TS), `infra/` (init de MySQL y MongoDB), `compose.yaml` en la raíz. Puertos: gateway 8080, identidad 8081, operaciones 8082, recursos 8083, notificaciones 8084, integracion 8085.
+**Código:** `servicios/<servicio>/` (un módulo Go cada uno, agrupados con `go.work`; Operaciones en hexagonal, el resto en capas). **`servicios/comun/`** tiene lo compartido (observabilidad, mensajería con reintentos y DLQ, identidad del gateway, Problem Details): usarlo, no reimplementarlo. **El contrato interno entre servicios está en `docs/interfaces-internas.md`**, `frontend/` (React + Vite + TS), `infra/` (init de MySQL y MongoDB), `compose.yaml` en la raíz. Puertos: gateway 8080, identidad 8081, operaciones 8082, recursos 8083, notificaciones 8084, integracion 8085.
 
 ## Material fuente
 
@@ -41,8 +41,8 @@ Los PDFs de clase (teórico y práctico) **no se guardan en el repo**: su conten
 
 ## Entorno
 
-Windows 11, Go 1.26 instalado (`C:\Program Files\Go`; los módulos declaran `go 1.25.0` para compatibilidad con el equipo y la materia), Docker Desktop, Node.js 22, Python 3.14, gh CLI. Shell: PowerShell / Git Bash.
+Windows 11, Go 1.26 (`C:\Program Files\Go`; los módulos declaran `go 1.26.0` porque lo exige OpenTelemetry; con una versión anterior instalada, Go descarga solo la 1.26 gracias a `GOTOOLCHAIN=auto`), Docker Desktop, Node.js 22, Python 3.14, gh CLI. Shell: PowerShell / Git Bash.
 
 **Git:** GitHub Flow (ver README → Forma de trabajo): ramas `feat/` `fix/` `docs/` `adr/`, PR a `main` con CI (`.github/workflows/ci.yml`), commits en español con prefijo de tipo, tags por entrega.
 
-Para probar el sistema: `cp .env.example .env` (una vez) y `docker compose up --build`. Si Docker Desktop está cerrado, hay que iniciarlo primero.
+Para probar el sistema: `cp .env.example .env` (una vez) y `docker compose up --build`. Si Docker Desktop está cerrado, hay que iniciarlo primero. Grafana LGTM es opcional (perfil `observabilidad`, ver `.env.example`); para ahorrar memoria se puede levantar un subconjunto (`docker compose up --build <servicio>`).

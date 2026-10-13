@@ -7,7 +7,7 @@ Referencias concretas (código resumido en `practica/`): Clase 2 demo (`practica
 ## Stack y versiones
 | Pieza | Paquete / imagen | Versión vista en clase → **usada en Rumbo** |
 | --- | --- | --- |
-| Go | — | `go 1.25.0` (algunas act. `1.22`) → **`go 1.25.0`** |
+| Go | — | `go 1.25.0` (algunas act. `1.22`) → **`go 1.26.0`** (lo exige OpenTelemetry) |
 | HTTP | `github.com/gin-gonic/gin` | v1.10 – v1.12 → **v1.12** |
 | MongoDB | `go.mongodb.org/mongo-driver` (v1) · imagen `mongo:4.4.6` | v1.17.9 → **v1.17 · imagen `mongo:7`** |
 | MySQL | `database/sql` + `github.com/go-sql-driver/mysql` · imagen `mysql:8.4` | (MySQL en DSW con GORM) → **go-sql-driver/mysql v1.10, SQL explícito** (ADR-005) |
@@ -18,7 +18,7 @@ Referencias concretas (código resumido en `practica/`): Clase 2 demo (`practica
 | Tokens / rate limit (gateway) | `github.com/golang-jwt/jwt/v5` · `golang.org/x/time/rate` | → previstas (pendiente de implementar) |
 | Solr | HTTP plano (`net/http`) · imagen `solr:9` | — |
 | LB | imagen `nginx:alpine` | — |
-| Build | `golang:1.22-alpine` (actualizable a la versión de go.mod) | → **multi-stage `golang:1.25-alpine` → `alpine:3.20`** |
+| Build | `golang:1.22-alpine` (actualizable a la versión de go.mod) | → **multi-stage `golang:1.26-alpine` → `alpine:3.20`**, contexto de build `servicios/` (para incluir `comun/`) |
 
 ## Estructura de un microservicio
 Un módulo Go por servicio (carpeta propia, `go.mod` propio, `main.go` propio, **puerto propio**):
@@ -43,6 +43,7 @@ Dos estilos de código coexisten en la cátedra; elegir uno por proyecto y mante
 → **Default para el proyecto: estilo Clase 5** (constructores + `ctx`), que además habilita timeouts/cancelación (teórico 7).
 
 ## Reglas
+- **Usar `servicios/comun`** para observabilidad (`observabilidad.Iniciar`, `Instrumentar`, `ClienteHTTP`), mensajería (`mensajeria.NuevoSobre`, `Publicador`, `Consumir`), identidad (`identidad.Desde`, `RequiereRol`) y errores (`problema.Escribir`). Contrato en `docs/interfaces-internas.md`. Logs con `slog.InfoContext(ctx, …)`, no `log.Printf`.
 - **No reinventar la rueda (indicación del profesor en clase):** caché, búsqueda, mensajería, validación de tokens, rate limiting, etc. se resuelven con **librerías o herramientas existentes**, preferentemente las vistas en clase. Nunca una caché "hecha a mano" en Go. Solo se escribe código propio para la lógica de negocio y el pegamento mínimo.
 - **El service depende de interfaces**, nunca de Mongo/Solr/Memcached directamente. El controller no conoce la infraestructura.
 - **DI manual en `main.go`**, en orden: infraestructura → repo → (decorador caché) → service → controller → rutas.

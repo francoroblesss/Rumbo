@@ -45,7 +45,7 @@ La consigna pide al menos dos estilos de arquitectura distintos. La justificaci�
 | **Identidad y clientes**, **Recursos**, **Notificaciones**, **Integración de carga** | **Capas** (Handler → Service → Repository, estilo del práctico): lógica más simple y una sola base cada uno | `controllers/` · `services/` · `repositories/` · `models/` · `database/` · `messaging/` (si usa el broker) · `clients/` (Integración → Operaciones) |
 | **API Gateway** | Reverse proxy con middlewares | `proxy/` (ruteo, 502/504, deadline de 5 s) · `correlacion/` · `autenticacion/` y `limite/` (pendientes, con librerías) |
 
-Cada servicio es un módulo Go independiente (`servicios/<servicio>/`) con su `Dockerfile`, su puerto y su configuración por variables de entorno. `main.go` arma las dependencias a mano (infraestructura → repositorios o adaptadores → servicios o casos de uso → handlers).
+Cada servicio es un módulo Go independiente (`servicios/<servicio>/`) con su `Dockerfile`, su puerto y su configuración por variables de entorno. Lo que no es negocio y comparten todos (observabilidad, mensajería con reintentos y DLQ, identidad propagada por el gateway y errores Problem Details) está en el módulo **`servicios/comun`**, y el contrato interno entre servicios en [`interfaces-internas.md`](interfaces-internas.md). `main.go` arma las dependencias a mano (infraestructura → repositorios o adaptadores → servicios o casos de uso → handlers).
 <!-- Pendiente por servicio: API expuesta y eventos publicados/consumidos en detalle (D5, Entrega 2). -->
 
 ## 4. Datos y persistencia

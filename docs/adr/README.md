@@ -5,15 +5,15 @@ Cada decisión se conserva en un archivo independiente `ADR-NNN-titulo-corto.md`
 ## Decisiones obligatorias
 | # | Decisión | Entrega | ADR |
 | --- | --- | --- | --- |
-| D1 | Límites de los servicios | E1 (validación en E2) | [ADR-001](ADR-001-limites-de-los-servicios.md) |
-| D2 | Arquitectura interna de los servicios | E2 | — |
-| D3 | Persistencia | E1 inicial (validación en E2) | [ADR-003](ADR-003-persistencia.md), motor reemplazado por [ADR-005](ADR-005-mysql-como-motor-relacional.md) |
+| D1 | Límites de los servicios | E1 (validación en E2) | [ADR-001](ADR-001-limites-de-los-servicios.md), validado en [ADR-013](ADR-013-validacion-d1-d3.md) |
+| D2 | Arquitectura interna de los servicios | E2 | [ADR-010](ADR-010-estilos-internos.md) |
+| D3 | Persistencia | E1 inicial (validación en E2) | [ADR-003](ADR-003-persistencia.md), motor reemplazado por [ADR-005](ADR-005-mysql-como-motor-relacional.md), validado en [ADR-013](ADR-013-validacion-d1-d3.md) |
 | D4 | Consistencia y concurrencia | — | — |
 | D5 | Comunicación entre servicios | E1 inicial (validación en E2) | [ADR-004](ADR-004-comunicacion-entre-servicios.md) |
-| D6 | Búsqueda | E2 | — |
+| D6 | Búsqueda | E2 | [ADR-011](ADR-011-busqueda.md) |
 | D7 | Caché | E2 | — |
 | D8 | Contrato propio | E1 (actualizar en E2 si cambió) | [ADR-002](ADR-002-contrato-propio.md), contrato reemplazado por [ADR-006](ADR-006-contrato-generico-v2.md) (v2) |
-| D9 | Consumo del proveedor | E2 | — |
+| D9 | Consumo del proveedor | E2 | [ADR-012](ADR-012-consumo-clima.md) |
 | D10 | Resiliencia | E2 | — |
 | D11 | Observabilidad | E2 primera versión | — |
 | D12 | Balanceo de carga | E2 | — |

@@ -2,22 +2,36 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
+	_ "time/tzdata" // la imagen Alpine no trae la base de zonas horarias (America/Argentina/Cordoba)
+
 	"github.com/francoroblesss/Rumbo/servicios/comun/mensajeria"
 	"github.com/francoroblesss/Rumbo/servicios/comun/observabilidad"
+	"github.com/francoroblesss/Rumbo/servicios/integracion/clients"
 	"github.com/francoroblesss/Rumbo/servicios/integracion/config"
+	"github.com/francoroblesss/Rumbo/servicios/integracion/controllers"
 	"github.com/francoroblesss/Rumbo/servicios/integracion/database"
+	"github.com/francoroblesss/Rumbo/servicios/integracion/messaging"
+	"github.com/francoroblesss/Rumbo/servicios/integracion/repositories"
+	"github.com/francoroblesss/Rumbo/servicios/integracion/services"
 )
 
 // Integración de carga: atiende la capacidad publicada "Solicitar traslado" (contrato v2)
 // y la traduce al modelo interno de Operaciones (ADR-001, ADR-006).
 // Arquitectura interna en capas: controllers → services → repositories / clients.
 func main() {
-	ctx := context.Background()
+	// El contexto se cancela al recibir la señal de apagado: detiene el relay y el consumidor.
+	ctx, detener := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer detener()
 
 	// 0. Observabilidad (D11): logs JSON, métricas y trazas con OpenTelemetry.
 	apagar, err := observabilidad.Iniciar(ctx, "integracion")
@@ -41,15 +55,52 @@ func main() {
 	}
 	defer conexionRabbit.Close()
 
-	// 2. Cableado (DI manual): repositories, clients → services → controllers, relay y consumidor. Pendiente de implementar.
+	// 2. Cableado (DI manual): repositorio → caché → cliente → servicio → controlador, relay y consumidor.
+	repoMongo := repositories.NewSolicitudesMongo(mongoCliente.Database("integracion"))
+	if err := repoMongo.AsegurarIndices(ctx); err != nil {
+		terminar("no se pudieron crear los índices", err)
+	}
+	// Decorador cache-aside con Memcached (ADR-007): compartido por las dos réplicas.
+	repo := repositories.NewSolicitudesCache(repoMongo, repositories.NewMemcached(cfg.MemcachedAddr))
+	// Cliente hacia Operaciones con timeout de 2 s y circuit breaker (ADR-008).
+	operaciones := clients.NewOperacionesClient(cfg.OperacionesURL)
+	servicio := services.NewSolicitudesService(repo, operaciones, time.Now)
+	controlador := controllers.NewTrasladosController(servicio)
+
+	publicador, err := mensajeria.NuevoPublicador(conexionRabbit)
+	if err != nil {
+		terminar("no se pudo crear el publicador", err)
+	}
+	defer publicador.Cerrar()
+
+	relay := messaging.NewRelay(repo, publicador, observabilidad.Instancia())
+	go func() {
+		if err := relay.Ejecutar(ctx); err != nil {
+			terminar("el relay de solicitudes pendientes se detuvo", err)
+		}
+	}()
+	go func() {
+		if err := messaging.ConsumirEstados(ctx, conexionRabbit, servicio.AplicarEvento); err != nil {
+			terminar("el consumidor de estados se detuvo", err)
+		}
+	}()
 
 	// 3. Servidor HTTP instrumentado (traza, correlation id, métrica y log por request).
 	router := gin.New()
 	router.Use(gin.Recovery())
 	observabilidad.Instrumentar(router, "integracion")
+	controlador.Registrar(router)
+
+	servidor := &http.Server{Addr: ":" + cfg.Puerto, Handler: router}
+	go func() {
+		<-ctx.Done()
+		cierre, cancelar := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancelar()
+		_ = servidor.Shutdown(cierre)
+	}()
 
 	slog.Info("servicio escuchando", slog.String("puerto", cfg.Puerto))
-	if err := router.Run(":" + cfg.Puerto); err != nil {
+	if err := servidor.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		terminar("el servidor HTTP se detuvo", err)
 	}
 }

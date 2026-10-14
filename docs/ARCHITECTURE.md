@@ -88,10 +88,28 @@ Detalle en [ADR-004](adr/ADR-004-comunicacion-entre-servicios.md) (D5).
 <!-- Capacidad consumida (D9): sistema de aeropuerto (clima); la llamada sale desde Operaciones. -->
 
 ## 7. Búsqueda, caché y balanceo de carga
-<!-- Ver D6, D7 y D12. -->
+**Caché** ([ADR-007](adr/ADR-007-cache.md), D7): **Memcached**, compartido por las dos réplicas de Integración de carga, con el patrón **cache-aside** sobre la consulta por id del contrato público (`GET /v2/traslados/{id}`), implementado como decorador del repositorio. La clave incluye la organización (`integracion:solicitud:{organizacion_id}:{solicitud_id}:v1`), el TTL es de **60 s** (más un jitter de 0 a 10 s) y la clave se **invalida** (se borra) cada vez que se aplica un evento de Operaciones o una escritura propia. Si Memcached falla o tarda más de 100 ms, se lee de MongoDB: la caída de la caché nunca produce un error. Se mide con `rumbo_cache_operaciones_total{cache="solicitudes", resultado="hit|miss|error"}`.
+
+**Balanceo** ([ADR-009](adr/ADR-009-balanceo.md), D12): **NGINX** delante de dos réplicas de Integración de carga (`integracion-1` e `integracion-2`), con **round robin**. El gateway envía `/v2/traslados` a `balanceador-integracion`. Los *health checks* son pasivos (3 fallas en 30 s sacan a la réplica de rotación durante 30 s) y NGINX reintenta en la otra réplica solo ante caída, timeout, `502` o `503`, y **solo en métodos idempotentes**: un `POST` nunca se reintenta en el balanceador. El log de acceso de NGINX registra qué réplica atendió cada request, y cada réplica identifica sus logs y métricas con el atributo `instancia`.
+
+Búsqueda: ver D6.
 
 ## 8. Resiliencia y observabilidad
-<!-- Ver D10 y D11. -->
+Dependencias de cada servicio y qué pasa cuando fallan ([ADR-008](adr/ADR-008-resiliencia.md), D10):
+
+| Servicio | Dependencia | Si falla o tarda | Mecanismo |
+| --- | --- | --- | --- |
+| Integración de carga | **Operaciones** (HTTP: responder contrapropuesta, cancelar) | Responde `503 SERVICIO_NO_DISPONIBLE` con `Retry-After`. El consumidor reintenta con la misma `Idempotency-Key` | Timeout de 2 s + **circuit breaker** |
+| Integración de carga | RabbitMQ (publicar el comando, recibir estados) | **Sigue aceptando solicitudes** (`202`): quedan pendientes de envío y el relay las publica cuando el broker vuelve. El consumidor de estados reconecta al reiniciar | Pendiente de envío + relay con reintentos (ADR-004) |
+| Integración de carga | Memcached | Lee de MongoDB; nunca un error al consumidor | Degradación (ADR-007) |
+| Integración de carga | MongoDB (su base) | `503 SERVICIO_NO_DISPONIBLE` | Timeout del driver |
+| Operaciones | Sistema de aeropuerto (clima) | Sigue sin el dato: alerta "clima no verificado" (fail-open) | Timeout + reintento + breaker + caché (D9) |
+| Operaciones | MySQL (su base) | `503` en sus endpoints; los mensajes se reintentan y, agotados, van a la DLQ | Timeout + reintentos de mensajería |
+| Todos | RabbitMQ al arrancar | Reintenta la conexión con backoff y jitter | `mensajeria.ConectarConReintentos` |
+
+**Circuit breaker** (`github.com/sony/gobreaker/v2`) en las llamadas de Integración a Operaciones: se abre con 5 fallas consecutivas o con 50 % de fallas en al menos 10 llamadas dentro de 60 s (solo cuentan timeouts, errores de red y `5xx`; un `4xx` no), responde `503` con `Retry-After: 30` sin llamar a Operaciones, pasa a semiabierto a los 30 s con 1 llamada de prueba y su estado se ve en `rumbo_circuito_estado{dependencia="operaciones"}`.
+
+Observabilidad: ver D11.
 
 ## 9. Distribución y despliegue
 **Local (procedimiento único, consigna §2.12):** `docker compose up --build` levanta todo en contenedores:
@@ -99,7 +117,8 @@ Detalle en [ADR-004](adr/ADR-004-comunicacion-entre-servicios.md) (D5).
 | Contenedor | Puerto publicado | Notas |
 | --- | --- | --- |
 | `gateway` | **8080** | Único punto de entrada |
-| `identidad`, `operaciones`, `recursos`, `notificaciones`, `integracion` | — | Solo accesibles a través del gateway (puertos internos 8081 a 8085) |
+| `identidad`, `operaciones`, `recursos`, `notificaciones`, `integracion-1`, `integracion-2` | — | Solo accesibles a través del gateway (puertos internos 8081 a 8085; las dos réplicas de Integración usan el 8085) |
+| `balanceador-integracion` | — | NGINX delante de `integracion-1` e `integracion-2` (puerto interno 80, ADR-009) |
 | `mysql` | 13306 (en el host; 3306 dentro de Docker) | Bases `operaciones` y `recursos` |
 | `mongo` | 27017 | Bases `identidad`, `notificaciones` e `integracion` |
 | `rabbitmq` | 5672 · 15672 (panel) | Broker |

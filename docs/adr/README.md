@@ -11,12 +11,12 @@ Cada decisión se conserva en un archivo independiente `ADR-NNN-titulo-corto.md`
 | D4 | Consistencia y concurrencia | — | — |
 | D5 | Comunicación entre servicios | E1 inicial (validación en E2) | [ADR-004](ADR-004-comunicacion-entre-servicios.md) |
 | D6 | Búsqueda | E2 | — |
-| D7 | Caché | E2 | — |
+| D7 | Caché | E2 | [ADR-007](ADR-007-cache.md) |
 | D8 | Contrato propio | E1 (actualizar en E2 si cambió) | [ADR-002](ADR-002-contrato-propio.md), contrato reemplazado por [ADR-006](ADR-006-contrato-generico-v2.md) (v2) |
 | D9 | Consumo del proveedor | E2 | — |
-| D10 | Resiliencia | E2 | — |
+| D10 | Resiliencia | E2 | [ADR-008](ADR-008-resiliencia.md) |
 | D11 | Observabilidad | E2 primera versión | — |
-| D12 | Balanceo de carga | E2 | — |
+| D12 | Balanceo de carga | E2 | [ADR-009](ADR-009-balanceo.md) |
 | D13 | Capacidad y costos | E2 | — |
 
 ## Otras decisiones

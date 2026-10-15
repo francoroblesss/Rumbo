@@ -32,7 +32,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (job) (rate(rumbo_http_duracion_segundos_seconds_count[1m]))",
+          "expr": "sum by (job) (rate(rumbo_http_duracion_segundos_seconds_count[5m]))",
           "legendFormat": "{{job}}",
           "range": true
         }
@@ -179,7 +179,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (instancia) (rate(rumbo_http_duracion_segundos_seconds_count{job=\"integracion\"}[1m]))",
+          "expr": "sum by (instancia) (rate(rumbo_http_duracion_segundos_seconds_count{job=\"integracion\"}[5m]))",
           "legendFormat": "{{instancia}}",
           "range": true
         }

@@ -91,7 +91,17 @@ Detalle en [ADR-004](adr/ADR-004-comunicacion-entre-servicios.md) (D5).
 <!-- Ver D6, D7 y D12. -->
 
 ## 8. Resiliencia y observabilidad
-<!-- Ver D10 y D11. -->
+<!-- Resiliencia: ver D10. -->
+
+### Observabilidad
+Detalle en [ADR-014](adr/ADR-014-observabilidad.md) (D11).
+
+- **Stack:** OpenTelemetry en todos los servicios Go (módulo `servicios/comun/observabilidad`) y una sola imagen, `grafana/otel-lgtm`, que reúne el colector OTLP, Prometheus (métricas), Loki (logs), Tempo (trazas) y Grafana (tablero y alertas) en `http://localhost:3000`. Se activa con el perfil `observabilidad` de `compose.yaml`.
+- **Logs:** `slog` en JSON por stdout y a Loki, con `servicio`, `instancia`, `correlation_id`, `trace_id` y `span_id`. El gateway asigna el `X-Correlation-ID`, que viaja por HTTP y en los mensajes de RabbitMQ.
+- **Métricas principales:** `rumbo_http_duracion_segundos` (RED por servicio e instancia), `rumbo_mensajes_procesados_total` (incluye la DLQ), `rumbo_outbox_pendientes`, `rumbo_cache_operaciones_total`, `rumbo_circuito_estado`, `rumbo_gateway_rechazos_total`, `rumbo_solicitudes_total` y `rumbo_clima_consultas_total` (nombres fijos en `docs/interfaces-internas.md` §8).
+- **Trazas:** propagación W3C Trace Context por HTTP y por RabbitMQ, incluido el paso por el outbox. El flujo principal se ve en una sola traza: gateway → Integración (`POST /v2/traslados`) → publicar y consumir en Operaciones → publicar y consumir en Integración.
+- **Tablero:** "Rumbo — estado general" (carpeta *Rumbo*), con 11 paneles: requests, errores 5xx y latencia p95 por servicio, requests por instancia de Integración (balanceo), hit ratio de las cachés, pendientes de outbox, mensajes por resultado, estado de los circuitos, consultas de clima, rechazos del gateway y logs de error. Se provisiona desde `infra/grafana/`.
+- **SLO y alertas** (provisionadas desde `infra/grafana/alertas/`): 99 % de los `POST /v2/traslados` en menos de 300 ms y menos de 1 % de respuestas 5xx. Tres reglas con evaluación cada minuto y `for: 5m`: `SLO latencia traslados`, `SLO errores traslados` y `Mensajes en DLQ`.
 
 ## 9. Distribución y despliegue
 **Local (procedimiento único, consigna §2.12):** `docker compose up --build` levanta todo en contenedores:

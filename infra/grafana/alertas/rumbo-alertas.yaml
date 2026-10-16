@@ -93,7 +93,9 @@ groups:
       - uid: rumbo-dlq-mensajes
         title: Mensajes en DLQ
         condition: C
-        for: 5m
+        # 1 min y no 5: la condición mira los últimos 5 min, así que con un solo mensaje es
+        # verdadera exactamente 5 min y con "for: 5m" nunca llegaba a dispararse (ADR-016).
+        for: 1m
         noDataState: OK
         execErrState: Error
         labels:

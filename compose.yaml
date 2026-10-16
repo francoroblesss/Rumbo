@@ -91,7 +91,10 @@ services:
       - "4318:4318"
     volumes:
       - lgtm-datos:/data
+      # Provisioning de Grafana: tableros, proveedor de tableros y alertas (ADR-014).
       - ./infra/grafana/dashboards:/otel-lgtm/dashboards-rumbo:ro
+      - ./infra/grafana/proveedor-tableros.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/rumbo.yaml:ro
+      - ./infra/grafana/alertas/rumbo-alertas.yaml:/otel-lgtm/grafana/conf/provisioning/alerting/rumbo-alertas.yaml:ro
 
   # Mock del contrato de clima que consume Operaciones (D9), generado con Prism a partir de la
   # copia fijada del contrato del otro grupo. En producción se reemplaza por la URL real.
@@ -165,20 +168,42 @@ services:
       mongo: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
 
-  integracion:
+  integracion-1:
     <<: *servicio-go
     build:
       context: ./servicios
       dockerfile: integracion/Dockerfile
-    environment:
+    environment: &entorno-integracion
       <<: *entorno-comun
       PUERTO: "8085"
+      INSTANCIA: integracion-1
       MONGO_URI: mongodb://integracion:${INTEGRACION_DB_PASSWORD}@mongo:27017/integracion?authSource=integracion
       OPERACIONES_URL: http://operaciones:8082
       MEMCACHED_ADDR: memcached:11211
     depends_on:
       mongo: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
+
+  integracion-2:
+    <<: *servicio-go
+    build:
+      context: ./servicios
+      dockerfile: integracion/Dockerfile
+    environment:
+      <<: *entorno-integracion
+      INSTANCIA: integracion-2
+    depends_on:
+      mongo: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+
+  # Balanceador de Integración de carga (ADR-009): round robin entre las dos réplicas.
+  balanceador-integracion:
+    image: nginx:alpine
+    volumes:
+      - ./infra/nginx/integracion.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - integracion-1
+      - integracion-2
 
   gateway:
     <<: *servicio-go
@@ -193,7 +218,7 @@ services:
       OPERACIONES_URL: http://operaciones:8082
       RECURSOS_URL: http://recursos:8083
       NOTIFICACIONES_URL: http://notificaciones:8084
-      INTEGRACION_URL: http://integracion:8085
+      INTEGRACION_URL: http://balanceador-integracion:80
     ports:
       - "8080:8080"
     depends_on:
@@ -201,7 +226,7 @@ services:
       - operaciones
       - recursos
       - notificaciones
-      - integracion
+      - balanceador-integracion
 
 volumes:
   mysql-datos:

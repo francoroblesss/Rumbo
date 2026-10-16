@@ -241,7 +241,11 @@ RECIBIDA ──operador──> ACEPTADA                   (crea traslados o plan
 - **CA-31** (F-29, R-41) **Dado** el servicio de clima caído, **cuando** el operador acepta una solicitud al aeropuerto, **entonces** la aceptación se completa y el traslado queda "clima no verificado".
 
 ## 7. Bonus anunciados
-Se anuncian en la Entrega 2 (consigna §7). Candidato identificado: actualizaciones en tiempo real del recorrido (seguimiento del chofer).
+Anunciados en la Entrega 2 (consigna §7). Se implementan para la Presentación Grupal; tienen que estar integrados, documentados, testeados y defendidos.
+| Bonus | Qué se hace | Cómo se verifica |
+| --- | --- | --- |
+| **Actualizaciones en tiempo real** | El operador y el cliente ven en la aplicación web los cambios de estado de solicitudes y traslados apenas ocurren, sin recargar, a partir de los eventos que ya publica Operaciones | Un cambio de estado aparece en la pantalla abierta en menos de 2 s |
+| **Tests de punta a punta (e2e)** | Tests automatizados del flujo principal a través del sistema levantado: solicitud por el contrato público → gateway → Integración → Operaciones → cambio de estado visible por consulta | Corren en el CI contra el sistema levantado con Docker Compose |
 
 ## 8. Registro de cambios
 | Fecha | Cambio | Motivo |

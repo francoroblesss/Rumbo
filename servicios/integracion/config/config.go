@@ -12,6 +12,7 @@ type Config struct {
 	MongoURI       string // base propia del servicio
 	RabbitURI      string // broker de mensajes
 	OperacionesURL string // servicio Operaciones
+	MemcachedAddr  string // caché distribuida de la consulta por id (ADR-007)
 }
 
 // Cargar lee la configuración del entorno. Las URIs con credenciales no tienen valor por
@@ -22,6 +23,7 @@ func Cargar() Config {
 		MongoURI:       obligatorio("MONGO_URI"),
 		RabbitURI:      obligatorio("RABBITMQ_URI"),
 		OperacionesURL: valor("OPERACIONES_URL", "http://localhost:8082"),
+		MemcachedAddr:  obligatorio("MEMCACHED_ADDR"),
 	}
 }
 

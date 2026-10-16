@@ -88,10 +88,36 @@ Detalle en [ADR-004](adr/ADR-004-comunicacion-entre-servicios.md) (D5).
 - **Capacidad consumida — Clima del sistema de aeropuerto** ([ADR-012](adr/ADR-012-consumo-clima.md)): Operaciones consulta la operabilidad del aeropuerto (`GET /v1/airports/SACO/conditions`, contrato fijado en [`contracts/consumidos/`](contracts/consumidos/README.md)) al aceptar un traslado al aeropuerto dentro de las próximas 6 h; si no es operable, el traslado queda con alerta climática y decide el operador. Es fail-open (si el proveedor falla, la alerta queda "clima no verificado" y la aceptación sigue), con timeout de 1 s, un reintento solo ante errores transitorios, circuit breaker (5 fallas, 30 s), caché local de 5 min y test de contrato con `kin-openapi`.
 
 ## 7. Búsqueda, caché y balanceo de carga
-<!-- Ver D6, D7 y D12. -->
+**Caché** ([ADR-007](adr/ADR-007-cache.md), D7): **Memcached**, compartido por las dos réplicas de Integración de carga, con el patrón **cache-aside** sobre la consulta por id del contrato público (`GET /v2/traslados/{id}`), implementado como decorador del repositorio. La clave incluye la organización (`integracion:solicitud:{organizacion_id}:{solicitud_id}:v1`), el TTL es de **60 s** (más un jitter de 0 a 10 s) y la clave se **invalida** (se borra) cada vez que se aplica un evento de Operaciones o una escritura propia. Si Memcached falla o tarda más de 100 ms, se lee de MongoDB: la caída de la caché nunca produce un error. Se mide con `rumbo_cache_operaciones_total{cache="solicitudes", resultado="hit|miss|error"}`.
+
+**Balanceo** ([ADR-009](adr/ADR-009-balanceo.md), D12): **NGINX** delante de dos réplicas de Integración de carga (`integracion-1` e `integracion-2`), con **round robin**. El gateway envía `/v2/traslados` a `balanceador-integracion`. Los *health checks* son pasivos (3 fallas en 30 s sacan a la réplica de rotación durante 30 s) y NGINX reintenta en la otra réplica solo ante caída, timeout, `502` o `503`, y **solo en métodos idempotentes**: un `POST` nunca se reintenta en el balanceador. El log de acceso de NGINX registra qué réplica atendió cada request, y cada réplica identifica sus logs y métricas con el atributo `instancia`.
+
+Búsqueda: ver D6.
 
 ## 8. Resiliencia y observabilidad
-<!-- Ver D10 y D11. -->
+Dependencias de cada servicio y qué pasa cuando fallan ([ADR-008](adr/ADR-008-resiliencia.md), D10):
+
+| Servicio | Dependencia | Si falla o tarda | Mecanismo |
+| --- | --- | --- | --- |
+| Integración de carga | **Operaciones** (HTTP: responder contrapropuesta, cancelar) | Responde `503 SERVICIO_NO_DISPONIBLE` con `Retry-After`. El consumidor reintenta con la misma `Idempotency-Key` | Timeout de 2 s + **circuit breaker** |
+| Integración de carga | RabbitMQ (publicar el comando, recibir estados) | **Sigue aceptando solicitudes** (`202`): quedan pendientes de envío y el relay las publica cuando el broker vuelve. El consumidor de estados reconecta al reiniciar | Pendiente de envío + relay con reintentos (ADR-004) |
+| Integración de carga | Memcached | Lee de MongoDB; nunca un error al consumidor | Degradación (ADR-007) |
+| Integración de carga | MongoDB (su base) | `503 SERVICIO_NO_DISPONIBLE` | Timeout del driver |
+| Operaciones | Sistema de aeropuerto (clima) | Sigue sin el dato: alerta "clima no verificado" (fail-open) | Timeout + reintento + breaker + caché (D9) |
+| Operaciones | MySQL (su base) | `503` en sus endpoints; los mensajes se reintentan y, agotados, van a la DLQ | Timeout + reintentos de mensajería |
+| Todos | RabbitMQ al arrancar | Reintenta la conexión con backoff y jitter | `mensajeria.ConectarConReintentos` |
+
+**Circuit breaker** (`github.com/sony/gobreaker/v2`) en las llamadas de Integración a Operaciones: se abre con 5 fallas consecutivas o con 50 % de fallas en al menos 10 llamadas dentro de 60 s (solo cuentan timeouts, errores de red y `5xx`; un `4xx` no), responde `503` con `Retry-After: 30` sin llamar a Operaciones, pasa a semiabierto a los 30 s con 1 llamada de prueba y su estado se ve en `rumbo_circuito_estado{dependencia="operaciones"}`.
+
+### Observabilidad
+Detalle en [ADR-014](adr/ADR-014-observabilidad.md) (D11).
+
+- **Stack:** OpenTelemetry en todos los servicios Go (módulo `servicios/comun/observabilidad`) y una sola imagen, `grafana/otel-lgtm`, que reúne el colector OTLP, Prometheus (métricas), Loki (logs), Tempo (trazas) y Grafana (tablero y alertas) en `http://localhost:3000`. Se activa con el perfil `observabilidad` de `compose.yaml`.
+- **Logs:** `slog` en JSON por stdout y a Loki, con `servicio`, `instancia`, `correlation_id`, `trace_id` y `span_id`. El gateway asigna el `X-Correlation-ID`, que viaja por HTTP y en los mensajes de RabbitMQ.
+- **Métricas principales:** `rumbo_http_duracion_segundos` (RED por servicio e instancia), `rumbo_mensajes_procesados_total` (incluye la DLQ), `rumbo_outbox_pendientes`, `rumbo_cache_operaciones_total`, `rumbo_circuito_estado`, `rumbo_gateway_rechazos_total`, `rumbo_solicitudes_total` y `rumbo_clima_consultas_total` (nombres fijos en `docs/interfaces-internas.md` §8).
+- **Trazas:** propagación W3C Trace Context por HTTP y por RabbitMQ, incluido el paso por el outbox. El flujo principal se ve en una sola traza: gateway → Integración (`POST /v2/traslados`) → publicar y consumir en Operaciones → publicar y consumir en Integración.
+- **Tablero:** "Rumbo — estado general" (carpeta *Rumbo*), con 11 paneles: requests, errores 5xx y latencia p95 por servicio, requests por instancia de Integración (balanceo), hit ratio de las cachés, pendientes de outbox, mensajes por resultado, estado de los circuitos, consultas de clima, rechazos del gateway y logs de error. Se provisiona desde `infra/grafana/`.
+- **SLO y alertas** (provisionadas desde `infra/grafana/alertas/`): 99 % de los `POST /v2/traslados` en menos de 300 ms y menos de 1 % de respuestas 5xx. Tres reglas con evaluación cada minuto y `for: 5m`: `SLO latencia traslados`, `SLO errores traslados` y `Mensajes en DLQ`.
 
 ## 9. Distribución y despliegue
 **Local (procedimiento único, consigna §2.12):** `docker compose up --build` levanta todo en contenedores:
@@ -99,7 +125,8 @@ Detalle en [ADR-004](adr/ADR-004-comunicacion-entre-servicios.md) (D5).
 | Contenedor | Puerto publicado | Notas |
 | --- | --- | --- |
 | `gateway` | **8080** | Único punto de entrada |
-| `identidad`, `operaciones`, `recursos`, `notificaciones`, `integracion` | — | Solo accesibles a través del gateway (puertos internos 8081 a 8085) |
+| `identidad`, `operaciones`, `recursos`, `notificaciones`, `integracion-1`, `integracion-2` | — | Solo accesibles a través del gateway (puertos internos 8081 a 8085; las dos réplicas de Integración usan el 8085) |
+| `balanceador-integracion` | — | NGINX delante de `integracion-1` e `integracion-2` (puerto interno 80, ADR-009) |
 | `mysql` | 13306 (en el host; 3306 dentro de Docker) | Bases `operaciones` y `recursos` |
 | `mongo` | 27017 | Bases `identidad`, `notificaciones` e `integracion` |
 | `rabbitmq` | 5672 · 15672 (panel) | Broker |

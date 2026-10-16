@@ -32,7 +32,7 @@ func TestLimpiarIdentidadBorraLosHeadersDelCliente(t *testing.T) {
 	var llegada http.Header
 	h := LimpiarIdentidad(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { llegada = r.Header.Clone() }))
 
-	req := httptest.NewRequest(http.MethodGet, "/v2/traslados", nil)
+	req := httptest.NewRequest(http.MethodGet, "/traslados", nil)
 	req.Header.Set("X-Rumbo-Usuario", "usr-falso")
 	req.Header.Set("X-Rumbo-Organizacion", "org-falsa")
 	req.Header.Set("x-rumbo-roles", "administrador")

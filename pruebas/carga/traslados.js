@@ -1,7 +1,7 @@
 // Prueba de carga de la capacidad publicada "Solicitar traslado" (método de ADR-015).
 //
 // Escalones de tasa constante (1, 2, 5, 10, 20, 50 y 100 req/s, 30 s cada uno), uno detrás de
-// otro. Mezcla: 90 % GET /v2/traslados/{id} (el polling del consumidor) y 10 % POST /v2/traslados.
+// otro. Mezcla: 90 % GET /traslados/{id} (el polling del consumidor) y 10 % POST /traslados.
 // Se ataca al balanceador de Integración dentro de la red de Docker, con los headers de identidad
 // que pondría el gateway (su límite de 60 pedidos por minuto cortaría la prueba).
 //
@@ -64,7 +64,7 @@ function nuevoTraslado() {
 
 function crear(tags) {
   const headers = Object.assign({ 'Idempotency-Key': crypto.randomUUID() }, HEADERS);
-  return http.post(`${DESTINO}/v2/traslados`, nuevoTraslado(), { headers, tags });
+  return http.post(`${DESTINO}/traslados`, nuevoTraslado(), { headers, tags });
 }
 
 // setup crea las solicitudes que después se consultan por id.
@@ -86,7 +86,7 @@ export function setup() {
 export default function (datos) {
   if (Math.random() < 0.9) {
     const id = datos.ids[Math.floor(Math.random() * datos.ids.length)];
-    const res = http.get(`${DESTINO}/v2/traslados/${id}`, { headers: HEADERS, tags: { operacion: 'consultar' } });
+    const res = http.get(`${DESTINO}/traslados/${id}`, { headers: HEADERS, tags: { operacion: 'consultar' } });
     check(res, { 'consulta 200': (r) => r.status === 200 });
   } else {
     const res = crear({ operacion: 'crear' });

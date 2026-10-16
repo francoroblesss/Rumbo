@@ -4,7 +4,7 @@ Scripts de [k6](https://grafana.com/docs/k6/) que miden la capacidad publicada "
 
 | Archivo | Qué hace |
 | --- | --- |
-| `traslados.js` | Escalones de tasa constante de 1, 2, 5, 10, 20, 50 y 100 req/s, de 30 s cada uno. Mezcla: 90 % `GET /v2/traslados/{id}` y 10 % `POST /v2/traslados`. Escribe `resultado-<E>.json` con p95, p99, % de errores y req/s logradas por escalón |
+| `traslados.js` | Escalones de tasa constante de 1, 2, 5, 10, 20, 50 y 100 req/s, de 30 s cada uno. Mezcla: 90 % `GET /traslados/{id}` y 10 % `POST /traslados`. Escribe `resultado-<E>.json` con p95, p99, % de errores y req/s logradas por escalón |
 | `d5.js` | Genera llamadas salientes para ADR-016 durante el escalón de 10 req/s de C: cancelaciones (Integración → Operaciones), aceptaciones al aeropuerto (Operaciones → clima) y consultas directas al mock del clima |
 | `ejecutar.sh` | Corre los escenarios **A** (1 réplica, sin Memcached), **B** (1 réplica, con Memcached) y **C** (2 réplicas, con Memcached), en ese orden. Guarda `docker stats` cada 5 s en `stats-<E>.txt` |
 | `resumir.mjs` | Cruza `resultado-<E>.json` con `stats-<E>.txt` y arma las tablas del informe, aplicando la regla del límite de ADR-015 |

@@ -51,10 +51,10 @@ func main() {
 func armar(cfg config.Config, limitador *limite.Limitador) http.Handler {
 	mux := http.NewServeMux()
 
-	// Contrato público "Solicitar traslado" v2 (ADR-006): token y traslados.
-	mux.Handle("/v2/auth/", proxy.Nuevo(cfg.IdentidadURL, ""))
-	mux.Handle("/v2/traslados", proxy.Nuevo(cfg.IntegracionURL, ""))
-	mux.Handle("/v2/traslados/", proxy.Nuevo(cfg.IntegracionURL, ""))
+	// Contrato público "Solicitar traslado" (ADR-006), sin versión en la ruta (ADR-019): token y traslados.
+	mux.Handle("/auth/", proxy.Nuevo(cfg.IdentidadURL, ""))
+	mux.Handle("/traslados", proxy.Nuevo(cfg.IntegracionURL, ""))
+	mux.Handle("/traslados/", proxy.Nuevo(cfg.IntegracionURL, ""))
 
 	// API interna para la aplicación web, versionada: /api/v1/<servicio>/... se reenvía
 	// al servicio sin el prefijo (ej. /api/v1/recursos/choferes → /choferes en Recursos).

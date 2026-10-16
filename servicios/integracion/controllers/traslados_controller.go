@@ -26,7 +26,7 @@ const (
 	claveOrganizacion  = "organizacion"
 )
 
-// TrasladosController atiende el contrato público "Solicitar traslado" v2. Solo valida la forma
+// TrasladosController atiende el contrato público "Solicitar traslado". Solo valida la forma
 // del pedido HTTP (headers, query, cuerpo de las acciones) y traduce los errores del servicio a
 // Problem Details; las reglas están en el servicio.
 type TrasladosController struct {
@@ -41,7 +41,7 @@ func NewTrasladosController(servicio *services.SolicitudesService) *TrasladosCon
 // Registrar agrega las rutas al router. Todas exigen el rol sistema_externo y una organización:
 // autenticación en el gateway, autorización acá (teórico 6).
 func (tc *TrasladosController) Registrar(router gin.IRouter) {
-	grupo := router.Group("/v2/traslados", identidad.RequiereRol(identidad.RolSistemaExterno), requiereOrganizacion)
+	grupo := router.Group("/traslados", identidad.RequiereRol(identidad.RolSistemaExterno), requiereOrganizacion)
 	grupo.POST("", tc.crear)
 	grupo.GET("", tc.listar)
 	grupo.GET("/:id", tc.obtener)
@@ -77,7 +77,7 @@ func (tc *TrasladosController) crear(c *gin.Context) {
 		escribirError(c, err)
 		return
 	}
-	c.Header("Location", "/v2/traslados/"+vista.ID)
+	c.Header("Location", "/traslados/"+vista.ID)
 	c.JSON(estado, aContrato(vista))
 }
 

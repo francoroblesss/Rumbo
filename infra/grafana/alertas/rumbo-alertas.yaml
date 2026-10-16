@@ -3,7 +3,7 @@
 # grafana/otel-lgtm (ver el bloque lgtm de compose.yaml).
 #
 # El SLO se mide en el gateway: es lo que ve el consumidor del contrato (incluye el salto de red
-# hacia Integración). La ruta del gateway agrupa /v2/traslados y /v2/traslados/{id}.
+# hacia Integración). La ruta del gateway agrupa /traslados y /traslados/{id}.
 apiVersion: 1
 
 groups:
@@ -21,15 +21,15 @@ groups:
         labels:
           severidad: critica
         annotations:
-          summary: "El p95 de POST /v2/traslados superó los 300 ms"
-          description: "SLO: 99 % de los POST /v2/traslados responden en menos de 300 ms. El p95 de los últimos 5 minutos está por encima del objetivo."
+          summary: "El p95 de POST /traslados superó los 300 ms"
+          description: "SLO: 99 % de los POST /traslados responden en menos de 300 ms. El p95 de los últimos 5 minutos está por encima del objetivo."
         data:
           - refId: A
             relativeTimeRange: { from: 600, to: 0 }
             datasourceUid: prometheus
             model:
               datasource: { type: prometheus, uid: prometheus }
-              expr: 'histogram_quantile(0.95, sum by (le) (rate(rumbo_http_duracion_segundos_seconds_bucket{job="gateway",ruta="/v2/traslados",metodo="POST"}[5m])))'
+              expr: 'histogram_quantile(0.95, sum by (le) (rate(rumbo_http_duracion_segundos_seconds_bucket{job="gateway",ruta="/traslados",metodo="POST"}[5m])))'
               instant: true
               intervalMs: 1000
               maxDataPoints: 43200
@@ -60,7 +60,7 @@ groups:
         labels:
           severidad: critica
         annotations:
-          summary: "Más del 1 % de las respuestas de /v2/traslados son 5xx"
+          summary: "Más del 1 % de las respuestas de /traslados son 5xx"
           description: "SLO: menos del 1 % de respuestas 5xx. La tasa de los últimos 5 minutos está por encima del objetivo."
         data:
           - refId: A
@@ -68,7 +68,7 @@ groups:
             datasourceUid: prometheus
             model:
               datasource: { type: prometheus, uid: prometheus }
-              expr: 'sum(rate(rumbo_http_duracion_segundos_seconds_count{job="gateway",ruta="/v2/traslados",estado=~"5.."}[5m])) / sum(rate(rumbo_http_duracion_segundos_seconds_count{job="gateway",ruta="/v2/traslados"}[5m]))'
+              expr: 'sum(rate(rumbo_http_duracion_segundos_seconds_count{job="gateway",ruta="/traslados",estado=~"5.."}[5m])) / sum(rate(rumbo_http_duracion_segundos_seconds_count{job="gateway",ruta="/traslados"}[5m]))'
               instant: true
               intervalMs: 1000
               maxDataPoints: 43200

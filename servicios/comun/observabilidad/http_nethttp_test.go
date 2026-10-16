@@ -19,7 +19,7 @@ func TestInstrumentarHTTPPropagaCorrelacion(t *testing.T) {
 	}), "prueba")
 
 	conHeader := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/v2/traslados/sol-1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/traslados/sol-1", nil)
 	req.Header.Set(HeaderCorrelacion, "corr-1")
 	h.ServeHTTP(conHeader, req)
 	if enContexto != "corr-1" || enHeader != "corr-1" || conHeader.Header().Get(HeaderCorrelacion) != "corr-1" {
@@ -31,7 +31,7 @@ func TestInstrumentarHTTPPropagaCorrelacion(t *testing.T) {
 	}
 
 	sinHeader := httptest.NewRecorder()
-	h.ServeHTTP(sinHeader, httptest.NewRequest(http.MethodGet, "/v2/traslados", nil))
+	h.ServeHTTP(sinHeader, httptest.NewRequest(http.MethodGet, "/traslados", nil))
 	generado := sinHeader.Header().Get(HeaderCorrelacion)
 	if generado == "" {
 		t.Fatal("sin header de entrada se tiene que generar un correlation id")
@@ -43,9 +43,10 @@ func TestInstrumentarHTTPPropagaCorrelacion(t *testing.T) {
 
 func TestRutaAgrupada(t *testing.T) {
 	casos := map[string]string{
-		"/v2/traslados":                      "/v2/traslados",
-		"/v2/traslados/sol-7f3a":             "/v2/traslados",
-		"/v2/auth/token":                     "/v2/auth",
+		"/traslados":                         "/traslados",
+		"/traslados/sol-7f3a":                "/traslados",
+		"/traslados/sol-7f3a/cancelacion":    "/traslados",
+		"/auth/token":                        "/auth",
 		"/api/v1/operaciones/solicitudes":    "/api/v1/operaciones",
 		"/api/v1/operaciones/solicitudes/42": "/api/v1/operaciones",
 		"/api/v1/identidad/login":            "/api/v1/identidad",

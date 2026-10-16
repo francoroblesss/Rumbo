@@ -1,7 +1,7 @@
 # ADR-002 — Contrato propio: Solicitar traslado de carga (D8)
 
 - **Fecha:** 2026-10-04
-- **Estado:** aceptada (versión 1.0.0 para la Entrega 1; se actualiza en la Entrega 2 si el contrato cambia) — **reemplazada parcialmente por [ADR-006](ADR-006-contrato-generico-v2.md)**: la capacidad pasa a ser genérica (cosa, origen, destino) en la versión 2.0.0 (`/v2`). El resto sigue vigente.
+- **Estado:** aceptada (versión 1.0.0 para la Entrega 1; se actualiza en la Entrega 2 si el contrato cambia) — **reemplazada parcialmente por [ADR-006](ADR-006-contrato-generico-v2.md)**: la capacidad pasa a ser genérica (cosa, origen, destino) en la versión 2.0.0 (`/v2`). La versión mayor en la URL (punto 8) queda **reemplazada por [ADR-019](ADR-019-contrato-sin-version-en-la-ruta.md)**: las rutas no llevan versión. El resto sigue vigente.
 - **Revisión 2026-10-04:** la capacidad la atiende el nuevo servicio **Integración de carga** en lugar de Operaciones (ADR-001). El contrato no cambia.
 
 ## Contexto

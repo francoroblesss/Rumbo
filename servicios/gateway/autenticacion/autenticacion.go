@@ -56,7 +56,7 @@ func esPublica(r *http.Request) bool {
 	if r.Method != http.MethodPost {
 		return false
 	}
-	return r.URL.Path == "/v2/auth/token" || r.URL.Path == "/api/v1/identidad/login"
+	return r.URL.Path == "/auth/token" || r.URL.Path == "/api/v1/identidad/login"
 }
 
 // autenticar valida el token del header Authorization y devuelve la request con la identidad

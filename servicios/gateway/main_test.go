@@ -87,7 +87,7 @@ func (e *entorno) pedir(metodo, ruta, bearer string, headers map[string]string) 
 
 func TestSinTokenNoLlegaAlServicio(t *testing.T) {
 	e := nuevoEntorno(t)
-	w := e.pedir(http.MethodGet, "/v2/traslados", "", nil)
+	w := e.pedir(http.MethodGet, "/traslados", "", nil)
 	if w.Code != http.StatusUnauthorized || e.integra.llamadas != 0 {
 		t.Fatalf("estado = %d, llamadas = %d", w.Code, e.integra.llamadas)
 	}
@@ -98,7 +98,7 @@ func TestSinTokenNoLlegaAlServicio(t *testing.T) {
 
 func TestTokenValidoLlegaConLaIdentidadDelToken(t *testing.T) {
 	e := nuevoEntorno(t)
-	w := e.pedir(http.MethodGet, "/v2/traslados/sol-1", token(t, "org-1", "sistema_externo"), nil)
+	w := e.pedir(http.MethodGet, "/traslados/sol-1", token(t, "org-1", "sistema_externo"), nil)
 	if w.Code != http.StatusNoContent || e.integra.llamadas != 1 {
 		t.Fatalf("estado = %d, llamadas = %d", w.Code, e.integra.llamadas)
 	}
@@ -108,7 +108,7 @@ func TestTokenValidoLlegaConLaIdentidadDelToken(t *testing.T) {
 		recibida.Header.Get("X-Rumbo-Roles") != "sistema_externo" {
 		t.Errorf("identidad recibida por el servicio: %v", recibida.Header)
 	}
-	if recibida.URL.Path != "/v2/traslados/sol-1" {
+	if recibida.URL.Path != "/traslados/sol-1" {
 		t.Errorf("path reenviado = %q", recibida.URL.Path)
 	}
 	if recibida.Header.Get("X-Correlation-ID") == "" || recibida.Header.Get("X-Correlation-ID") != w.Header().Get("X-Correlation-ID") {
@@ -132,7 +132,7 @@ func TestLaIdentidadDelClienteNoLlegaAlServicio(t *testing.T) {
 	}
 
 	// En una ruta pública (sin token) no llega ninguna identidad.
-	e.pedir(http.MethodPost, "/v2/auth/token", "", falsos)
+	e.pedir(http.MethodPost, "/auth/token", "", falsos)
 	for _, nombre := range []string{"X-Rumbo-Usuario", "X-Rumbo-Organizacion", "X-Rumbo-Roles"} {
 		if _, hay := e.identidad.recibida.Header[nombre]; hay {
 			t.Errorf("%s llegó a Identidad por una ruta pública", nombre)
@@ -151,8 +151,8 @@ func TestLasRutasInternasNoSeExponen(t *testing.T) {
 
 func TestLasRutasPublicasPasanSinToken(t *testing.T) {
 	e := nuevoEntorno(t)
-	if w := e.pedir(http.MethodPost, "/v2/auth/token", "", nil); w.Code != http.StatusNoContent {
-		t.Errorf("POST /v2/auth/token: estado = %d", w.Code)
+	if w := e.pedir(http.MethodPost, "/auth/token", "", nil); w.Code != http.StatusNoContent {
+		t.Errorf("POST /auth/token: estado = %d", w.Code)
 	}
 	if w := e.pedir(http.MethodPost, "/api/v1/identidad/login", "", nil); w.Code != http.StatusNoContent {
 		t.Errorf("POST /api/v1/identidad/login: estado = %d", w.Code)
@@ -167,15 +167,15 @@ func TestElPedidoOnceEnRafagaDeLaMismaOrganizacionRecibe429(t *testing.T) {
 	tokenOrg1 := token(t, "org-1", "sistema_externo")
 
 	for i := 1; i <= 10; i++ {
-		if w := e.pedir(http.MethodGet, "/v2/traslados", tokenOrg1, nil); w.Code != http.StatusNoContent {
+		if w := e.pedir(http.MethodGet, "/traslados", tokenOrg1, nil); w.Code != http.StatusNoContent {
 			t.Fatalf("pedido %d: estado = %d", i, w.Code)
 		}
 	}
-	w := e.pedir(http.MethodGet, "/v2/traslados", tokenOrg1, nil)
+	w := e.pedir(http.MethodGet, "/traslados", tokenOrg1, nil)
 	if w.Code != http.StatusTooManyRequests || w.Header().Get("Retry-After") == "" {
 		t.Fatalf("pedido 11: estado = %d, Retry-After = %q", w.Code, w.Header().Get("Retry-After"))
 	}
-	if w := e.pedir(http.MethodGet, "/v2/traslados", token(t, "org-2", "sistema_externo"), nil); w.Code != http.StatusNoContent {
+	if w := e.pedir(http.MethodGet, "/traslados", token(t, "org-2", "sistema_externo"), nil); w.Code != http.StatusNoContent {
 		t.Errorf("otra organización: estado = %d, esperaba que no se vea afectada", w.Code)
 	}
 }

@@ -54,7 +54,7 @@ func TestElCorrelationIDNoSeDuplicaEnLaRespuesta(t *testing.T) {
 	})
 
 	rec := httptest.NewRecorder()
-	conMiddleware.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v2/traslados", nil))
+	conMiddleware.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/traslados", nil))
 
 	if valores := rec.Header().Values(observabilidad.HeaderCorrelacion); len(valores) != 1 || valores[0] != "id-1" {
 		t.Fatalf("X-Correlation-ID = %v, se esperaba un solo valor id-1", valores)
@@ -70,7 +70,7 @@ func TestServicioCaidoResponde502ConProblemDetails(t *testing.T) {
 	servicio.Close() // nadie escucha en esa dirección
 
 	rec := httptest.NewRecorder()
-	Nuevo(destino, "").ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v2/traslados/x", nil))
+	Nuevo(destino, "").ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/traslados/x", nil))
 
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("estado %d, se esperaba 502", rec.Code)
@@ -95,7 +95,7 @@ func TestServicioLentoResponde504ConProblemDetails(t *testing.T) {
 	defer close(liberar)
 
 	rec := httptest.NewRecorder()
-	Nuevo(servicio.URL, "").ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v2/traslados/x", nil))
+	Nuevo(servicio.URL, "").ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/traslados/x", nil))
 
 	if rec.Code != http.StatusGatewayTimeout {
 		t.Fatalf("estado %d, se esperaba 504", rec.Code)

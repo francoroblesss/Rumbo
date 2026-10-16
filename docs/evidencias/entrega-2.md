@@ -1,5 +1,7 @@
 # Evidencia de observabilidad — Entrega 2
 
+> **Nota (2026-10-16):** esta medición se hizo con las rutas bajo `/v2`. Desde [ADR-019](../adr/ADR-019-contrato-sin-version-en-la-ruta.md) son las mismas operaciones sin versión (`/traslados`, `/auth/token`); los comandos y resultados se conservan como se registraron.
+
 Evidencia de que el sistema se puede seguir sin inspeccionar cada componente a mano ([ADR-014](../adr/ADR-014-observabilidad.md)): una request real a través del gateway, su traza distribuida, sus logs correlacionados y el balanceo. Se obtuvo el 2026-10-16 con `docker compose up --build -d` y el perfil `observabilidad` (Grafana LGTM). Tempo, Loki y Prometheus se consultaron por la API de Grafana (`/api/datasources/proxy/uid/<tempo|loki|prometheus>/…`), que es lo mismo que muestra Grafana → Explore.
 
 ## 1. `POST /v2/traslados` a través del gateway, con token

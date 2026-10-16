@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
-  title: Rumbo — Solicitar traslado
+  title: Rumbo — Solicitar traslado (REEMPLAZADO por la versión 3.0.0)
   version: 2.1.0
   description: |
+    **REEMPLAZADO por la versión 3.0.0 (`traslados.yaml`, ADR-019)**, que quita la versión de
+    las rutas. Esta versión nunca tuvo consumidores; se conserva como historia del contrato.
+
     Capacidad publicada por Rumbo para que un sistema externo solicite **trasladar una cosa
     desde un origen hasta un destino** y siga su resultado. Solo tres datos son obligatorios:
     `cosa`, `origen` y `destino`; el resto (hora, tolerancia, referencia) es opcional.

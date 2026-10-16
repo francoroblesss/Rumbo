@@ -32,7 +32,7 @@ func TestMiddlewareResponde429ConRetryAfter(t *testing.T) {
 	}))
 	pedir := func(org string) *httptest.ResponseRecorder {
 		w := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/v2/traslados", nil)
+		req := httptest.NewRequest(http.MethodGet, "/traslados", nil)
 		req.Header.Set("X-Rumbo-Organizacion", org)
 		h.ServeHTTP(w, req)
 		return w

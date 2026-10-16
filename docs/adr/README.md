@@ -15,7 +15,7 @@ Cada decisión se conserva en un archivo independiente `ADR-NNN-titulo-corto.md`
 | D8 | Contrato propio | E1 (actualizar en E2 si cambió) | [ADR-002](ADR-002-contrato-propio.md), contrato reemplazado por [ADR-006](ADR-006-contrato-generico-v2.md) (v2) |
 | D9 | Consumo del proveedor | E2 | — |
 | D10 | Resiliencia | E2 | — |
-| D11 | Observabilidad | E2 primera versión | — |
+| D11 | Observabilidad | E2 primera versión | [ADR-014](ADR-014-observabilidad.md) |
 | D12 | Balanceo de carga | E2 | — |
 | D13 | Capacidad y costos | E2 | — |
 

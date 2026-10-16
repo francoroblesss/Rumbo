@@ -91,7 +91,10 @@ services:
       - "4318:4318"
     volumes:
       - lgtm-datos:/data
+      # Provisioning de Grafana: tableros, proveedor de tableros y alertas (ADR-014).
       - ./infra/grafana/dashboards:/otel-lgtm/dashboards-rumbo:ro
+      - ./infra/grafana/proveedor-tableros.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/rumbo.yaml:ro
+      - ./infra/grafana/alertas/rumbo-alertas.yaml:/otel-lgtm/grafana/conf/provisioning/alerting/rumbo-alertas.yaml:ro
 
   # Mock del contrato de clima que consume Operaciones (D9), generado con Prism a partir de la
   # copia fijada del contrato del otro grupo. En producción se reemplaza por la URL real.

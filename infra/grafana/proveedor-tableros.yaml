@@ -1,0 +1,16 @@
+# Proveedor de tableros de Grafana (provisioning): carga los JSON de infra/grafana/dashboards/
+# en una carpeta "Rumbo". Se monta en la carpeta de provisión de la imagen grafana/otel-lgtm
+# (ver el bloque lgtm de compose.yaml).
+apiVersion: 1
+
+providers:
+  - name: rumbo
+    orgId: 1
+    folder: Rumbo
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /otel-lgtm/dashboards-rumbo
+      foldersFromFilesStructure: false

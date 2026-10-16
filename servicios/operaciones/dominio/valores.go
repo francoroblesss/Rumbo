@@ -77,7 +77,7 @@ const (
 	EventoAlertaClimatica       Evento = "operaciones.traslado.alerta_climatica"
 )
 
-// Cosa es lo que se traslada (contrato genérico v2: descripción y cantidad obligatorias).
+// Cosa es lo que se traslada (contrato genérico, ADR-006: descripción y cantidad obligatorias).
 type Cosa struct {
 	Descripcion string
 	Cantidad    int

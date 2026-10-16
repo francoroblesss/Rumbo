@@ -21,7 +21,7 @@ import (
 const TiempoMaximo = 5 * time.Second
 
 // Nuevo devuelve un reverse proxy hacia destino. Si quitarPrefijo no está vacío, se elimina
-// del path antes de reenviar (ej. /api/v1/recursos/choferes → /choferes en Recursos).
+// del path antes de reenviar (ej. /api/recursos/choferes → /choferes en Recursos).
 // El gateway no reintenta: el reintento le corresponde al cliente (un solo dueño, teórico 7).
 // Cada llamada propaga la traza (traceparent) al servicio.
 func Nuevo(destino string, quitarPrefijo string) http.Handler {

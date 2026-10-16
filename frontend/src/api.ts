@@ -1,4 +1,4 @@
-// Cliente de la API interna de Rumbo. Todo pasa por el API Gateway (/api/v1/...): la web nunca
+// Cliente de la API interna de Rumbo. Todo pasa por el API Gateway (/api/...): la web nunca
 // habla directo con los microservicios.
 
 import type { PaginaSolicitudes, Solicitud } from './tipos.ts'
@@ -89,7 +89,7 @@ async function pedir<T>(metodo: string, ruta: string, cuerpo?: unknown, claveIde
 }
 
 export async function iniciarSesion(email: string, password: string): Promise<void> {
-  const r = await pedir<{ access_token: string }>('POST', '/api/v1/identidad/login', { email, password })
+  const r = await pedir<{ access_token: string }>('POST', '/api/identidad/login', { email, password })
   guardarToken(r.access_token, email)
 }
 
@@ -130,16 +130,16 @@ function rolesDelToken(): string[] {
 export function listarSolicitudes(estado: string, pagina: number, tamanio: number) {
   const q = new URLSearchParams({ pagina: String(pagina), tamanio: String(tamanio) })
   if (estado) q.set('estado', estado)
-  return pedir<PaginaSolicitudes>('GET', `/api/v1/operaciones/solicitudes?${q}`)
+  return pedir<PaginaSolicitudes>('GET', `/api/operaciones/solicitudes?${q}`)
 }
 
 export function obtenerSolicitud(id: string) {
-  return pedir<Solicitud>('GET', `/api/v1/operaciones/solicitudes/${encodeURIComponent(id)}`)
+  return pedir<Solicitud>('GET', `/api/operaciones/solicitudes/${encodeURIComponent(id)}`)
 }
 
 // Las acciones son POST: cada una lleva la Idempotency-Key de su operación lógica (teórico 9).
 // Quien llama conserva la clave mientras reintenta la misma acción, así un reintento después de
 // un timeout no repite el efecto.
 export function accionSolicitud(id: string, accion: string, cuerpo: unknown, clave: string) {
-  return pedir<Solicitud>('POST', `/api/v1/operaciones/solicitudes/${encodeURIComponent(id)}/${accion}`, cuerpo, clave)
+  return pedir<Solicitud>('POST', `/api/operaciones/solicitudes/${encodeURIComponent(id)}/${accion}`, cuerpo, clave)
 }

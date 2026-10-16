@@ -77,7 +77,7 @@ func verificar401(t *testing.T, nombre string, w *httptest.ResponseRecorder, lle
 }
 
 func TestSinTokenResponde401(t *testing.T) {
-	w, llegada := pedir(t, http.MethodGet, "/v2/traslados", "")
+	w, llegada := pedir(t, http.MethodGet, "/traslados", "")
 	verificar401(t, "sin Authorization", w, llegada)
 }
 
@@ -102,7 +102,7 @@ func TestTokensInvalidosResponden401(t *testing.T) {
 		"con otro algoritmo (HS384)": firmar(t, jwt.SigningMethodHS384, secreto, nil),
 	}
 	for nombre, token := range casos {
-		w, llegada := pedir(t, http.MethodGet, "/v2/traslados", "Bearer "+token)
+		w, llegada := pedir(t, http.MethodGet, "/traslados", "Bearer "+token)
 		verificar401(t, nombre, w, llegada)
 	}
 
@@ -111,14 +111,14 @@ func TestTokensInvalidosResponden401(t *testing.T) {
 		"sin token":        "Bearer ",
 		"basura":           "Bearer no-es-un-jwt",
 	} {
-		w, llegada := pedir(t, http.MethodGet, "/v2/traslados", cabecera)
+		w, llegada := pedir(t, http.MethodGet, "/traslados", cabecera)
 		verificar401(t, nombre, w, llegada)
 	}
 }
 
 func TestTokenValidoPropagaLaIdentidad(t *testing.T) {
 	token := firmar(t, jwt.SigningMethodHS256, secreto, nil)
-	w, llegada := pedir(t, http.MethodGet, "/v2/traslados", "Bearer "+token)
+	w, llegada := pedir(t, http.MethodGet, "/traslados", "Bearer "+token)
 	if w.Code != http.StatusNoContent || llegada == nil {
 		t.Fatalf("estado = %d, la request tendría que llegar al servicio", w.Code)
 	}
@@ -131,7 +131,7 @@ func TestTokenValidoPropagaLaIdentidad(t *testing.T) {
 
 func TestTokenSinOrganizacionNoPropagaOrganizacion(t *testing.T) {
 	token := firmar(t, jwt.SigningMethodHS256, secreto, func(r *reclamos) { r.Org = "" })
-	_, llegada := pedir(t, http.MethodGet, "/api/v1/operaciones/solicitudes", "Bearer "+token)
+	_, llegada := pedir(t, http.MethodGet, "/api/operaciones/solicitudes", "Bearer "+token)
 	if llegada == nil {
 		t.Fatal("la request tendría que llegar")
 	}
@@ -141,15 +141,15 @@ func TestTokenSinOrganizacionNoPropagaOrganizacion(t *testing.T) {
 }
 
 func TestRutasPublicasNoPidenToken(t *testing.T) {
-	for _, ruta := range []string{"/v2/auth/token", "/api/v1/identidad/login"} {
+	for _, ruta := range []string{"/auth/token", "/api/identidad/login"} {
 		w, llegada := pedir(t, http.MethodPost, ruta, "")
 		if w.Code != http.StatusNoContent || llegada == nil {
 			t.Errorf("POST %s sin token: estado = %d, esperaba que pase", ruta, w.Code)
 		}
 	}
 	// Solo son públicas con POST: el resto de los métodos y rutas sigue pidiendo token.
-	w, llegada := pedir(t, http.MethodGet, "/api/v1/identidad/login", "")
+	w, llegada := pedir(t, http.MethodGet, "/api/identidad/login", "")
 	verificar401(t, "GET login", w, llegada)
-	w, llegada = pedir(t, http.MethodPost, "/v2/traslados", "")
+	w, llegada = pedir(t, http.MethodPost, "/traslados", "")
 	verificar401(t, "POST traslados sin token", w, llegada)
 }

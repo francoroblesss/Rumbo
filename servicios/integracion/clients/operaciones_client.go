@@ -78,12 +78,12 @@ func NewOperacionesClient(baseURL string) OperacionesClient {
 }
 
 func (c *operacionesHTTP) ResponderContrapropuesta(ctx context.Context, org, claveIdem, id string, acepta bool) (models.VistaSolicitud, error) {
-	return c.llamar(ctx, org, claveIdem, "/internas/v1/solicitudes/"+url.PathEscape(id)+"/respuesta-contrapropuesta",
+	return c.llamar(ctx, org, claveIdem, "/internas/solicitudes/"+url.PathEscape(id)+"/respuesta-contrapropuesta",
 		map[string]bool{"acepta": acepta})
 }
 
 func (c *operacionesHTTP) Cancelar(ctx context.Context, org, claveIdem, id, motivo string) (models.VistaSolicitud, error) {
-	return c.llamar(ctx, org, claveIdem, "/internas/v1/solicitudes/"+url.PathEscape(id)+"/cancelacion",
+	return c.llamar(ctx, org, claveIdem, "/internas/solicitudes/"+url.PathEscape(id)+"/cancelacion",
 		map[string]string{"motivo": motivo})
 }
 

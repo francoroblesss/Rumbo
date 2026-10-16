@@ -18,7 +18,7 @@ Rel(cliente, rumbo, "Usa", "web")
 Rel(operador, rumbo, "Usa", "web")
 Rel(chofer, rumbo, "Usa", "web")
 Rel(admin, rumbo, "Usa", "web")
-Rel(almacenamiento, rumbo, "Solicita traslados (cosa, origen, destino) y consulta su estado", "API REST /v2, token")
+Rel(almacenamiento, rumbo, "Solicita traslados (cosa, origen, destino) y consulta su estado", "API REST /traslados, token")
 Rel(rumbo, aeropuerto, "Consulta la operabilidad del aeropuerto", "API REST, síncrono")
 
 SHOW_LEGEND()

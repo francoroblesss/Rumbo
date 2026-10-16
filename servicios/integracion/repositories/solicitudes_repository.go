@@ -19,7 +19,7 @@ var (
 // Si la réplica cae o no logra publicar, el reclamo vence y otra la reintenta (ADR-009).
 const DuracionReclamo = 30 * time.Second
 
-// FiltroListado son los parámetros de GET /v2/traslados.
+// FiltroListado son los parámetros de GET /traslados.
 type FiltroListado struct {
 	OrganizacionID   string
 	ActualizadoDesde *time.Time // exclusivo

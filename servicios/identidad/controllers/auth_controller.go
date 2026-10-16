@@ -23,7 +23,7 @@ func NuevoAuthController(servicio *services.AuthService) *AuthController {
 
 // Registrar agrega las rutas al router.
 func (ctrl *AuthController) Registrar(r *gin.Engine) {
-	r.POST("/v2/auth/token", ctrl.tokenCliente)
+	r.POST("/auth/token", ctrl.tokenCliente)
 	r.POST("/login", ctrl.login)
 }
 

@@ -58,7 +58,7 @@ function crear(conHora) {
   };
   if (conHora) cuerpo.hora_llegada_solicitada = horaEnTresHoras();
   const headers = Object.assign({ 'Idempotency-Key': crypto.randomUUID() }, EXTERNO);
-  const res = http.post(`${INTEGRACION}/v2/traslados`, JSON.stringify(cuerpo), { headers, tags: { fase: 'setup' } });
+  const res = http.post(`${INTEGRACION}/traslados`, JSON.stringify(cuerpo), { headers, tags: { fase: 'setup' } });
   return res.status === 202 ? res.json('id') : null;
 }
 
@@ -74,7 +74,7 @@ export function setup() {
 export function cancelar(datos) {
   const id = datos.paraCancelar[exec.scenario.iterationInTest % datos.paraCancelar.length];
   const headers = Object.assign({ 'Idempotency-Key': crypto.randomUUID() }, EXTERNO);
-  const res = http.post(`${INTEGRACION}/v2/traslados/${id}/cancelacion`, JSON.stringify({ motivo: 'prueba de D5' }),
+  const res = http.post(`${INTEGRACION}/traslados/${id}/cancelacion`, JSON.stringify({ motivo: 'prueba de D5' }),
     { headers, tags: { operacion: 'cancelar' } });
   check(res, { 'cancelación 200': (r) => r.status === 200 });
 }

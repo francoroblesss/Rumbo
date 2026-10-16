@@ -2,7 +2,7 @@
 
 > Contrato **interno** entre los servicios de Rumbo: mensajes, endpoints internos, identidad, errores, logs, métricas y trazas.
 > El contrato **público** (para otros grupos) está en [`contracts/`](contracts/README.md).
-> Implementa las decisiones de [ADR-004](adr/ADR-004-comunicacion-entre-servicios.md) (comunicación), [ADR-002](adr/ADR-002-contrato-propio.md)/[ADR-006](adr/ADR-006-contrato-generico-v2.md) (contrato público) y el teórico 6 (identidad en el borde).
+> Implementa las decisiones de [ADR-004](adr/ADR-004-comunicacion-entre-servicios.md) (comunicación), [ADR-002](adr/ADR-002-contrato-propio.md)/[ADR-006](adr/ADR-006-contrato-generico-v2.md)/[ADR-019](adr/ADR-019-contrato-sin-version-en-la-ruta.md) (contrato público, rutas sin versión) y el teórico 6 (identidad en el borde).
 > Las piezas reutilizables (sobre, publicador, consumidor con reintentos y DLQ, observabilidad, identidad y errores) están en el módulo Go [`servicios/comun`](../servicios/comun). **Usarlo en lugar de reimplementarlas.**
 > Si un servicio necesita algo que no está acá, **no se inventa**: se agrega primero a este documento.
 
@@ -42,8 +42,8 @@ JWT firmado **HS256** con `TOKEN_SECRETO`, librería `github.com/golang-jwt/jwt/
 | `iat`, `exp` | emisión y vencimiento (**1 h**) |
 
 ### Rutas públicas (sin token) en el gateway
-- `POST /v2/auth/token` (client credentials del contrato público) → Identidad `POST /v2/auth/token`.
-- `POST /api/v1/identidad/login` (usuarios de la web) → Identidad `POST /login`.
+- `POST /auth/token` (client credentials del contrato público) → Identidad `POST /auth/token`.
+- `POST /api/identidad/login` (usuarios de la web) → Identidad `POST /login`.
 
 Todo lo demás exige `Authorization: Bearer <token>` (401 `NO_AUTENTICADO` si falta o es inválido).
 
@@ -70,13 +70,13 @@ Base: `OPERACIONES_URL` (en Docker, `http://operaciones:8082`). Headers obligato
 
 | Método y ruta | Cuerpo | Respuesta |
 | --- | --- | --- |
-| `POST /internas/v1/solicitudes/{id}/respuesta-contrapropuesta` | `{"acepta": true}` | `200` con la **vista de solicitud** (§6) · `404 NO_ENCONTRADA` · `409 ESTADO_NO_PERMITE_OPERACION` / `CONTRAPROPUESTA_VENCIDA` · `422 DATOS_INVALIDOS` |
-| `POST /internas/v1/solicitudes/{id}/cancelacion` | `{"motivo": "texto"}` | `200` con la vista · `404` · `409 ESTADO_NO_PERMITE_OPERACION` · `422` |
+| `POST /internas/solicitudes/{id}/respuesta-contrapropuesta` | `{"acepta": true}` | `200` con la **vista de solicitud** (§6) · `404 NO_ENCONTRADA` · `409 ESTADO_NO_PERMITE_OPERACION` / `CONTRAPROPUESTA_VENCIDA` · `422 DATOS_INVALIDOS` |
+| `POST /internas/solicitudes/{id}/cancelacion` | `{"motivo": "texto"}` | `200` con la vista · `404` · `409 ESTADO_NO_PERMITE_OPERACION` · `422` |
 
 - Operaciones verifica que la solicitud sea de `X-Rumbo-Organizacion` (si no, `404`).
 - Si Operaciones todavía no recibió la solicitud (`404` para una solicitud que Integración tiene como `RECIBIDA`), Integración responde **`503 SERVICIO_NO_DISPONIBLE`** con `Retry-After: 5`: es un estado transitorio, no un error del consumidor.
 
-### 4.2 Operaciones — API del operador (a través del gateway, `/api/v1/operaciones/...`)
+### 4.2 Operaciones — API del operador (a través del gateway, `/api/operaciones/...`)
 Requiere rol `operador` o `administrador`.
 
 | Método y ruta (en Operaciones) | Cuerpo | Efecto |
@@ -91,7 +91,7 @@ Requiere rol `operador` o `administrador`.
 ### 4.3 Identidad
 | Método y ruta (en Identidad) | Cuerpo | Respuesta |
 | --- | --- | --- |
-| `POST /v2/auth/token` | `{"client_id","client_secret"}` | `200 {"access_token","token_type":"Bearer","expira_en_segundos":3600}` · `401 NO_AUTENTICADO` |
+| `POST /auth/token` | `{"client_id","client_secret"}` | `200 {"access_token","token_type":"Bearer","expira_en_segundos":3600}` · `401 NO_AUTENTICADO` |
 | `POST /login` | `{"email","password"}` | Igual que el anterior |
 
 ## 5. Mensajería (RabbitMQ)
@@ -169,7 +169,7 @@ Todos llevan en `datos` la **vista completa de la solicitud** (§6) más `organi
 ```
 
 ## 6. Vista de solicitud (respuestas internas y eventos)
-Es la misma forma que `SolicitudTraslado` del contrato público v2, más campos internos que el contrato público **ignora**:
+Es la misma forma que `SolicitudTraslado` del contrato público (`docs/contracts/traslados.yaml`), más campos internos que el contrato público **ignora**:
 ```json
 {
   "id": "sol-…",
@@ -231,8 +231,8 @@ OpenTelemetry (`go.opentelemetry.io/otel`), exportadas por OTLP a `OTEL_EXPORTER
 - **RabbitMQ:** automática con `comun/mensajeria`: inyecta en los headers del mensaje al publicar y extrae al consumir.
 - **Outbox y pendientes de envío:** como el relay publica después, en otro contexto, la traza se cortaría. Por eso, al guardar una fila de outbox (Operaciones) o una solicitud pendiente de envío (Integración), **se guarda también el contexto de la traza** (`propagation.MapCarrier` de OpenTelemetry: `traceparent` y `tracestate`). El relay lo extrae antes de `Publicar`, y así la publicación queda dentro de la misma traza.
 
-Nombres de spans: los HTTP los pone la instrumentación (`POST /v2/traslados`). Los de mensajería: `publicar <tipo>` y `consumir <tipo>`. El **flujo principal** que tiene que verse en una sola traza es:
-**gateway → Integración (`POST /v2/traslados`) → `publicar integracion.solicitud_carga.recibida` → `consumir …` en Operaciones → `publicar operaciones.solicitud.recibida` → `consumir …` en Integración.**
+Nombres de spans: los HTTP los pone la instrumentación (`POST /traslados`). Los de mensajería: `publicar <tipo>` y `consumir <tipo>`. El **flujo principal** que tiene que verse en una sola traza es:
+**gateway → Integración (`POST /traslados`) → `publicar integracion.solicitud_carga.recibida` → `consumir …` en Operaciones → `publicar operaciones.solicitud.recibida` → `consumir …` en Integración.**
 
 ## 10. Variables de entorno comunes
 | Variable | Uso |

@@ -67,7 +67,7 @@ func TestLoginExitosoResponde200ConToken(t *testing.T) {
 }
 
 func TestTokenDeClienteResponde200ConToken(t *testing.T) {
-	w := publicar(routerDePrueba(t), "/v2/auth/token", `{"client_id":"externo","client_secret":"secreto-externo"}`)
+	w := publicar(routerDePrueba(t), "/auth/token", `{"client_id":"externo","client_secret":"secreto-externo"}`)
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"access_token"`) {
 		t.Fatalf("estado = %d, cuerpo = %s", w.Code, w.Body)
 	}
@@ -78,7 +78,7 @@ func TestCredencialesInvalidasResponden401NoAutenticado(t *testing.T) {
 	casos := map[string][2]string{
 		"login con clave equivocada":    {"/login", `{"email":"admin@rumbo.local","password":"mala"}`},
 		"login con usuario inexistente": {"/login", `{"email":"nadie@rumbo.local","password":"x"}`},
-		"token con secreto equivocado":  {"/v2/auth/token", `{"client_id":"externo","client_secret":"malo"}`},
+		"token con secreto equivocado":  {"/auth/token", `{"client_id":"externo","client_secret":"malo"}`},
 	}
 	for nombre, caso := range casos {
 		w := publicar(r, caso[0], caso[1])
@@ -98,8 +98,8 @@ func TestJSONMalFormadoResponde400(t *testing.T) {
 func TestCamposVaciosResponden422(t *testing.T) {
 	r := routerDePrueba(t)
 	for ruta, cuerpo := range map[string]string{
-		"/login":         `{"email":"","password":""}`,
-		"/v2/auth/token": `{}`,
+		"/login":      `{"email":"","password":""}`,
+		"/auth/token": `{}`,
 	} {
 		w := publicar(r, ruta, cuerpo)
 		if w.Code != http.StatusUnprocessableEntity || codigoDe(t, w) != "DATOS_INVALIDOS" {

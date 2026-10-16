@@ -60,13 +60,14 @@ func InstrumentarHTTP(h http.Handler, servicio string) http.Handler {
 		}))
 }
 
-// rutaAgrupada reduce el path a su prefijo estable: /api/v1/<servicio> para la API de la
-// aplicación web y /<versión>/<recurso> para el contrato público (por ejemplo /v2/traslados).
+// rutaAgrupada reduce el path a su prefijo estable, sin ids, para que la métrica no tenga una
+// serie por solicitud: /api/<servicio> para la API de la aplicación web y /<recurso> para el
+// contrato público (por ejemplo /traslados). Ninguna ruta lleva versión (ADR-019).
 func rutaAgrupada(path string) string {
 	segmentos := strings.Split(strings.Trim(path, "/"), "/")
-	cantidad := 2
+	cantidad := 1
 	if segmentos[0] == "api" {
-		cantidad = 3
+		cantidad = 2
 	}
 	if len(segmentos) < cantidad {
 		cantidad = len(segmentos)

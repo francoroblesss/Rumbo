@@ -1,0 +1,973 @@
+openapi: 3.1.0
+info:
+  title: Rumbo — Solicitar traslado
+  version: 3.0.0
+  description: |
+    Capacidad publicada por Rumbo para que un sistema externo solicite **trasladar una cosa
+    desde un origen hasta un destino** y siga su resultado. Solo tres datos son obligatorios:
+    `cosa`, `origen` y `destino`; el resto (hora, tolerancia, referencia) es opcional.
+
+    **Las rutas no llevan versión** (`/traslados`, `/auth/token`): la versión del contrato es la
+    de este documento (`info.version`) y cada cambio queda en el historial de
+    `docs/contracts/README.md` (ADR-019). Reemplaza a la versión 2.1.0 (`traslados-v2.yaml`),
+    que tenía las mismas operaciones bajo el prefijo de versión y no llegó a tener consumidores.
+    Cuerpos, estados y errores no cambian.
+
+    El procesamiento es asíncrono: crear una solicitud devuelve `202 Accepted` con estado
+    `RECIBIDA`. Un operador de Rumbo la revisa y la acepta, propone otro horario
+    (`CONTRAPROPUESTA`) o la rechaza. El consumidor conoce cada cambio consultando la
+    solicitud (polling). Documentación completa: `docs/contracts/README.md`.
+servers:
+  - url: http://localhost:4010
+    description: Mock generado desde este contrato (Prism)
+tags:
+  - name: Autenticación
+  - name: Traslados
+security:
+  - bearerAuth: []
+
+paths:
+  /auth/token:
+    post:
+      tags: [Autenticación]
+      operationId: obtenerToken
+      summary: Obtener un token de acceso (client credentials)
+      description: |
+        Intercambia las credenciales de la organización por un token firmado. El token se envía
+        en cada llamada como `Authorization: Bearer <token>` hasta que vence (`expira_en_segundos`).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PedidoToken'
+            example:
+              client_id: org-stock-grupo-x
+              client_secret: s3cr3t0-de-ejemplo
+      responses:
+        '200':
+          description: Token emitido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Token'
+              example:
+                access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.ejemplo.firma
+                token_type: Bearer
+                expira_en_segundos: 3600
+        '400':
+          $ref: '#/components/responses/PedidoInvalido'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '429':
+          $ref: '#/components/responses/DemasiadosPedidos'
+        '502':
+          $ref: '#/components/responses/ErrorDePuerta'
+        '504':
+          $ref: '#/components/responses/TiempoAgotado'
+
+  /traslados:
+    post:
+      tags: [Traslados]
+      operationId: solicitarTraslado
+      summary: Solicitar un traslado
+      description: |
+        Registra la necesidad de trasladar una cosa desde `origen` hasta `destino`.
+        **Recibir no es confirmar**: la respuesta `202` indica que la solicitud quedó registrada
+        como `RECIBIDA`; el horario recién es un compromiso cuando la solicitud pasa a `ACEPTADA`.
+
+        **Sin `hora_llegada_solicitada`**, Rumbo elige un horario según su disponibilidad y lo
+        propone: la solicitud pasa a `CONTRAPROPUESTA` y el consumidor la acepta o la rechaza
+        como cualquier contrapropuesta.
+
+        Requiere `Idempotency-Key`: reintentar con la misma clave y el mismo cuerpo devuelve la
+        misma solicitud, sin duplicarla.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NuevoTraslado'
+            examples:
+              completo:
+                summary: Con hora, tolerancia y referencia
+                value:
+                  referencia_externa: TRF-2026-00123
+                  origen:
+                    nombre: Sucursal Centro
+                    direccion: Av. Colón 1234, Córdoba
+                    contacto: Depósito — 351 555-0101
+                  destino:
+                    nombre: Sucursal Cerro
+                    direccion: Av. Rafael Núñez 4500, Córdoba
+                    contacto: Recepción — 351 555-0202
+                  hora_llegada_solicitada: '2026-10-16T14:00:00-03:00'
+                  tolerancia_minutos: 120
+                  cosa:
+                    descripcion: Cajas de mercadería seca
+                    cantidad: 20
+                    peso_kg: 350
+                    volumen_m3: 2.5
+                  observaciones: Entrar por el portón de carga.
+              minimo:
+                summary: Solo lo obligatorio (cosa, origen y destino)
+                value:
+                  cosa:
+                    descripcion: Cajas de mercadería seca
+                    cantidad: 20
+                  origen:
+                    nombre: Sucursal Centro
+                    direccion: Av. Colón 1234, Córdoba
+                  destino:
+                    nombre: Sucursal Cerro
+                    direccion: Av. Rafael Núñez 4500, Córdoba
+      responses:
+        '202':
+          description: Solicitud registrada con estado `RECIBIDA` (o la misma solicitud, si es un reintento idempotente).
+          headers:
+            Location:
+              description: URL de la solicitud creada.
+              schema:
+                type: string
+                example: /traslados/sol-7f3a9c
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SolicitudTraslado'
+              examples:
+                recibida:
+                  $ref: '#/components/examples/SolicitudRecibida'
+        '400':
+          $ref: '#/components/responses/PedidoInvalido'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/SinPermiso'
+        '409':
+          $ref: '#/components/responses/ClaveIdempotenciaReutilizada'
+        '422':
+          $ref: '#/components/responses/ReglaDeNegocio'
+        '429':
+          $ref: '#/components/responses/DemasiadosPedidos'
+        '503':
+          $ref: '#/components/responses/NoDisponible'
+        '502':
+          $ref: '#/components/responses/ErrorDePuerta'
+        '504':
+          $ref: '#/components/responses/TiempoAgotado'
+    get:
+      tags: [Traslados]
+      operationId: listarTraslados
+      summary: Listar las solicitudes de la organización
+      description: |
+        Devuelve solo las solicitudes de la organización autenticada, ordenadas por
+        `actualizado_en` ascendente. Para seguir los cambios por polling, enviar
+        `actualizado_desde` con el mayor `actualizado_en` ya procesado.
+      parameters:
+        - name: actualizado_desde
+          in: query
+          description: Devuelve solo las solicitudes modificadas después de este instante (exclusivo).
+          schema:
+            type: string
+            format: date-time
+          example: '2026-10-15T09:00:00-03:00'
+        - name: estado
+          in: query
+          description: Filtra por estado de la solicitud.
+          schema:
+            $ref: '#/components/schemas/EstadoSolicitud'
+        - name: pagina
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: tamanio
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Página de solicitudes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginaSolicitudes'
+              example:
+                resultados:
+                  - id: sol-7f3a9c
+                    referencia_externa: TRF-2026-00123
+                    estado: ACEPTADA
+                    origen:
+                      nombre: Sucursal Centro
+                      direccion: Av. Colón 1234, Córdoba
+                    destino:
+                      nombre: Sucursal Cerro
+                      direccion: Av. Rafael Núñez 4500, Córdoba
+                    hora_llegada_solicitada: '2026-10-16T14:00:00-03:00'
+                    tolerancia_minutos: 120
+                    cosa:
+                      descripcion: Cajas de mercadería seca
+                      cantidad: 20
+                      peso_kg: 350
+                    traslado:
+                      id: tra-51c2e0
+                      estado: PROGRAMADO
+                      hora_llegada_comprometida: '2026-10-16T14:00:00-03:00'
+                    creado_en: '2026-10-15T08:30:00-03:00'
+                    actualizado_en: '2026-10-15T10:05:00-03:00'
+                pagina: 1
+                tamanio: 20
+                total: 1
+        '400':
+          $ref: '#/components/responses/PedidoInvalido'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '429':
+          $ref: '#/components/responses/DemasiadosPedidos'
+        '503':
+          $ref: '#/components/responses/NoDisponible'
+        '502':
+          $ref: '#/components/responses/ErrorDePuerta'
+        '504':
+          $ref: '#/components/responses/TiempoAgotado'
+
+  /traslados/{id}:
+    get:
+      tags: [Traslados]
+      operationId: obtenerTraslado
+      summary: Consultar una solicitud
+      description: Estado actual de la solicitud y, si fue aceptada, de su traslado.
+      parameters:
+        - $ref: '#/components/parameters/IdSolicitud'
+      responses:
+        '200':
+          description: Solicitud encontrada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SolicitudTraslado'
+              examples:
+                recibida:
+                  $ref: '#/components/examples/SolicitudRecibida'
+                contrapropuesta:
+                  $ref: '#/components/examples/SolicitudContrapropuesta'
+                completada:
+                  $ref: '#/components/examples/SolicitudCompletada'
+                rechazada:
+                  $ref: '#/components/examples/SolicitudRechazada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '404':
+          $ref: '#/components/responses/NoEncontrada'
+        '429':
+          $ref: '#/components/responses/DemasiadosPedidos'
+        '503':
+          $ref: '#/components/responses/NoDisponible'
+        '502':
+          $ref: '#/components/responses/ErrorDePuerta'
+        '504':
+          $ref: '#/components/responses/TiempoAgotado'
+
+  /traslados/{id}/respuesta-contrapropuesta:
+    post:
+      tags: [Traslados]
+      operationId: responderContrapropuesta
+      summary: Aceptar o rechazar el horario propuesto por Rumbo
+      description: |
+        Solo es válido mientras la solicitud está en `CONTRAPROPUESTA` y antes de
+        `contrapropuesta.vence_en` (24 h desde que se propuso). Aceptar → `ACEPTADA` con el horario
+        propuesto como compromiso. Rechazar → `RECHAZADA_POR_CLIENTE`. Repetir la misma respuesta
+        no tiene efecto adicional.
+      parameters:
+        - $ref: '#/components/parameters/IdSolicitud'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RespuestaContrapropuesta'
+            example:
+              acepta: true
+      responses:
+        '200':
+          description: Respuesta registrada; devuelve la solicitud actualizada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SolicitudTraslado'
+              examples:
+                aceptada:
+                  $ref: '#/components/examples/SolicitudAceptadaTrasContrapropuesta'
+        '400':
+          $ref: '#/components/responses/PedidoInvalido'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '404':
+          $ref: '#/components/responses/NoEncontrada'
+        '409':
+          $ref: '#/components/responses/EstadoNoPermite'
+        '422':
+          $ref: '#/components/responses/ReglaDeNegocio'
+        '429':
+          $ref: '#/components/responses/DemasiadosPedidos'
+        '503':
+          $ref: '#/components/responses/NoDisponible'
+        '502':
+          $ref: '#/components/responses/ErrorDePuerta'
+        '504':
+          $ref: '#/components/responses/TiempoAgotado'
+
+  /traslados/{id}/cancelacion:
+    post:
+      tags: [Traslados]
+      operationId: cancelarTraslado
+      summary: Cancelar una solicitud o su traslado
+      description: |
+        - Antes de ser aceptada: la solicitud pasa a `CANCELADA`.
+        - Aceptada, con **24 h o más** antes de la hora comprometida: el traslado pasa a `CANCELADO`.
+        - Aceptada, con **menos de 24 h**: queda `cancelacion.estado = PENDIENTE_APROBACION` y un
+          operador la aprueba o no. La cancelación queda registrada en ambos casos.
+        - Con el traslado `EN_CURSO` o finalizado: no se puede cancelar (`409`).
+      parameters:
+        - $ref: '#/components/parameters/IdSolicitud'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PedidoCancelacion'
+            example:
+              motivo: La mercadería se despachó por otro medio.
+      responses:
+        '200':
+          description: Cancelación registrada; devuelve la solicitud actualizada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SolicitudTraslado'
+              examples:
+                tardia:
+                  $ref: '#/components/examples/SolicitudCancelacionPendiente'
+        '400':
+          $ref: '#/components/responses/PedidoInvalido'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '404':
+          $ref: '#/components/responses/NoEncontrada'
+        '409':
+          $ref: '#/components/responses/EstadoNoPermite'
+        '422':
+          $ref: '#/components/responses/ReglaDeNegocio'
+        '429':
+          $ref: '#/components/responses/DemasiadosPedidos'
+        '503':
+          $ref: '#/components/responses/NoDisponible'
+        '502':
+          $ref: '#/components/responses/ErrorDePuerta'
+        '504':
+          $ref: '#/components/responses/TiempoAgotado'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token obtenido en `POST /auth/token`.
+
+  parameters:
+    IdSolicitud:
+      name: id
+      in: path
+      required: true
+      description: Identificador de la solicitud asignado por Rumbo.
+      schema:
+        type: string
+      example: sol-7f3a9c
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        Clave única por intención (se recomienda un UUID). Rumbo la conserva 24 h junto con el
+        cuerpo y el resultado: el mismo par clave + cuerpo devuelve el mismo resultado; la misma
+        clave con otro cuerpo devuelve `409 CLAVE_IDEMPOTENCIA_REUTILIZADA`.
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+      example: 3f6c1e2a-8b4d-4c1e-9a7f-2d5b6e8c9a01
+
+  schemas:
+    PedidoToken:
+      type: object
+      required: [client_id, client_secret]
+      properties:
+        client_id:
+          type: string
+        client_secret:
+          type: string
+    Token:
+      type: object
+      required: [access_token, token_type, expira_en_segundos]
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          const: Bearer
+        expira_en_segundos:
+          type: integer
+
+    Ubicacion:
+      type: object
+      required: [nombre, direccion]
+      properties:
+        nombre:
+          type: string
+          maxLength: 120
+          description: Nombre de la sucursal o lugar.
+        direccion:
+          type: string
+          maxLength: 250
+        contacto:
+          type: string
+          maxLength: 120
+          description: Persona o teléfono para coordinar en el lugar.
+
+    Cosa:
+      type: object
+      description: Lo que hay que trasladar.
+      required: [descripcion, cantidad]
+      properties:
+        descripcion:
+          type: string
+          maxLength: 250
+          description: Qué se traslada (ej. "cajas de mercadería seca").
+        cantidad:
+          type: integer
+          minimum: 1
+          description: Cantidad de unidades o bultos.
+        peso_kg:
+          type: number
+          exclusiveMinimum: 0
+          description: Opcional. Peso total; si se informa, Rumbo lo usa para elegir un vehículo con capacidad suficiente.
+        volumen_m3:
+          type: number
+          exclusiveMinimum: 0
+          description: Opcional. Volumen total.
+
+    NuevoTraslado:
+      type: object
+      required: [cosa, origen, destino]
+      properties:
+        referencia_externa:
+          type: string
+          maxLength: 64
+          description: Opcional. Identificador de la operación en el sistema del consumidor (Rumbo lo devuelve tal cual).
+        origen:
+          $ref: '#/components/schemas/Ubicacion'
+        destino:
+          $ref: '#/components/schemas/Ubicacion'
+        hora_llegada_solicitada:
+          type: string
+          format: date-time
+          description: |
+            Opcional. Hora a la que la cosa debe llegar al destino (ISO 8601 con zona horaria).
+            Si no se envía, Rumbo propone un horario (`CONTRAPROPUESTA`).
+        tolerancia_minutos:
+          type: integer
+          minimum: 0
+          maximum: 720
+          default: 0
+          description: Opcional. Flexibilidad aceptada alrededor de la hora pedida. 0 = hora estricta.
+        cosa:
+          $ref: '#/components/schemas/Cosa'
+        observaciones:
+          type: string
+          maxLength: 500
+
+    EstadoSolicitud:
+      type: string
+      enum: [RECIBIDA, CONTRAPROPUESTA, ACEPTADA, RECHAZADA, RECHAZADA_POR_CLIENTE, CANCELADA]
+      description: |
+        - `RECIBIDA`: registrada, pendiente de revisión por un operador.
+        - `CONTRAPROPUESTA`: Rumbo propone un horario (otro distinto del pedido, o uno nuevo si no se pidió hora); el consumidor debe responder antes de `contrapropuesta.vence_en`.
+        - `ACEPTADA`: el horario es un compromiso; existe `traslado`.
+        - `RECHAZADA`: Rumbo no puede atenderla (ver `motivo_rechazo`). Final.
+        - `RECHAZADA_POR_CLIENTE`: el consumidor rechazó la contrapropuesta o no respondió en 24 h. Final.
+        - `CANCELADA`: el consumidor la canceló antes de ser aceptada. Final.
+
+    EstadoTraslado:
+      type: string
+      enum: [PROGRAMADO, ASIGNADO, EN_CURSO, COMPLETADO, CANCELADO, NO_REALIZADO, INTERRUMPIDO]
+      description: |
+        - `PROGRAMADO`: incluido en un recorrido planificado.
+        - `ASIGNADO`: el recorrido tiene chofer y vehículo.
+        - `EN_CURSO`: el chofer inició el traslado.
+        - `COMPLETADO`: la cosa llegó al destino. Final.
+        - `CANCELADO`: cancelado antes de iniciar. Final.
+        - `NO_REALIZADO`: no se pudo retirar la cosa en el origen. Final.
+        - `INTERRUMPIDO`: empezó y no terminó (por ejemplo, avería). Final.
+
+    Contrapropuesta:
+      type: object
+      required: [hora_llegada_propuesta, vence_en]
+      properties:
+        hora_llegada_propuesta:
+          type: string
+          format: date-time
+        vence_en:
+          type: string
+          format: date-time
+          description: Sin respuesta hasta este instante, la solicitud pasa a `RECHAZADA_POR_CLIENTE`.
+
+    Traslado:
+      type: object
+      required: [id, estado, hora_llegada_comprometida]
+      properties:
+        id:
+          type: string
+        estado:
+          $ref: '#/components/schemas/EstadoTraslado'
+        hora_llegada_comprometida:
+          type: string
+          format: date-time
+        demora_minutos:
+          type: integer
+          minimum: 0
+          description: Retraso informado durante la ejecución (la demora no es un estado).
+        finalizado_en:
+          type: string
+          format: date-time
+        detalle_resultado:
+          type: string
+          description: Explicación cuando el traslado es `NO_REALIZADO` o `INTERRUMPIDO`.
+
+    Cancelacion:
+      type: object
+      required: [estado, solicitada_en]
+      properties:
+        estado:
+          type: string
+          enum: [PENDIENTE_APROBACION, APROBADA, RECHAZADA]
+        motivo:
+          type: string
+        solicitada_en:
+          type: string
+          format: date-time
+
+    SolicitudTraslado:
+      type: object
+      required: [id, estado, cosa, origen, destino, tolerancia_minutos, creado_en, actualizado_en]
+      properties:
+        id:
+          type: string
+        referencia_externa:
+          type: string
+        estado:
+          $ref: '#/components/schemas/EstadoSolicitud'
+        origen:
+          $ref: '#/components/schemas/Ubicacion'
+        destino:
+          $ref: '#/components/schemas/Ubicacion'
+        hora_llegada_solicitada:
+          type: string
+          format: date-time
+        tolerancia_minutos:
+          type: integer
+        cosa:
+          $ref: '#/components/schemas/Cosa'
+        observaciones:
+          type: string
+        contrapropuesta:
+          $ref: '#/components/schemas/Contrapropuesta'
+        motivo_rechazo:
+          type: string
+        traslado:
+          $ref: '#/components/schemas/Traslado'
+        cancelacion:
+          $ref: '#/components/schemas/Cancelacion'
+        creado_en:
+          type: string
+          format: date-time
+        actualizado_en:
+          type: string
+          format: date-time
+
+    PaginaSolicitudes:
+      type: object
+      required: [resultados, pagina, tamanio, total]
+      properties:
+        resultados:
+          type: array
+          items:
+            $ref: '#/components/schemas/SolicitudTraslado'
+        pagina:
+          type: integer
+        tamanio:
+          type: integer
+        total:
+          type: integer
+
+    RespuestaContrapropuesta:
+      type: object
+      required: [acepta]
+      properties:
+        acepta:
+          type: boolean
+
+    PedidoCancelacion:
+      type: object
+      required: [motivo]
+      properties:
+        motivo:
+          type: string
+          maxLength: 500
+
+    Problema:
+      type: object
+      description: Error en formato Problem Details (RFC 9457), con un `codigo` estable para que el consumidor decida qué hacer.
+      required: [type, title, status, codigo]
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        codigo:
+          type: string
+          enum:
+            - JSON_MAL_FORMADO
+            - DATOS_INVALIDOS
+            - NO_AUTENTICADO
+            - SIN_PERMISO
+            - NO_ENCONTRADA
+            - CLAVE_IDEMPOTENCIA_REUTILIZADA
+            - ESTADO_NO_PERMITE_OPERACION
+            - CONTRAPROPUESTA_VENCIDA
+            - HORARIO_EN_EL_PASADO
+            - ANTICIPACION_INSUFICIENTE
+            - EXCEDE_CAPACIDAD
+            - DEMASIADOS_PEDIDOS
+            - SERVICIO_NO_DISPONIBLE
+            - TIEMPO_AGOTADO
+        errores:
+          type: array
+          description: Detalle por campo cuando `codigo = DATOS_INVALIDOS`.
+          items:
+            type: object
+            properties:
+              campo:
+                type: string
+              mensaje:
+                type: string
+
+  responses:
+    PedidoInvalido:
+      description: El cuerpo no es JSON válido o un parámetro tiene un formato inválido. No reintentar sin corregir.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+          example:
+            type: https://rumbo.example/errores/json-mal-formado
+            title: Pedido mal formado
+            status: 400
+            codigo: JSON_MAL_FORMADO
+    NoAutenticado:
+      description: Falta el token, está vencido o es inválido (o credenciales incorrectas en `/auth/token`). Obtener un token nuevo.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+          example:
+            type: https://rumbo.example/errores/no-autenticado
+            title: No autenticado
+            status: 401
+            codigo: NO_AUTENTICADO
+    SinPermiso:
+      description: La organización autenticada no está habilitada para solicitar traslados.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+          example:
+            type: https://rumbo.example/errores/sin-permiso
+            title: Sin permiso
+            status: 403
+            codigo: SIN_PERMISO
+    NoEncontrada:
+      description: La solicitud no existe o pertenece a otra organización.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+          example:
+            type: https://rumbo.example/errores/no-encontrada
+            title: Solicitud no encontrada
+            status: 404
+            codigo: NO_ENCONTRADA
+    ClaveIdempotenciaReutilizada:
+      description: La `Idempotency-Key` ya se usó con un cuerpo distinto. Usar una clave nueva para una intención nueva.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+          example:
+            type: https://rumbo.example/errores/clave-idempotencia-reutilizada
+            title: Clave de idempotencia reutilizada
+            status: 409
+            codigo: CLAVE_IDEMPOTENCIA_REUTILIZADA
+    EstadoNoPermite:
+      description: El estado actual no admite la operación (por ejemplo, responder una contrapropuesta vencida o cancelar un traslado en curso). No reintentar; consultar la solicitud.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+          example:
+            type: https://rumbo.example/errores/estado-no-permite-operacion
+            title: El estado actual no permite la operación
+            status: 409
+            codigo: ESTADO_NO_PERMITE_OPERACION
+            detail: El traslado ya está EN_CURSO.
+    ReglaDeNegocio:
+      description: |
+        Los datos no cumplen el contrato (`DATOS_INVALIDOS`, con detalle por campo en `errores`) o no
+        cumplen una regla de negocio (`HORARIO_EN_EL_PASADO`, `ANTICIPACION_INSUFICIENTE`,
+        `EXCEDE_CAPACIDAD`). No reintentar sin cambiar el pedido.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+          examples:
+            datosInvalidos:
+              value:
+                type: https://rumbo.example/errores/datos-invalidos
+                title: Datos inválidos
+                status: 422
+                codigo: DATOS_INVALIDOS
+                errores:
+                  - campo: cosa.cantidad
+                    mensaje: es obligatorio y debe ser mayor que 0
+            excedeCapacidad:
+              value:
+                type: https://rumbo.example/errores/excede-capacidad
+                title: Lo solicitado excede la capacidad de la flota
+                status: 422
+                codigo: EXCEDE_CAPACIDAD
+                detail: Ningún vehículo de Rumbo admite 5000 kg.
+    DemasiadosPedidos:
+      description: Se superó el límite de pedidos de la organización. Reintentar después de `Retry-After` segundos.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          example: 30
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+          example:
+            type: https://rumbo.example/errores/demasiados-pedidos
+            title: Demasiados pedidos
+            status: 429
+            codigo: DEMASIADOS_PEDIDOS
+    NoDisponible:
+      description: Rumbo no puede procesar el pedido en este momento. Es seguro reintentar con backoff y la **misma** `Idempotency-Key`.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          example: 10
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+          example:
+            type: https://rumbo.example/errores/servicio-no-disponible
+            title: Servicio no disponible
+            status: 503
+            codigo: SERVICIO_NO_DISPONIBLE
+    ErrorDePuerta:
+      description: El punto de entrada de Rumbo no pudo comunicarse con el servicio que atiende el pedido. Es seguro reintentar con backoff y la **misma** `Idempotency-Key`.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+          example:
+            type: https://rumbo.example/errores/servicio-no-disponible
+            title: Servicio no disponible
+            status: 502
+            codigo: SERVICIO_NO_DISPONIBLE
+    TiempoAgotado:
+      description: Rumbo no respondió dentro de los 5 s. **El pedido pudo haberse procesado**; reintentar con la **misma** `Idempotency-Key` para obtener el resultado sin duplicar.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+          example:
+            type: https://rumbo.example/errores/tiempo-agotado
+            title: Tiempo agotado
+            status: 504
+            codigo: TIEMPO_AGOTADO
+
+  examples:
+    SolicitudRecibida:
+      summary: Recién creada
+      value:
+        id: sol-7f3a9c
+        referencia_externa: TRF-2026-00123
+        estado: RECIBIDA
+        origen:
+          nombre: Sucursal Centro
+          direccion: Av. Colón 1234, Córdoba
+          contacto: Depósito — 351 555-0101
+        destino:
+          nombre: Sucursal Cerro
+          direccion: Av. Rafael Núñez 4500, Córdoba
+          contacto: Recepción — 351 555-0202
+        hora_llegada_solicitada: '2026-10-16T14:00:00-03:00'
+        tolerancia_minutos: 120
+        cosa:
+          descripcion: Cajas de mercadería seca
+          cantidad: 20
+          peso_kg: 350
+          volumen_m3: 2.5
+        observaciones: Entrar por el portón de carga.
+        creado_en: '2026-10-15T08:30:00-03:00'
+        actualizado_en: '2026-10-15T08:30:00-03:00'
+    SolicitudContrapropuesta:
+      summary: Rumbo propone otro horario
+      value:
+        id: sol-7f3a9c
+        referencia_externa: TRF-2026-00123
+        estado: CONTRAPROPUESTA
+        origen:
+          nombre: Sucursal Centro
+          direccion: Av. Colón 1234, Córdoba
+        destino:
+          nombre: Sucursal Cerro
+          direccion: Av. Rafael Núñez 4500, Córdoba
+        hora_llegada_solicitada: '2026-10-16T14:00:00-03:00'
+        tolerancia_minutos: 0
+        cosa:
+          descripcion: Cajas de mercadería seca
+          cantidad: 20
+          peso_kg: 350
+        contrapropuesta:
+          hora_llegada_propuesta: '2026-10-16T17:00:00-03:00'
+          vence_en: '2026-10-16T09:10:00-03:00'
+        creado_en: '2026-10-15T08:30:00-03:00'
+        actualizado_en: '2026-10-15T09:10:00-03:00'
+    SolicitudAceptadaTrasContrapropuesta:
+      summary: El consumidor aceptó el horario propuesto
+      value:
+        id: sol-7f3a9c
+        referencia_externa: TRF-2026-00123
+        estado: ACEPTADA
+        origen:
+          nombre: Sucursal Centro
+          direccion: Av. Colón 1234, Córdoba
+        destino:
+          nombre: Sucursal Cerro
+          direccion: Av. Rafael Núñez 4500, Córdoba
+        hora_llegada_solicitada: '2026-10-16T14:00:00-03:00'
+        tolerancia_minutos: 0
+        cosa:
+          descripcion: Cajas de mercadería seca
+          cantidad: 20
+          peso_kg: 350
+        traslado:
+          id: tra-51c2e0
+          estado: PROGRAMADO
+          hora_llegada_comprometida: '2026-10-16T17:00:00-03:00'
+        creado_en: '2026-10-15T08:30:00-03:00'
+        actualizado_en: '2026-10-15T09:40:00-03:00'
+    SolicitudCompletada:
+      summary: Traslado completado con demora
+      value:
+        id: sol-7f3a9c
+        referencia_externa: TRF-2026-00123
+        estado: ACEPTADA
+        origen:
+          nombre: Sucursal Centro
+          direccion: Av. Colón 1234, Córdoba
+        destino:
+          nombre: Sucursal Cerro
+          direccion: Av. Rafael Núñez 4500, Córdoba
+        hora_llegada_solicitada: '2026-10-16T14:00:00-03:00'
+        tolerancia_minutos: 120
+        cosa:
+          descripcion: Cajas de mercadería seca
+          cantidad: 20
+          peso_kg: 350
+        traslado:
+          id: tra-51c2e0
+          estado: COMPLETADO
+          hora_llegada_comprometida: '2026-10-16T14:00:00-03:00'
+          demora_minutos: 15
+          finalizado_en: '2026-10-16T14:15:00-03:00'
+        creado_en: '2026-10-15T08:30:00-03:00'
+        actualizado_en: '2026-10-16T14:15:00-03:00'
+    SolicitudRechazada:
+      summary: Rumbo no puede atenderla
+      value:
+        id: sol-9b11d4
+        referencia_externa: TRF-2026-00124
+        estado: RECHAZADA
+        origen:
+          nombre: Sucursal Centro
+          direccion: Av. Colón 1234, Córdoba
+        destino:
+          nombre: Sucursal Villa Allende
+          direccion: Av. Goycoechea 900, Villa Allende
+        hora_llegada_solicitada: '2026-10-17T08:00:00-03:00'
+        tolerancia_minutos: 0
+        cosa:
+          descripcion: Heladeras exhibidoras
+          cantidad: 2
+          peso_kg: 600
+        motivo_rechazo: No hay vehículos con capacidad disponible para esa fecha.
+        creado_en: '2026-10-15T11:00:00-03:00'
+        actualizado_en: '2026-10-15T12:20:00-03:00'
+    SolicitudCancelacionPendiente:
+      summary: Cancelación con menos de 24 h, a la espera del operador
+      value:
+        id: sol-7f3a9c
+        referencia_externa: TRF-2026-00123
+        estado: ACEPTADA
+        origen:
+          nombre: Sucursal Centro
+          direccion: Av. Colón 1234, Córdoba
+        destino:
+          nombre: Sucursal Cerro
+          direccion: Av. Rafael Núñez 4500, Córdoba
+        hora_llegada_solicitada: '2026-10-16T14:00:00-03:00'
+        tolerancia_minutos: 120
+        cosa:
+          descripcion: Cajas de mercadería seca
+          cantidad: 20
+          peso_kg: 350
+        traslado:
+          id: tra-51c2e0
+          estado: ASIGNADO
+          hora_llegada_comprometida: '2026-10-16T14:00:00-03:00'
+        cancelacion:
+          estado: PENDIENTE_APROBACION
+          motivo: La mercadería se despachó por otro medio.
+          solicitada_en: '2026-10-16T07:30:00-03:00'
+        creado_en: '2026-10-15T08:30:00-03:00'
+        actualizado_en: '2026-10-16T07:30:00-03:00'

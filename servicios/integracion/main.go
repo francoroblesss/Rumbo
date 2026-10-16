@@ -25,7 +25,7 @@ import (
 	"github.com/francoroblesss/Rumbo/servicios/integracion/services"
 )
 
-// Integración de carga: atiende la capacidad publicada "Solicitar traslado" (contrato v2)
+// Integración de carga: atiende la capacidad publicada "Solicitar traslado" (contrato genérico)
 // y la traduce al modelo interno de Operaciones (ADR-001, ADR-006).
 // Arquitectura interna en capas: controllers → services → repositories / clients.
 func main() {

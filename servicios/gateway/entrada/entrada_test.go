@@ -11,8 +11,8 @@ func TestBloquearInternasResponde404(t *testing.T) {
 	h := BloquearInternas(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { llegaron++ }))
 
 	for _, ruta := range []string{
-		"/api/v1/operaciones/internas/v1/solicitudes/sol-1/cancelacion",
-		"/api/v1/recursos/internas/x",
+		"/api/operaciones/internas/solicitudes/sol-1/cancelacion",
+		"/api/recursos/internas/x",
 	} {
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, httptest.NewRequest(http.MethodPost, ruta, nil))
@@ -22,7 +22,7 @@ func TestBloquearInternasResponde404(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/operaciones/solicitudes", nil))
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/operaciones/solicitudes", nil))
 	if w.Code != http.StatusOK || llegaron != 1 {
 		t.Errorf("una ruta pública tiene que pasar: estado = %d, llegaron = %d", w.Code, llegaron)
 	}
@@ -32,7 +32,7 @@ func TestLimpiarIdentidadBorraLosHeadersDelCliente(t *testing.T) {
 	var llegada http.Header
 	h := LimpiarIdentidad(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { llegada = r.Header.Clone() }))
 
-	req := httptest.NewRequest(http.MethodGet, "/v2/traslados", nil)
+	req := httptest.NewRequest(http.MethodGet, "/traslados", nil)
 	req.Header.Set("X-Rumbo-Usuario", "usr-falso")
 	req.Header.Set("X-Rumbo-Organizacion", "org-falsa")
 	req.Header.Set("x-rumbo-roles", "administrador")

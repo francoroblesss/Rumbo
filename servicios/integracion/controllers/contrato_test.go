@@ -25,10 +25,10 @@ import (
 )
 
 // Test de contrato: cada respuesta del controlador (incluidos los errores) se valida contra
-// docs/contracts/traslados-v2.yaml. Si este test falla, el código está mal, no el contrato.
+// docs/contracts/traslados.yaml. Si este test falla, el código está mal, no el contrato.
 
 const (
-	rutaContrato = "../../../docs/contracts/traslados-v2.yaml"
+	rutaContrato = "../../../docs/contracts/traslados.yaml"
 	servidorDoc  = "http://localhost:4010" // servers[0] del contrato, para encontrar la ruta
 	orgPrueba    = "org-almacenamiento"
 )
@@ -161,7 +161,7 @@ func (e *entorno) esperar(r respuesta, estado int, codigo string) {
 
 func (e *entorno) crear(clave string) string {
 	e.t.Helper()
-	r := e.ejecutar(pedido{metodo: http.MethodPost, ruta: "/v2/traslados", cuerpo: cuerpoMinimoContrato, clave: clave, valido: true})
+	r := e.ejecutar(pedido{metodo: http.MethodPost, ruta: "/traslados", cuerpo: cuerpoMinimoContrato, clave: clave, valido: true})
 	e.esperar(r, http.StatusAccepted, "")
 	var v struct{ ID string }
 	_ = json.Unmarshal(r.cuerpo, &v)
@@ -190,11 +190,11 @@ func vistaCompleta(id string, version int64) models.VistaSolicitud {
 
 func TestContratoSolicitarTraslado(t *testing.T) {
 	e := nuevoEntorno(t)
-	r := e.ejecutar(pedido{metodo: http.MethodPost, ruta: "/v2/traslados", cuerpo: cuerpoCompleto, clave: "clave-completa-1", valido: true})
+	r := e.ejecutar(pedido{metodo: http.MethodPost, ruta: "/traslados", cuerpo: cuerpoCompleto, clave: "clave-completa-1", valido: true})
 	e.esperar(r, http.StatusAccepted, "")
 	var creada map[string]any
 	_ = json.Unmarshal(r.cuerpo, &creada)
-	if creada["estado"] != "RECIBIDA" || r.header.Get("Location") != "/v2/traslados/"+creada["id"].(string) {
+	if creada["estado"] != "RECIBIDA" || r.header.Get("Location") != "/traslados/"+creada["id"].(string) {
 		t.Fatalf("respuesta 202 incorrecta: %s (Location %s)", r.cuerpo, r.header.Get("Location"))
 	}
 	if creada["hora_llegada_solicitada"] != "2026-10-16T14:00:00-03:00" || !strings.HasSuffix(creada["creado_en"].(string), "-03:00") {
@@ -205,7 +205,7 @@ func TestContratoSolicitarTraslado(t *testing.T) {
 	}
 
 	// Reintento idempotente: 202 y la misma solicitud.
-	r = e.ejecutar(pedido{metodo: http.MethodPost, ruta: "/v2/traslados", cuerpo: cuerpoCompleto, clave: "clave-completa-1", valido: true})
+	r = e.ejecutar(pedido{metodo: http.MethodPost, ruta: "/traslados", cuerpo: cuerpoCompleto, clave: "clave-completa-1", valido: true})
 	e.esperar(r, http.StatusAccepted, "")
 	var repetida map[string]any
 	_ = json.Unmarshal(r.cuerpo, &repetida)
@@ -231,7 +231,7 @@ func TestContratoSolicitarTraslado(t *testing.T) {
 	for _, c := range casos {
 		t.Run(c.nombre, func(t *testing.T) {
 			e.t = t
-			c.p.metodo, c.p.ruta = http.MethodPost, "/v2/traslados"
+			c.p.metodo, c.p.ruta = http.MethodPost, "/traslados"
 			e.esperar(e.ejecutar(c.p), c.estado, c.codigo)
 		})
 	}
@@ -240,13 +240,13 @@ func TestContratoSolicitarTraslado(t *testing.T) {
 		e.t = t
 		e.repo.Error = errors.New("mongo caído")
 		defer func() { e.repo.Error = nil }()
-		e.esperar(e.ejecutar(pedido{metodo: http.MethodPost, ruta: "/v2/traslados", cuerpo: cuerpoMinimoContrato, clave: "clave-mongo-1", valido: true}),
+		e.esperar(e.ejecutar(pedido{metodo: http.MethodPost, ruta: "/traslados", cuerpo: cuerpoMinimoContrato, clave: "clave-mongo-1", valido: true}),
 			http.StatusServiceUnavailable, "SERVICIO_NO_DISPONIBLE")
 	})
 
 	// Los datos inválidos traen el detalle por campo.
 	e.t = t
-	r = e.ejecutar(pedido{metodo: http.MethodPost, ruta: "/v2/traslados", cuerpo: `{}`, clave: "clave-vacia-1"})
+	r = e.ejecutar(pedido{metodo: http.MethodPost, ruta: "/traslados", cuerpo: `{}`, clave: "clave-vacia-1"})
 	var p struct {
 		Errores []struct{ Campo string } `json:"errores"`
 	}
@@ -261,7 +261,7 @@ func TestContratoListarTraslados(t *testing.T) {
 	e.crear("clave-lista-1")
 	e.crear("clave-lista-2")
 
-	r := e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/v2/traslados?tamanio=1&pagina=2&estado=RECIBIDA&actualizado_desde=2026-10-15T00:00:00-03:00", valido: true})
+	r := e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/traslados?tamanio=1&pagina=2&estado=RECIBIDA&actualizado_desde=2026-10-15T00:00:00-03:00", valido: true})
 	e.esperar(r, http.StatusOK, "")
 	var pagina struct {
 		Resultados []map[string]any
@@ -274,7 +274,7 @@ func TestContratoListarTraslados(t *testing.T) {
 		t.Fatalf("página incorrecta: %s", r.cuerpo)
 	}
 
-	r = e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/v2/traslados", valido: true})
+	r = e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/traslados", valido: true})
 	e.esperar(r, http.StatusOK, "")
 	_ = json.Unmarshal(r.cuerpo, &pagina)
 	if pagina.Pagina != 1 || pagina.Tamanio != 20 {
@@ -282,7 +282,7 @@ func TestContratoListarTraslados(t *testing.T) {
 	}
 
 	// Sin resultados: lista vacía, no null.
-	r = e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/v2/traslados?estado=CANCELADA", valido: true})
+	r = e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/traslados?estado=CANCELADA", valido: true})
 	e.esperar(r, http.StatusOK, "")
 	if !strings.Contains(string(r.cuerpo), `"resultados":[]`) {
 		t.Fatalf("se esperaba una lista vacía: %s", r.cuerpo)
@@ -291,27 +291,27 @@ func TestContratoListarTraslados(t *testing.T) {
 	for _, consulta := range []string{"tamanio=0", "tamanio=101", "pagina=0", "pagina=uno", "estado=PERDIDA", "actualizado_desde=ayer"} {
 		t.Run(consulta, func(t *testing.T) {
 			e.t = t
-			e.esperar(e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/v2/traslados?" + consulta}), http.StatusBadRequest, "JSON_MAL_FORMADO")
+			e.esperar(e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/traslados?" + consulta}), http.StatusBadRequest, "JSON_MAL_FORMADO")
 		})
 	}
 	t.Run("MongoDB caído", func(t *testing.T) {
 		e.t = t
 		e.repo.Error = errors.New("mongo caído")
 		defer func() { e.repo.Error = nil }()
-		e.esperar(e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/v2/traslados", valido: true}), http.StatusServiceUnavailable, "SERVICIO_NO_DISPONIBLE")
+		e.esperar(e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/traslados", valido: true}), http.StatusServiceUnavailable, "SERVICIO_NO_DISPONIBLE")
 	})
 }
 
 func TestContratoObtenerTraslado(t *testing.T) {
 	e := nuevoEntorno(t)
 	id := e.crear("clave-obtener-1")
-	e.esperar(e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/v2/traslados/" + id, valido: true}), http.StatusOK, "")
+	e.esperar(e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/traslados/" + id, valido: true}), http.StatusOK, "")
 
 	// Con todos los campos (incluidos los internos que el contrato no informa).
 	if _, _, err := e.repo.AplicarVista(context.Background(), id, 4, vistaCompleta(id, 4), ahoraContrato); err != nil {
 		t.Fatal(err)
 	}
-	r := e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/v2/traslados/" + id, valido: true})
+	r := e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/traslados/" + id, valido: true})
 	e.esperar(r, http.StatusOK, "")
 	cuerpo := string(r.cuerpo)
 	if strings.Contains(cuerpo, "alerta_climatica") || strings.Contains(cuerpo, `"version"`) {
@@ -321,19 +321,19 @@ func TestContratoObtenerTraslado(t *testing.T) {
 		t.Fatalf("hora del traslado sin zona -03:00: %s", cuerpo)
 	}
 
-	e.esperar(e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/v2/traslados/sol-no-existe", valido: true}), http.StatusNotFound, "NO_ENCONTRADA")
+	e.esperar(e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/traslados/sol-no-existe", valido: true}), http.StatusNotFound, "NO_ENCONTRADA")
 	t.Run("MongoDB caído", func(t *testing.T) {
 		e.t = t
 		e.repo.Error = errors.New("mongo caído")
 		defer func() { e.repo.Error = nil }()
-		e.esperar(e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/v2/traslados/" + id, valido: true}), http.StatusServiceUnavailable, "SERVICIO_NO_DISPONIBLE")
+		e.esperar(e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/traslados/" + id, valido: true}), http.StatusServiceUnavailable, "SERVICIO_NO_DISPONIBLE")
 	})
 }
 
 func TestContratoResponderContrapropuesta(t *testing.T) {
 	e := nuevoEntorno(t)
 	id := e.crear("clave-contra-1")
-	ruta := "/v2/traslados/" + id + "/respuesta-contrapropuesta"
+	ruta := "/traslados/" + id + "/respuesta-contrapropuesta"
 
 	casos := []struct {
 		nombre     string
@@ -367,14 +367,14 @@ func TestContratoResponderContrapropuesta(t *testing.T) {
 	}
 	e.t = t
 	e.cliente.Error = nil
-	e.esperar(e.ejecutar(pedido{metodo: http.MethodPost, ruta: "/v2/traslados/sol-no-existe/respuesta-contrapropuesta", cuerpo: `{"acepta":false}`, clave: "clave-resp-0008", valido: true}),
+	e.esperar(e.ejecutar(pedido{metodo: http.MethodPost, ruta: "/traslados/sol-no-existe/respuesta-contrapropuesta", cuerpo: `{"acepta":false}`, clave: "clave-resp-0008", valido: true}),
 		http.StatusNotFound, "NO_ENCONTRADA")
 }
 
 func TestContratoCancelarTraslado(t *testing.T) {
 	e := nuevoEntorno(t)
 	id := e.crear("clave-cancelar-1")
-	ruta := "/v2/traslados/" + id + "/cancelacion"
+	ruta := "/traslados/" + id + "/cancelacion"
 	motivo := `{"motivo":"La mercadería se despachó por otro medio."}`
 
 	casos := []struct {
@@ -401,6 +401,6 @@ func TestContratoCancelarTraslado(t *testing.T) {
 		})
 	}
 	e.t = t
-	e.esperar(e.ejecutar(pedido{metodo: http.MethodPost, ruta: "/v2/traslados/sol-no-existe/cancelacion", cuerpo: motivo, clave: "clave-canc-0100", valido: true}),
+	e.esperar(e.ejecutar(pedido{metodo: http.MethodPost, ruta: "/traslados/sol-no-existe/cancelacion", cuerpo: motivo, clave: "clave-canc-0100", valido: true}),
 		http.StatusNotFound, "NO_ENCONTRADA")
 }

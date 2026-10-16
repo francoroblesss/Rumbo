@@ -1,5 +1,7 @@
 # Informe de capacidad — Entrega 2
 
+> **Nota (2026-10-16):** esta medición se hizo con las rutas bajo `/v2`. Desde [ADR-019](../adr/ADR-019-contrato-sin-version-en-la-ruta.md) son las mismas operaciones sin versión (`/traslados`, `/auth/token`); los comandos y resultados se conservan como se registraron.
+
 Mediciones de la capacidad publicada "Solicitar traslado" con el método de [ADR-015](../adr/ADR-015-capacidad-y-costos.md). Las conclusiones (límite, escalado y costos) están en ese ADR.
 
 - **Fecha:** 2026-10-16, de 15:25 a 15:37 UTC (corrida completa de `bash pruebas/carga/ejecutar.sh`).

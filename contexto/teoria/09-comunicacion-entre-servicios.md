@@ -144,7 +144,7 @@ Fuente (PDF de la cátedra, ya no se guarda local): `comunicacion-entre-servicio
 
 ## Aplicación a Rumbo
 - **Capacidad publicada (ADR-002/006):**
-  - REST con OpenAPI 3.1, versión en la **ruta** (`/v2`) y **convivencia** con `/v1` (que no tuvo consumidores);
+  - REST con OpenAPI 3.1. Primero la versión iba en la **ruta** (`/v1`, `/v2`); desde ADR-019 las rutas **no llevan versión** (`/traslados`), por indicación del profesor (tampoco la API interna). El contrato se versiona en su documento (`info.version`) y los cambios incompatibles se hacen con **migración coordinada**, que es la otra salida que da el teórico;
   - `Idempotency-Key` en los POST;
   - paginación y filtros en el listado;
   - seguimiento por **polling** (cambios poco frecuentes, consumidor de otro grupo).

@@ -14,8 +14,8 @@ En desarrollo, Vite reenvía `/api/...` al gateway (`http://localhost:8080`), as
 Para ingresar se usa el administrador inicial (`ADMIN_EMAIL` y `ADMIN_PASSWORD` de `.env`).
 
 ## Pantallas (Entrega 2)
-**Consola del operador**, sobre la API del operador (`/api/v1/operaciones/solicitudes`, `docs/interfaces-internas.md` §4.2):
-- **Ingreso** con email y contraseña (`/api/v1/identidad/login`). El token se guarda en `sessionStorage` (dura lo que la pestaña); ante un `401` se vuelve al ingreso.
+**Consola del operador**, sobre la API del operador (`/api/operaciones/solicitudes`, `docs/interfaces-internas.md` §4.2):
+- **Ingreso** con email y contraseña (`/api/identidad/login`). El token se guarda en `sessionStorage` (dura lo que la pestaña); ante un `401` se vuelve al ingreso.
 - **Lista de solicitudes** paginada (20 por página), con filtro por estado. Se actualiza cada 15 s por *polling*, que alcanza para cambios poco frecuentes (teórico 9), y se pausa con la pestaña oculta para no gastar el límite del gateway (60 pedidos por minuto).
 - **Detalle**: qué, origen, destino, hora pedida, contrapropuesta, traslado y **alerta climática** (ADR-012).
 - **Acciones** según el estado: aceptar con la hora pedida (indicando si un extremo es el aeropuerto, para la regla de clima), contraproponer horario, rechazar con motivo y resolver una cancelación tardía.

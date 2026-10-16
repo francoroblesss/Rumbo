@@ -2,7 +2,7 @@ package models
 
 import "time"
 
-// Tipos del contrato público "Solicitar traslado" v2 (docs/contracts/traslados-v2.yaml).
+// Tipos del contrato público "Solicitar traslado" (docs/contracts/traslados.yaml).
 // Los nombres JSON son exactamente los del contrato; los campos opcionales son punteros con
 // omitempty, así "no vino" se distingue de "vino vacío" y no se responde nada que el contrato
 // no declare.
@@ -36,7 +36,7 @@ type Cosa struct {
 	VolumenM3   *float64 `json:"volumen_m3,omitempty" bson:"volumen_m3,omitempty"`
 }
 
-// PedidoTraslado es el cuerpo de POST /v2/traslados (NuevoTraslado del contrato).
+// PedidoTraslado es el cuerpo de POST /traslados (NuevoTraslado del contrato).
 type PedidoTraslado struct {
 	ReferenciaExterna     *string    `json:"referencia_externa,omitempty" bson:"referencia_externa,omitempty"`
 	Origen                Ubicacion  `json:"origen" bson:"origen"`
@@ -101,7 +101,7 @@ type VistaSolicitud struct {
 	ActualizadoEn         time.Time        `json:"actualizado_en" bson:"actualizado_en"`
 }
 
-// PaginaSolicitudes es la respuesta de GET /v2/traslados.
+// PaginaSolicitudes es la respuesta de GET /traslados.
 type PaginaSolicitudes struct {
 	Resultados []VistaSolicitud `json:"resultados"`
 	Pagina     int              `json:"pagina"`
@@ -109,13 +109,13 @@ type PaginaSolicitudes struct {
 	Total      int64            `json:"total"`
 }
 
-// RespuestaContrapropuesta es el cuerpo de POST /v2/traslados/{id}/respuesta-contrapropuesta.
+// RespuestaContrapropuesta es el cuerpo de POST /traslados/{id}/respuesta-contrapropuesta.
 // Acepta es puntero para distinguir "false" de "no vino" (es obligatorio).
 type RespuestaContrapropuesta struct {
 	Acepta *bool `json:"acepta"`
 }
 
-// PedidoCancelacion es el cuerpo de POST /v2/traslados/{id}/cancelacion.
+// PedidoCancelacion es el cuerpo de POST /traslados/{id}/cancelacion.
 type PedidoCancelacion struct {
 	Motivo string `json:"motivo"`
 }

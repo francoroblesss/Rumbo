@@ -165,7 +165,7 @@ func TestListarParametros(t *testing.T) {
 }
 
 func TestEndpointsInternos(t *testing.T) {
-	ruta := "/internas/v1/solicitudes/sol-1/respuesta-contrapropuesta"
+	ruta := "/internas/solicitudes/sol-1/respuesta-contrapropuesta"
 	completos := map[string]string{"X-Rumbo-Organizacion": "org-1", "Idempotency-Key": "clave-0001"}
 
 	w, p := pedir(t, &casosFalsos{}, http.MethodPost, ruta, `{"acepta":true}`, map[string]string{"Idempotency-Key": "clave-0001"})
@@ -188,7 +188,7 @@ func TestEndpointsInternos(t *testing.T) {
 		t.Fatal("cuerpos distintos tienen que dar hashes distintos (SHA-256 en hexadecimal)")
 	}
 
-	w, _ = pedir(t, f, http.MethodPost, "/internas/v1/solicitudes/sol-1/cancelacion", `{"motivo":"cambio de planes"}`, completos)
+	w, _ = pedir(t, f, http.MethodPost, "/internas/solicitudes/sol-1/cancelacion", `{"motivo":"cambio de planes"}`, completos)
 	if w.Code != 200 || f.idem.Endpoint != "cancelacion" {
 		t.Fatalf("estado = %d, idem = %+v", w.Code, f.idem)
 	}

@@ -7,8 +7,8 @@ Solo hay **tres datos obligatorios: `cosa`, `origen` y `destino`**. La capacidad
 ## Versión vigente
 | Versión | Contrato | Base URL | Estado |
 | --- | --- | --- | --- |
-| **2.0.0** | [`traslados-v2.yaml`](traslados-v2.yaml) (OpenAPI 3.1) | `/v2` · mock local: `http://localhost:4010` · producción: _a publicar_ | **Vigente** |
-| 1.0.0 | [`solicitudes-carga-v1.yaml`](solicitudes-carga-v1.yaml) | `/v1` | Reemplazada por 2.0.0; nunca tuvo consumidores ni se implementó |
+| **2.1.0** | [`traslados-v2.yaml`](traslados-v2.yaml) (OpenAPI 3.1) | `/v2` · mock local: `http://localhost:4010` · producción: _a publicar_ | **Vigente** |
+| 1.0.0 | [`solicitudes-carga-v1.yaml`](solicitudes-carga-v1.yaml) | `/v1` | Reemplazada por 2.0.0 (hoy 2.1.0); nunca tuvo consumidores ni se implementó |
 
 Política de versiones: ver "Compatibilidad" más abajo, [ADR-002](../adr/ADR-002-contrato-propio.md) y [ADR-006](../adr/ADR-006-contrato-generico-v2.md).
 
@@ -88,6 +88,8 @@ Formato **Problem Details** (RFC 9457, `application/problem+json`) con un `codig
 | 422 | `HORARIO_EN_EL_PASADO` / `ANTICIPACION_INSUFICIENTE` / `EXCEDE_CAPACIDAD` | Regla de negocio | Cambiar el pedido |
 | 429 | `DEMASIADOS_PEDIDOS` | Se superó el límite de la organización | Esperar `Retry-After` segundos |
 | 503 | `SERVICIO_NO_DISPONIBLE` | Rumbo no puede procesar ahora | Reintentar con backoff y la **misma** `Idempotency-Key` |
+| 502 | `SERVICIO_NO_DISPONIBLE` | El punto de entrada no pudo comunicarse con el servicio | Reintentar con backoff y la **misma** `Idempotency-Key` |
+| 504 | `TIEMPO_AGOTADO` | Rumbo no respondió en 5 s; **el pedido pudo haberse procesado** | Reintentar con la **misma** `Idempotency-Key`: si ya se procesó, devuelve el mismo resultado sin duplicar |
 
 ## Autenticación, idempotencia y condiciones de uso
 - **Autenticación:** `POST /v2/auth/token` con `client_id` y `client_secret` (los entrega el administrador de Rumbo). Devuelve un token firmado, válido 1 h, que se envía como `Authorization: Bearer <token>`. Cada organización ve solo sus solicitudes.
@@ -168,5 +170,6 @@ npx @stoplight/prism-cli mock docs/contracts/traslados-v2.yaml -p 4010
 ## Historial de versiones
 | Versión | Fecha | Cambios | Compatible con la anterior |
 | --- | --- | --- | --- |
+| 2.1.0 | 2026-10-16 | Se documentan `502 SERVICIO_NO_DISPONIBLE` y `504 TIEMPO_AGOTADO`, que el punto de entrada ya podía devolver (deadline de 5 s, ADR-004), ahora con Problem Details. Nuevo `codigo` `TIEMPO_AGOTADO` | **Sí** (versión menor, misma `/v2`) |
 | 2.0.0 | 2026-10-11 | Capacidad genérica: `cosa` (descripción + cantidad; peso y volumen opcionales) en lugar de `carga`; solo `cosa`, `origen` y `destino` obligatorios; hora y referencia opcionales (sin hora, Rumbo propone una); recurso `/v2/traslados`; código `EXCEDE_CAPACIDAD` (antes `CARGA_EXCEDE_CAPACIDAD`). Corrección de la Entrega 1 (ADR-006) | **No** (por eso es versión mayor) |
 | 1.0.0 | 2026-10-04 | Versión inicial, específica de carga (`/v1/solicitudes-carga`) | — |

@@ -84,3 +84,15 @@ En todo el escenario C: 4296 requests en `integracion-1` y 3608 en `integracion-
 | Idempotencia del consumidor | El mismo comando publicado dos veces → una sola fila en `operaciones.solicitudes` y un solo log "solicitud externa registrada" |
 | RabbitMQ detenido | `POST /v2/traslados` → `502` (no `202`): los servicios terminan al cerrarse el canal. Detalle y ajustes en [ADR-016](../adr/ADR-016-validacion-d5.md) |
 | Outbox al volver RabbitMQ | `rumbo_outbox_pendientes` = 0 en `integracion-1`, `integracion-2` y `operaciones`; `POST` → `202` después de reiniciar el balanceador |
+
+## 6. Caída de RabbitMQ y reinicio de réplicas, después del arreglo ([ADR-017](../adr/ADR-017-reconexion-broker-y-balanceador.md))
+Se repitió el 2026-10-16 (18:35 UTC) la prueba de §5 que había fallado, con `docker compose up --build -d` sobre la rama del arreglo.
+
+| Qué | Resultado |
+| --- | --- |
+| `POST /v2/traslados` con `rabbitmq` detenido | Cinco pedidos: `202 202 202 202 202`. Ningún contenedor se reinició (`integracion-1`, `integracion-2` y `operaciones` siguieron `Up`) |
+| Logs durante la caída | `WARN "se cerró la conexión con RabbitMQ, se reconecta"` y `WARN "se interrumpió el consumo, se retoma al reconectar"` |
+| Al volver RabbitMQ | `INFO "conectado a RabbitMQ"` y `INFO "consumidor listo"` en cada servicio; 0 solicitudes con `pendiente_envio` en MongoDB y 0 filas sin publicar en el outbox de MySQL. Las 6 solicitudes de la prueba llegaron a Operaciones |
+| Réplicas recreadas con otra IP | `integracion-1` e `integracion-2` pasaron de `172.21.0.8` y `.10` a `.15` y `.16`. Sin reiniciar NGINX: `200` en los 6 pedidos siguientes, alternando `replica=172.21.0.16:8085` y `replica=172.21.0.15:8085` |
+| `X-Correlation-ID` | Aparece una sola vez en la respuesta (antes salía duplicado, ver §1) |
+

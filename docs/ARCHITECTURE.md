@@ -100,12 +100,12 @@ Dependencias de cada servicio y qué pasa cuando fallan ([ADR-008](adr/ADR-008-r
 | Servicio | Dependencia | Si falla o tarda | Mecanismo |
 | --- | --- | --- | --- |
 | Integración de carga | **Operaciones** (HTTP: responder contrapropuesta, cancelar) | Responde `503 SERVICIO_NO_DISPONIBLE` con `Retry-After`. El consumidor reintenta con la misma `Idempotency-Key` | Timeout de 2 s + **circuit breaker** |
-| Integración de carga | RabbitMQ (publicar el comando, recibir estados) | **Sigue aceptando solicitudes** (`202`): quedan pendientes de envío y el relay las publica cuando el broker vuelve. El consumidor de estados reconecta al reiniciar | Pendiente de envío + relay con reintentos (ADR-004) |
+| Integración de carga | RabbitMQ (publicar el comando, recibir estados) | **Sigue aceptando solicitudes** (`202`): quedan pendientes de envío y el relay las publica cuando el broker vuelve. El consumidor de estados se retoma solo al reconectar | Pendiente de envío + relay con reintentos (ADR-004) + reconexión ([ADR-017](adr/ADR-017-reconexion-broker-y-balanceador.md)) |
 | Integración de carga | Memcached | Lee de MongoDB; nunca un error al consumidor | Degradación (ADR-007) |
 | Integración de carga | MongoDB (su base) | `503 SERVICIO_NO_DISPONIBLE` | Timeout del driver |
 | Operaciones | Sistema de aeropuerto (clima) | Sigue sin el dato: alerta "clima no verificado" (fail-open) | Timeout + reintento + breaker + caché (D9) |
 | Operaciones | MySQL (su base) | `503` en sus endpoints; los mensajes se reintentan y, agotados, van a la DLQ | Timeout + reintentos de mensajería |
-| Todos | RabbitMQ al arrancar | Reintenta la conexión con backoff y jitter | `mensajeria.ConectarConReintentos` |
+| Todos | RabbitMQ (al arrancar o durante la ejecución) | El proceso sigue vivo y atiende HTTP; se reconecta en segundo plano con backoff y jitter (hasta 30 s) y los consumidores se retoman solos | `mensajeria.Conectar` ([ADR-017](adr/ADR-017-reconexion-broker-y-balanceador.md)) |
 
 **Circuit breaker** (`github.com/sony/gobreaker/v2`) en las llamadas de Integración a Operaciones: se abre con 5 fallas consecutivas o con 50 % de fallas en al menos 10 llamadas dentro de 60 s (solo cuentan timeouts, errores de red y `5xx`; un `4xx` no), responde `503` con `Retry-After: 30` sin llamar a Operaciones, pasa a semiabierto a los 30 s con 1 llamada de prueba y su estado se ve en `rumbo_circuito_estado{dependencia="operaciones"}`.
 
@@ -141,5 +141,4 @@ Los scripts de `infra/` crean, al iniciar por primera vez, una base de datos y u
 - **Operaciones corre en una sola réplica.**
 - **`grafana/otel-lgtm` es para desarrollo, no para producción.**
 - **El clima se midió contra el mock del proveedor** (Prism). Hay que repetir la medición de [ADR-016](adr/ADR-016-validacion-d5.md) cuando el grupo proveedor publique su URL real.
-- **Caída de RabbitMQ ([ADR-016](adr/ADR-016-validacion-d5.md)):** Integración y Operaciones terminan el proceso cuando se cierra el canal y no abren HTTP hasta reconectar, así que `POST /v2/traslados` responde `502` en vez de `202` y el outbox no llega a usarse. Pendiente: reconectar sin terminar el proceso y abrir HTTP sin esperar al broker.
-- **NGINX resuelve las réplicas una sola vez, al arrancar:** si una réplica de Integración se reinicia con otra IP, el balanceador responde `502` hasta que se lo reinicia. Pendiente: `resolver 127.0.0.11` y `resolve` en el upstream ([ADR-009](adr/ADR-009-balanceo.md)).
+- **Consumidores detenidos sin que el proceso caiga ([ADR-017](adr/ADR-017-reconexion-broker-y-balanceador.md)):** con RabbitMQ caído, cada servicio sigue vivo y atiende HTTP, pero no consume. Se detecta por los logs (`se cerró la conexión con RabbitMQ`) y por `rumbo_outbox_pendientes`, que crece mientras el broker no está; todavía no hay una alerta específica.

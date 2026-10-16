@@ -3,8 +3,6 @@ package messaging
 import (
 	"context"
 
-	amqp "github.com/rabbitmq/amqp091-go"
-
 	"github.com/francoroblesss/Rumbo/servicios/comun/mensajeria"
 )
 
@@ -18,7 +16,8 @@ var ConfigEstados = mensajeria.ConfigConsumidor{
 }
 
 // ConsumirEstados procesa los eventos con el manejador (SolicitudesService.AplicarEvento). Los
-// reintentos con backoff, la DLQ y el ACK después del efecto los resuelve comun/mensajeria.
-func ConsumirEstados(ctx context.Context, conexion *amqp.Connection, manejar mensajeria.Manejador) error {
-	return mensajeria.Consumir(ctx, conexion, ConfigEstados, manejar)
+// reintentos con backoff, la DLQ, el ACK después del efecto y la reconexión al broker los
+// resuelve comun/mensajeria. Termina cuando se cancela ctx.
+func ConsumirEstados(ctx context.Context, conexion *mensajeria.Conexion, manejar mensajeria.Manejador) {
+	mensajeria.Consumir(ctx, conexion, ConfigEstados, manejar)
 }

@@ -3,7 +3,6 @@ package mensajeria
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
@@ -46,16 +45,40 @@ func Espera(n int) time.Duration {
 }
 
 // Consumir declara la cola (con su cola de reintento y su DLQ), la vincula al exchange y procesa
-// los mensajes hasta que se cancele ctx o se cierre la conexión. El ACK se envía recién después
-// de que el manejador terminó el efecto. Devuelve error si el canal se cierra: el servicio debe
-// terminar para que Docker lo reinicie.
-func Consumir(ctx context.Context, conexion *amqp.Connection, cfg ConfigConsumidor, manejar Manejador) error {
+// los mensajes hasta que se cancele ctx. El ACK se envía recién después de que el manejador
+// terminó el efecto. Si el canal o la conexión se cierran, espera a que la Conexion reconecte y
+// vuelve a consumir: la caída del broker no termina el proceso. Los mensajes sin ACK vuelven a
+// la cola y se entregan de nuevo (at-least-once; por eso el manejador es idempotente).
+func Consumir(ctx context.Context, conexion *Conexion, cfg ConfigConsumidor, manejar Manejador) {
 	if cfg.Prefetch == 0 {
 		cfg.Prefetch = 10
 	}
 	if cfg.MaxReintentos == 0 {
 		cfg.MaxReintentos = 3
 	}
+	for intento := 0; ; intento++ {
+		actual, err := conexion.Esperar(ctx)
+		if err != nil {
+			return
+		}
+		err = consumir(ctx, actual, cfg, manejar)
+		if ctx.Err() != nil {
+			return
+		}
+		espera := esperaReconexion(intento)
+		if err == nil {
+			// Se procesaron mensajes y después se cerró el canal: se vuelve a empezar el backoff.
+			espera, intento = esperaReconexion(0), 0
+		}
+		slog.WarnContext(ctx, "se interrumpió el consumo, se retoma al reconectar",
+			slog.String("cola", cfg.Cola), slog.Duration("espera", espera), slog.Any("error", err))
+		dormir(ctx, espera)
+	}
+}
+
+// consumir procesa una cola sobre una conexión hasta que se cierre el canal o se cancele ctx.
+// Devuelve error si no pudo empezar a consumir.
+func consumir(ctx context.Context, conexion *amqp.Connection, cfg ConfigConsumidor, manejar Manejador) error {
 	canal, err := conexion.Channel()
 	if err != nil {
 		return fmt.Errorf("abrir canal de consumo: %w", err)
@@ -80,10 +103,7 @@ func Consumir(ctx context.Context, conexion *amqp.Connection, cfg ConfigConsumid
 		resultado := procesar(ctx, canal, cfg, entrega, manejar)
 		procesados.Add(ctx, 1, metric.WithAttributes(attribute.String("cola", cfg.Cola), attribute.String("resultado", resultado)))
 	}
-	if ctx.Err() != nil {
-		return nil
-	}
-	return errors.New("se cerró el canal de consumo de " + cfg.Cola)
+	return nil
 }
 
 func declararColas(canal *amqp.Channel, cfg ConfigConsumidor) error {

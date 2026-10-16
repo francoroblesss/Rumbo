@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	amqp "github.com/rabbitmq/amqp091-go"
-
 	"github.com/francoroblesss/Rumbo/servicios/comun/mensajeria"
 	"github.com/francoroblesss/Rumbo/servicios/operaciones/dominio"
 	"github.com/francoroblesss/Rumbo/servicios/operaciones/puertos"
@@ -81,8 +79,8 @@ func ManejadorSolicitudesExternas(casos puertos.Solicitudes) mensajeria.Manejado
 }
 
 // ConsumirSolicitudesExternas procesa la cola del comando hasta que se cancele ctx. Usa la cola
-// con reintentos y DLQ de comun/mensajeria (sin exchange: es un comando punto a punto).
-func ConsumirSolicitudesExternas(ctx context.Context, conexion *amqp.Connection, casos puertos.Solicitudes) error {
-	return mensajeria.Consumir(ctx, conexion, mensajeria.ConfigConsumidor{Cola: ColaSolicitudesExternas},
+// con reintentos, DLQ y reconexión de comun/mensajeria (sin exchange: es un comando punto a punto).
+func ConsumirSolicitudesExternas(ctx context.Context, conexion *mensajeria.Conexion, casos puertos.Solicitudes) {
+	mensajeria.Consumir(ctx, conexion, mensajeria.ConfigConsumidor{Cola: ColaSolicitudesExternas},
 		ManejadorSolicitudesExternas(casos))
 }

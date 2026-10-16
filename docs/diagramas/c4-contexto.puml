@@ -1,0 +1,25 @@
+@startuml c4-contexto
+' Rumbo — C4 nivel 1: contexto. Fuente del diagrama; se renderiza con docs/diagramas/README.md.
+!include <C4/C4_Context>
+
+title Rumbo · C4 nivel 1 · Contexto
+
+Person(cliente, "Cliente", "De una organización cliente. Mantiene su padrón, solicita traslados, responde contrapropuestas y consulta el estado.")
+Person(operador, "Operador", "Revisa solicitudes, planifica recorridos, asigna choferes y vehículos y gestiona incidentes.")
+Person(chofer, "Chofer", "Consulta su recorrido del día y registra paradas, abordajes, ausencias, incidentes y km.")
+Person(admin, "Administrador", "Administra usuarios, clientes, choferes, vehículos y tarifas; cierra las preliquidaciones.")
+
+System(rumbo, "Rumbo", "Traslados programados de personas o carga para organizaciones cliente: solicitudes, planificación, asignación, ejecución, incidentes y preliquidación.")
+
+System_Ext(almacenamiento, "Sistema de gestión de almacenamiento", "Otro grupo. Consume la capacidad publicada de Rumbo.")
+System_Ext(aeropuerto, "Sistema de aeropuerto", "Otro grupo. Expone las condiciones climáticas del aeropuerto.")
+
+Rel(cliente, rumbo, "Usa", "web")
+Rel(operador, rumbo, "Usa", "web")
+Rel(chofer, rumbo, "Usa", "web")
+Rel(admin, rumbo, "Usa", "web")
+Rel(almacenamiento, rumbo, "Solicita traslados (cosa, origen, destino) y consulta su estado", "API REST /v2, token")
+Rel(rumbo, aeropuerto, "Consulta la operabilidad del aeropuerto", "API REST, síncrono")
+
+SHOW_LEGEND()
+@enduml

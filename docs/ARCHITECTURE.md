@@ -4,7 +4,9 @@
 > Las decisiones y sus justificaciones están en [`adr/`](adr/README.md); acá se describe el resultado.
 
 ## 1. Diagrama de contexto
-[Rumbo — C4 Nivel 1: Contexto (PDF)](<diagramas/Rumbo - C4 Nivel 1 Contexto.pdf>)
+![Rumbo — C4 nivel 1: contexto](diagramas/c4-contexto.svg)
+
+Fuente: [`diagramas/c4-contexto.puml`](diagramas/c4-contexto.puml) (C4-PlantUML; cómo regenerarlo en [`diagramas/README.md`](diagramas/README.md)).
 
 - Rumbo tiene cuatro tipos de usuario, que lo usan a través de la web: **cliente** (de una organización), **operador**, **chofer** y **administrador**.
 - Se integra con dos sistemas de otros grupos:
@@ -12,13 +14,18 @@
   - Rumbo consume las **condiciones climáticas** del **sistema de aeropuerto**.
 
 ## 2. Diagrama de contenedores
-[Rumbo — C4 Nivel 2: Contenedores (PDF)](<diagramas/Rumbo - C4 Nivel 2 Contenedores.pdf>)
+![Rumbo — C4 nivel 2: contenedores](diagramas/c4-contenedores.svg)
 
-- Una **aplicación web** y un **API Gateway** como punto de entrada único (token firmado, ruteo, límite de pedidos, correlation id).
+Fuente: [`diagramas/c4-contenedores.puml`](diagramas/c4-contenedores.puml). En gris, lo que ya está decidido y se implementa para la Presentación Grupal.
+
+- Una **aplicación web** y un **API Gateway** como punto de entrada único: token firmado, ruteo, límite de pedidos y correlation id.
 - **Cinco microservicios en Go:** Identidad y clientes, Operaciones (núcleo), Recursos, Notificaciones e Integración de carga.
-- **Almacenamiento:** una base de datos por microservicio: dos en **MySQL** y tres en **MongoDB**. Cada servicio accede solo a la suya.
+  - Integración corre en **dos réplicas** detrás de un balanceador **NGINX** (D12, [ADR-009](adr/ADR-009-balanceo.md)).
+- **Almacenamiento:** una base de datos por microservicio, dos en **MySQL** y tres en **MongoDB**. Cada servicio accede solo a la suya.
 - **RabbitMQ** para la mensajería asíncrona.
-- El **motor de búsqueda** figura como pendiente (D6). La caché (D7) y el balanceo de carga (D12) se agregan cuando se decidan.
+- **Memcached** como caché compartida de Integración (D7, [ADR-007](adr/ADR-007-cache.md)).
+- **Apache Solr** como motor de búsqueda de traslados (D6, [ADR-011](adr/ADR-011-busqueda.md)), que se implementa para la Presentación.
+- **Grafana LGTM** para logs, métricas, trazas, tablero y alertas (D11, [ADR-014](adr/ADR-014-observabilidad.md)).
 
 ## 3. Servicios
 Cinco microservicios detrás de un API Gateway. Justificación en [ADR-001](adr/ADR-001-limites-de-los-servicios.md) (D1).
@@ -43,10 +50,9 @@ La consigna pide al menos dos estilos de arquitectura distintos. Justificación 
 | --- | --- | --- |
 | **Operaciones** | **Hexagonal** (teórico 8): es el núcleo, tiene las reglas e invariantes más complejas y la mayor cantidad de dependencias externas (MySQL, Recursos, Identidad, clima, broker) | `dominio/` (entidades y reglas, sin tags json/db) · `aplicacion/` (casos de uso) · `puertos/` (contratos de entrada y salida) · `adaptadores/` (`api` HTTP, `mysql`, `mensajeria`, `recursos`, `identidad`, `clima`) |
 | **Identidad y clientes**, **Recursos**, **Notificaciones**, **Integración de carga** | **Capas** (Handler → Service → Repository, estilo del práctico): lógica más simple y una sola base cada uno | `controllers/` · `services/` · `repositories/` · `models/` · `database/` · `messaging/` (si usa el broker) · `clients/` (Integración → Operaciones) |
-| **API Gateway** | Reverse proxy con middlewares | `proxy/` (ruteo, 502/504, deadline de 5 s) · `correlacion/` · `autenticacion/` y `limite/` (pendientes, con librerías) |
+| **API Gateway** | Reverse proxy con middlewares | `entrada/` (correlation id, identidad del token en headers) · `autenticacion/` (token firmado, `golang-jwt/jwt/v5`) · `limite/` (60 pedidos por minuto por organización, `x/time/rate`) · `proxy/` (ruteo, 502/504 con Problem Details, deadline de 5 s) · `metricas/` |
 
-Cada servicio es un módulo Go independiente (`servicios/<servicio>/`) con su `Dockerfile`, su puerto y su configuración por variables de entorno. Lo que no es negocio y comparten todos (observabilidad, mensajería con reintentos y DLQ, identidad propagada por el gateway y errores Problem Details) está en el módulo **`servicios/comun`**, y el contrato interno entre servicios en [`interfaces-internas.md`](interfaces-internas.md). `main.go` arma las dependencias a mano (infraestructura → repositorios o adaptadores → servicios o casos de uso → handlers).
-<!-- Pendiente por servicio: API expuesta y eventos publicados/consumidos en detalle (D5, Entrega 2). -->
+Cada servicio es un módulo Go independiente (`servicios/<servicio>/`) con su `Dockerfile`, su puerto y su configuración por variables de entorno. Lo que no es negocio y comparten todos (observabilidad, mensajería con reintentos y DLQ, identidad propagada por el gateway y errores Problem Details) está en el módulo **`servicios/comun`**, y el contrato interno entre servicios en [`interfaces-internas.md`](interfaces-internas.md). `main.go` arma las dependencias a mano (infraestructura → repositorios o adaptadores → servicios o casos de uso → handlers). Los endpoints internos y los mensajes que publica y consume cada servicio están en [`interfaces-internas.md`](interfaces-internas.md).
 
 ## 4. Datos y persistencia
 Detalle en [ADR-003](adr/ADR-003-persistencia.md) (D3); el motor relacional es MySQL desde [ADR-005](adr/ADR-005-mysql-como-motor-relacional.md).
@@ -61,7 +67,7 @@ Detalle en [ADR-003](adr/ADR-003-persistencia.md) (D3); el motor relacional es M
 
 - **Una base de datos por microservicio**, cada una con su propio usuario. Las bases viven en una instancia por motor.
 - El índice de búsqueda, la caché y el broker son derivados, no fuente de verdad.
-<!-- Operación con garantías de consistencia: ver D4. -->
+- **Operación con garantías de consistencia:** el cambio de estado de una solicitud y su evento se confirman en la misma transacción de MySQL (outbox), con idempotencia por `Idempotency-Key` en la entrada y por id de mensaje en los consumidores. La decisión completa de consistencia y concurrencia (D4, con la asignación de recursos) se documenta para la Presentación.
 
 ## 5. Comunicación entre servicios
 Detalle en [ADR-004](adr/ADR-004-comunicacion-entre-servicios.md) (D5).
@@ -92,7 +98,7 @@ Detalle en [ADR-004](adr/ADR-004-comunicacion-entre-servicios.md) (D5).
 
 **Balanceo** ([ADR-009](adr/ADR-009-balanceo.md), D12): **NGINX** delante de dos réplicas de Integración de carga (`integracion-1` e `integracion-2`), con **round robin**. El gateway envía `/v2/traslados` a `balanceador-integracion`. Los *health checks* son pasivos (3 fallas en 30 s sacan a la réplica de rotación durante 30 s) y NGINX reintenta en la otra réplica solo ante caída, timeout, `502` o `503`, y **solo en métodos idempotentes**: un `POST` nunca se reintenta en el balanceador. El log de acceso de NGINX registra qué réplica atendió cada request, y cada réplica identifica sus logs y métricas con el atributo `instancia`.
 
-Búsqueda: ver D6.
+**Búsqueda** ([ADR-011](adr/ADR-011-busqueda.md), D6): **Apache Solr** con un core `traslados`, dueño Operaciones. El índice se actualiza por eventos con un indexador idempotente (solo aplica versiones más nuevas), se puede reconstruir desde MySQL y tiene un retraso máximo tolerable de 5 s. Se implementa para la Presentación Grupal.
 
 ## 8. Resiliencia y observabilidad
 Dependencias de cada servicio y qué pasa cuando fallan ([ADR-008](adr/ADR-008-resiliencia.md), D10):
@@ -117,7 +123,7 @@ Detalle en [ADR-014](adr/ADR-014-observabilidad.md) (D11).
 - **Métricas principales:** `rumbo_http_duracion_segundos` (RED por servicio e instancia), `rumbo_mensajes_procesados_total` (incluye la DLQ), `rumbo_outbox_pendientes`, `rumbo_cache_operaciones_total`, `rumbo_circuito_estado`, `rumbo_gateway_rechazos_total`, `rumbo_solicitudes_total` y `rumbo_clima_consultas_total` (nombres fijos en `docs/interfaces-internas.md` §8).
 - **Trazas:** propagación W3C Trace Context por HTTP y por RabbitMQ, incluido el paso por el outbox. El flujo principal se ve en una sola traza: gateway → Integración (`POST /v2/traslados`) → publicar y consumir en Operaciones → publicar y consumir en Integración.
 - **Tablero:** "Rumbo — estado general" (carpeta *Rumbo*), con 11 paneles: requests, errores 5xx y latencia p95 por servicio, requests por instancia de Integración (balanceo), hit ratio de las cachés, pendientes de outbox, mensajes por resultado, estado de los circuitos, consultas de clima, rechazos del gateway y logs de error. Se provisiona desde `infra/grafana/`.
-- **SLO y alertas** (provisionadas desde `infra/grafana/alertas/`): 99 % de los `POST /v2/traslados` en menos de 300 ms y menos de 1 % de respuestas 5xx. Tres reglas con evaluación cada minuto y `for: 5m`: `SLO latencia traslados`, `SLO errores traslados` y `Mensajes en DLQ`.
+- **SLO y alertas** (provisionadas desde `infra/grafana/alertas/`): 99 % de los `POST /v2/traslados` en menos de 300 ms y menos de 1 % de respuestas 5xx. Tres reglas con evaluación cada minuto: `SLO latencia traslados` y `SLO errores traslados` (`for: 5m`) y `Mensajes en DLQ` (`for: 1m`, porque con `5m` un mensaje aislado no llegaba a dispararla; ver [ADR-016](adr/ADR-016-validacion-d5.md)).
 
 ## 9. Distribución y despliegue
 **Local (procedimiento único, consigna §2.12):** `docker compose up --build` levanta todo en contenedores:
@@ -127,13 +133,16 @@ Detalle en [ADR-014](adr/ADR-014-observabilidad.md) (D11).
 | `gateway` | **8080** | Único punto de entrada |
 | `identidad`, `operaciones`, `recursos`, `notificaciones`, `integracion-1`, `integracion-2` | — | Solo accesibles a través del gateway (puertos internos 8081 a 8085; las dos réplicas de Integración usan el 8085) |
 | `balanceador-integracion` | — | NGINX delante de `integracion-1` e `integracion-2` (puerto interno 80, ADR-009) |
+| `memcached` | — | Caché de Integración (ADR-007) |
+| `clima-mock` | 4020 | Mock del sistema de aeropuerto (Prism, contrato en `contracts/consumidos/`) |
+| `lgtm` | 3000 (Grafana) · 4317/4318 (OTLP) | Solo con el perfil `observabilidad` (ADR-014) |
 | `mysql` | 13306 (en el host; 3306 dentro de Docker) | Bases `operaciones` y `recursos` |
 | `mongo` | 27017 | Bases `identidad`, `notificaciones` e `integracion` |
 | `rabbitmq` | 5672 · 15672 (panel) | Broker |
 
 Los scripts de `infra/` crean, al iniciar por primera vez, una base de datos y un usuario por servicio. Los secretos salen de `.env`, que no se versiona.
 
-**Nube:** la capacidad publicada (Integración de carga) tiene que quedar accesible con una URL pública para la Presentación Grupal. En clase se pidió usar servicios simples y gratuitos (por ejemplo Render, Railway, Vercel o Netlify), no AWS. Pendiente de decidir.
+**Nube** ([ADR-018](adr/ADR-018-despliegue-en-la-nube.md)): la aplicación web va a **Vercel** y el backend a **Railway**, con un servicio por contenedor de `compose.yaml` y las mismas imágenes. Solo el API Gateway tiene dominio público: es la URL de la capacidad publicada. Los secretos se cargan como variables de cada plataforma. Se implementa para la Presentación Grupal; costo estimado ≈ USD 24 por mes ([ADR-015](adr/ADR-015-capacidad-y-costos.md)).
 
 ## 10. Limitaciones conocidas y deuda técnica aceptada
 - **Principal límite de capacidad ([ADR-015](adr/ADR-015-capacidad-y-costos.md)):** la CPU de la réplica de Integración. Ningún escenario llegó al límite hasta 100 req/s (p95 ≤ 5,6 ms y 0 % de errores), y `integracion-1` usa 22,7 % de un núcleo a 100 req/s sin caché. El siguiente paso es medir escalones mayores.

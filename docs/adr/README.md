@@ -25,6 +25,7 @@ Cada decisión se conserva en un archivo independiente `ADR-NNN-titulo-corto.md`
 | [ADR-005](ADR-005-mysql-como-motor-relacional.md) | MySQL como motor relacional (reemplaza parcialmente a ADR-003) |
 | [ADR-006](ADR-006-contrato-generico-v2.md) | Contrato genérico "Solicitar traslado" v2 (reemplaza parcialmente a ADR-002) |
 | [ADR-017](ADR-017-reconexion-broker-y-balanceador.md) | Reconexión al broker sin terminar el proceso y resolución dinámica de réplicas en NGINX (reemplaza parcialmente a ADR-008) |
+| [ADR-018](ADR-018-despliegue-en-la-nube.md) | Despliegue en la nube: Vercel para la web y Railway para el backend |
 
 ## Formato
 ```

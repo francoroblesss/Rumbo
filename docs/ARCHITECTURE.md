@@ -136,4 +136,10 @@ Los scripts de `infra/` crean, al iniciar por primera vez, una base de datos y u
 **Nube:** la capacidad publicada (Integración de carga) tiene que quedar accesible con una URL pública para la Presentación Grupal. En clase se pidió usar servicios simples y gratuitos (por ejemplo Render, Railway, Vercel o Netlify), no AWS. Pendiente de decidir.
 
 ## 10. Limitaciones conocidas y deuda técnica aceptada
-<!-- Obligatoria y actualizada para la Presentación Grupal. -->
+- **Principal límite de capacidad ([ADR-015](adr/ADR-015-capacidad-y-costos.md)):** la CPU de la réplica de Integración. Ningún escenario llegó al límite hasta 100 req/s (p95 ≤ 5,6 ms y 0 % de errores), y `integracion-1` usa 22,7 % de un núcleo a 100 req/s sin caché. El siguiente paso es medir escalones mayores.
+- **La búsqueda ([ADR-011](adr/ADR-011-busqueda.md)) se implementa para la Presentación.**
+- **Operaciones corre en una sola réplica.**
+- **`grafana/otel-lgtm` es para desarrollo, no para producción.**
+- **El clima se midió contra el mock del proveedor** (Prism). Hay que repetir la medición de [ADR-016](adr/ADR-016-validacion-d5.md) cuando el grupo proveedor publique su URL real.
+- **Caída de RabbitMQ ([ADR-016](adr/ADR-016-validacion-d5.md)):** Integración y Operaciones terminan el proceso cuando se cierra el canal y no abren HTTP hasta reconectar, así que `POST /v2/traslados` responde `502` en vez de `202` y el outbox no llega a usarse. Pendiente: reconectar sin terminar el proceso y abrir HTTP sin esperar al broker.
+- **NGINX resuelve las réplicas una sola vez, al arrancar:** si una réplica de Integración se reinicia con otra IP, el balanceador responde `502` hasta que se lo reinicia. Pendiente: `resolver 127.0.0.11` y `resolve` en el upstream ([ADR-009](adr/ADR-009-balanceo.md)).

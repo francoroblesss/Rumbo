@@ -49,11 +49,10 @@ func main() {
 	}
 	defer mongoCliente.Disconnect(context.Background())
 
-	conexionRabbit, err := mensajeria.ConectarConReintentos(cfg.RabbitURI, 5)
-	if err != nil {
-		terminar("no se pudo conectar a RabbitMQ", err)
-	}
-	defer conexionRabbit.Close()
+	// El broker se conecta en segundo plano y se reconecta solo: el servicio atiende HTTP aunque
+	// RabbitMQ no esté, y las solicitudes quedan pendientes de envío hasta que vuelva (ADR-004).
+	conexionRabbit := mensajeria.Conectar(ctx, cfg.RabbitURI)
+	defer conexionRabbit.Cerrar()
 
 	// 2. Cableado (DI manual): repositorio → caché → cliente → servicio → controlador, relay y consumidor.
 	repoMongo := repositories.NewSolicitudesMongo(mongoCliente.Database("integracion"))
@@ -67,10 +66,7 @@ func main() {
 	servicio := services.NewSolicitudesService(repo, operaciones, time.Now)
 	controlador := controllers.NewTrasladosController(servicio)
 
-	publicador, err := mensajeria.NuevoPublicador(conexionRabbit)
-	if err != nil {
-		terminar("no se pudo crear el publicador", err)
-	}
+	publicador := mensajeria.NuevoPublicador(conexionRabbit)
 	defer publicador.Cerrar()
 
 	relay := messaging.NewRelay(repo, publicador, observabilidad.Instancia())
@@ -79,11 +75,7 @@ func main() {
 			terminar("el relay de solicitudes pendientes se detuvo", err)
 		}
 	}()
-	go func() {
-		if err := messaging.ConsumirEstados(ctx, conexionRabbit, servicio.AplicarEvento); err != nil {
-			terminar("el consumidor de estados se detuvo", err)
-		}
-	}()
+	go messaging.ConsumirEstados(ctx, conexionRabbit, servicio.AplicarEvento)
 
 	// 3. Servidor HTTP instrumentado (traza, correlation id, métrica y log por request).
 	router := gin.New()

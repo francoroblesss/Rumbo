@@ -52,11 +52,10 @@ func main() {
 	}
 	defer db.Close()
 
-	conexionRabbit, err := mensajeria.ConectarConReintentos(cfg.RabbitURI, 5)
-	if err != nil {
-		terminar("no se pudo conectar a RabbitMQ", err)
-	}
-	defer conexionRabbit.Close()
+	// El broker se conecta en segundo plano y se reconecta solo: el servicio atiende HTTP aunque
+	// RabbitMQ no esté, y los eventos esperan en el outbox hasta que vuelva (ADR-004).
+	conexionRabbit := mensajeria.Conectar(ctx, cfg.RabbitURI)
+	defer conexionRabbit.Cerrar()
 
 	// 2. Cableado (DI manual): adaptadores de salida → casos de uso → adaptadores de entrada.
 	if err := mysql.Migrar(ctx, cfg.MySQLDSN); err != nil {
@@ -72,10 +71,7 @@ func main() {
 	observabilidad.Instrumentar(router, "operaciones")
 	api.NuevoHandler(solicitudes).Registrar(router)
 
-	publicador, err := adaptadormensajeria.NuevoPublicador(conexionRabbit)
-	if err != nil {
-		terminar("no se pudo preparar el publicador", err)
-	}
+	publicador := adaptadormensajeria.NuevoPublicador(conexionRabbit)
 	defer publicador.Cerrar()
 	relay, err := mysql.NuevoRelay(db, publicador)
 	if err != nil {
@@ -83,12 +79,7 @@ func main() {
 	}
 	go relay.Ejecutar(ctx)
 
-	go func() {
-		// Si el canal de consumo se cierra, el servicio termina para que Docker lo reinicie.
-		if err := adaptadormensajeria.ConsumirSolicitudesExternas(ctx, conexionRabbit, solicitudes); err != nil {
-			terminar("se detuvo el consumidor de solicitudes externas", err)
-		}
-	}()
+	go adaptadormensajeria.ConsumirSolicitudesExternas(ctx, conexionRabbit, solicitudes)
 
 	go vencerContrapropuestas(ctx, solicitudes)
 

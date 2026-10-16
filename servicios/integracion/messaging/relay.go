@@ -89,8 +89,10 @@ func NewRelay(repo repositories.SolicitudesRepository, publicador Publicador, in
 // Ejecutar declara la cola del comando y, cada segundo, publica las pendientes hasta que no
 // quede ninguna. Termina cuando se cancela ctx.
 func (r *Relay) Ejecutar(ctx context.Context) error {
+	// Si el broker no está, la cola se declara cuando el publicador abra su próximo canal.
 	if err := r.publicador.DeclararCola(ColaSolicitudesExternas); err != nil {
-		return err
+		slog.WarnContext(ctx, "no se pudo declarar la cola del comando, se reintenta al publicar",
+			slog.String("error", err.Error()))
 	}
 	ticker := time.NewTicker(IntervaloRelay)
 	defer ticker.Stop()

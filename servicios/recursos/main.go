@@ -34,11 +34,9 @@ func main() {
 	}
 	defer db.Close()
 
-	conexionRabbit, err := mensajeria.ConectarConReintentos(cfg.RabbitURI, 5)
-	if err != nil {
-		terminar("no se pudo conectar a RabbitMQ", err)
-	}
-	defer conexionRabbit.Close()
+	// Conexión al broker en segundo plano, con reconexión (comun/mensajeria).
+	conexionRabbit := mensajeria.Conectar(ctx, cfg.RabbitURI)
+	defer conexionRabbit.Cerrar()
 
 	// 2. Cableado (DI manual): repositories → services → controllers, outbox y consumidor de recorrido.finalizado. Pendiente de implementar.
 

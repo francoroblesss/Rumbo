@@ -67,6 +67,15 @@ Usar al diseñar cada parte del proyecto y registrar las respuestas en los ADR d
 - [ ] CQRS: ¿lectura y escritura difieren de verdad (forma, carga, permisos)? ¿misma base o separada? Si hay proyecciones async, consistencia eventual explicitada en el contrato/UI.
 - [ ] Explicitar qué NO se optimiza y qué costo se acepta (contratos, mapeos, duplicación).
 
+## Comunicación entre servicios (teórico 9)
+- [ ] Para cada interacción: ¿quién inicia, hace falta respuesta inmediata, en qué dirección van los datos? → petición/respuesta (REST, gRPC, GraphQL), canal (SSE, WebSockets) o webhook.
+- [ ] Contrato explícito (OpenAPI) con errores y semántica; política de evolución: qué es compatible (campos opcionales que se ignoran) y qué no (quitar, renombrar, **agregar valores a un enum**); versiones que conviven y cuándo se retira la vieja.
+- [ ] POST con clave de idempotencia; ante timeout el resultado es **incierto**: retry con la misma clave o reconciliar consultando.
+- [ ] Colecciones con paginación y filtros en el contrato.
+- [ ] Tiempo real: SSE si el cliente solo recibe (persistir primero, reconsultar al reconectar); WebSockets solo si es bidireccional. Autenticación sin `Authorization` nativo y sin tokens largos en la URL.
+- [ ] Webhooks recibidos: validar firma y frescura, deduplicar, decidir con el estado vigente.
+- [ ] Proveedor externo detrás de puerto + adaptador, sin prometer sustitución transparente; mandar solo los datos necesarios.
+
 ## Resiliencia (teórico 7)
 - [ ] Toda llamada remota con timeout/deadline (`context`).
 - [ ] Retries solo en operaciones seguras, con backoff+jitter y un único dueño.

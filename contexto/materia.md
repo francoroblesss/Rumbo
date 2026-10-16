@@ -17,9 +17,10 @@
 | 6 | API Gateway, Load Balancing, Service Discovery (16/9/2026) | Concurrencia en Go: goroutines, channels, select, mutex, worker pool, context |
 | 7 | Resiliencia ante fallos parciales (23/9/2026) | Balanceo con NGINX + 3 réplicas en Docker Compose |
 | 8 | Estilos de arquitectura de backend (DDD, Hexagonal, Clean, CQRS, Event Sourcing, reactivo) | _(sin práctico en el repo todavía)_ |
+| 9 | Comunicación entre servicios: contratos y compatibilidad, REST, gRPC, GraphQL, SSE, WebSockets, webhooks, IA externa (14/10/2026) | _(sin práctico en el repo todavía)_ |
 | próx. | (apuntes mencionan "Producción y despliegue": SLOs, observabilidad) | Monitoreo: logs, métricas, trazas |
 
-Resúmenes: `teoria/01..08-*.md` y `practica/*.md`.
+Resúmenes: `teoria/01..09-*.md` y `practica/*.md`.
 
 ## Stack de la cursada ("NECESITAMOS TENERLAS A TODAS")
 

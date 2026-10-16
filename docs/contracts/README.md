@@ -100,7 +100,7 @@ Formato **Problem Details** (RFC 9457, `application/problem+json`) con un `codig
 - **Campos desconocidos:** el consumidor debe ignorar los campos que no conozca (ver Compatibilidad).
 
 ## Compatibilidad
-- **Cambios compatibles** (versión menor, misma `/v2`): agregar campos opcionales a respuestas o pedidos, nuevos endpoints, nuevos `codigo` de error dentro de un HTTP ya documentado.
+- **Cambios compatibles** (versión menor, misma `/v2`): agregar campos opcionales a respuestas o pedidos, nuevos endpoints, nuevos `codigo` de error. Para que un `codigo` nuevo no rompa a nadie, **el consumidor que reciba un `codigo` que no conoce decide por el HTTP status** (4xx: corregir el pedido; 5xx: reintentar con backoff y la misma `Idempotency-Key`).
 - **Cambios incompatibles** (nueva versión mayor, `/v3`, conviviendo con `/v2` hasta finalizar la evaluación): quitar o renombrar campos, cambiar el significado de un campo o de un estado, **agregar estados** a `estado` o `traslado.estado`, volver obligatorio un campo opcional.
 - Cada cambio se registra en el historial de esta página y se avisa al grupo consumidor.
 

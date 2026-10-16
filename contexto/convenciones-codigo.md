@@ -17,7 +17,7 @@ Referencias concretas (código resumido en `practica/`): Clase 2 demo (`practica
 | IDs | `github.com/google/uuid` | → **v1.6** (correlation id en el gateway) |
 | Tokens / rate limit (gateway) | `github.com/golang-jwt/jwt/v5` · `golang.org/x/time/rate` | → previstas (pendiente de implementar) |
 | Solr | HTTP plano (`net/http`) · imagen `solr:9` | — |
-| LB | imagen `nginx:alpine` | — |
+| LB | imagen `nginx:alpine` | → **`nginx:1.28-alpine`** (`resolve` en el upstream, ADR-017) |
 | Build | `golang:1.22-alpine` (actualizable a la versión de go.mod) | → **multi-stage `golang:1.26-alpine` → `alpine:3.20`**, contexto de build `servicios/` (para incluir `comun/`) |
 
 ## Estructura de un microservicio

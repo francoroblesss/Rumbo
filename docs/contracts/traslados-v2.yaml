@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Rumbo — Solicitar traslado
-  version: 2.0.0
+  version: 2.1.0
   description: |
     Capacidad publicada por Rumbo para que un sistema externo solicite **trasladar una cosa
     desde un origen hasta un destino** y siga su resultado. Solo tres datos son obligatorios:
@@ -59,6 +59,10 @@ paths:
           $ref: '#/components/responses/NoAutenticado'
         '429':
           $ref: '#/components/responses/DemasiadosPedidos'
+        '502':
+          $ref: '#/components/responses/ErrorDePuerta'
+        '504':
+          $ref: '#/components/responses/TiempoAgotado'
 
   /v2/traslados:
     post:
@@ -147,6 +151,10 @@ paths:
           $ref: '#/components/responses/DemasiadosPedidos'
         '503':
           $ref: '#/components/responses/NoDisponible'
+        '502':
+          $ref: '#/components/responses/ErrorDePuerta'
+        '504':
+          $ref: '#/components/responses/TiempoAgotado'
     get:
       tags: [Traslados]
       operationId: listarTraslados
@@ -222,6 +230,10 @@ paths:
           $ref: '#/components/responses/DemasiadosPedidos'
         '503':
           $ref: '#/components/responses/NoDisponible'
+        '502':
+          $ref: '#/components/responses/ErrorDePuerta'
+        '504':
+          $ref: '#/components/responses/TiempoAgotado'
 
   /v2/traslados/{id}:
     get:
@@ -255,6 +267,10 @@ paths:
           $ref: '#/components/responses/DemasiadosPedidos'
         '503':
           $ref: '#/components/responses/NoDisponible'
+        '502':
+          $ref: '#/components/responses/ErrorDePuerta'
+        '504':
+          $ref: '#/components/responses/TiempoAgotado'
 
   /v2/traslados/{id}/respuesta-contrapropuesta:
     post:
@@ -301,6 +317,10 @@ paths:
           $ref: '#/components/responses/DemasiadosPedidos'
         '503':
           $ref: '#/components/responses/NoDisponible'
+        '502':
+          $ref: '#/components/responses/ErrorDePuerta'
+        '504':
+          $ref: '#/components/responses/TiempoAgotado'
 
   /v2/traslados/{id}/cancelacion:
     post:
@@ -348,6 +368,10 @@ paths:
           $ref: '#/components/responses/DemasiadosPedidos'
         '503':
           $ref: '#/components/responses/NoDisponible'
+        '502':
+          $ref: '#/components/responses/ErrorDePuerta'
+        '504':
+          $ref: '#/components/responses/TiempoAgotado'
 
 components:
   securitySchemes:
@@ -636,6 +660,7 @@ components:
             - EXCEDE_CAPACIDAD
             - DEMASIADOS_PEDIDOS
             - SERVICIO_NO_DISPONIBLE
+            - TIEMPO_AGOTADO
         errores:
           type: array
           description: Detalle por campo cuando `codigo = DATOS_INVALIDOS`.
@@ -773,6 +798,28 @@ components:
             title: Servicio no disponible
             status: 503
             codigo: SERVICIO_NO_DISPONIBLE
+    ErrorDePuerta:
+      description: El punto de entrada de Rumbo no pudo comunicarse con el servicio que atiende el pedido. Es seguro reintentar con backoff y la **misma** `Idempotency-Key`.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+          example:
+            type: https://rumbo.example/errores/servicio-no-disponible
+            title: Servicio no disponible
+            status: 502
+            codigo: SERVICIO_NO_DISPONIBLE
+    TiempoAgotado:
+      description: Rumbo no respondió dentro de los 5 s. **El pedido pudo haberse procesado**; reintentar con la **misma** `Idempotency-Key` para obtener el resultado sin duplicar.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+          example:
+            type: https://rumbo.example/errores/tiempo-agotado
+            title: Tiempo agotado
+            status: 504
+            codigo: TIEMPO_AGOTADO
 
   examples:
     SolicitudRecibida:

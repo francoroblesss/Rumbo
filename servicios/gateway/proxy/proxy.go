@@ -12,6 +12,9 @@ import (
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
+	"github.com/francoroblesss/Rumbo/servicios/comun/observabilidad"
+	"github.com/francoroblesss/Rumbo/servicios/comun/problema"
 )
 
 // TiempoMaximo es el deadline total de una request a través del gateway (ADR-004).
@@ -41,17 +44,26 @@ func Nuevo(destino string, quitarPrefijo string) http.Handler {
 			DialContext:           (&net.Dialer{Timeout: 2 * time.Second}).DialContext,
 			ResponseHeaderTimeout: TiempoMaximo,
 		}),
-		// 502: no se pudo conectar con el servicio. 504: el servicio no respondió a tiempo.
+		// El gateway ya puso su X-Correlation-ID en la respuesta (es el mismo valor que propagó):
+		// se quita el que devuelve el servicio para no mandarlo dos veces.
+		ModifyResponse: func(resp *http.Response) error {
+			resp.Header.Del(observabilidad.HeaderCorrelacion)
+			return nil
+		},
+		// 502: no se pudo conectar con el servicio. 504: el servicio no respondió a tiempo. Las dos
+		// van en Problem Details, como el resto de los errores del contrato.
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-			estado := http.StatusBadGateway
+			estado, codigo, titulo, detalle := http.StatusBadGateway, "SERVICIO_NO_DISPONIBLE",
+				"Servicio no disponible", "Rumbo no pudo atender el pedido. Reintentar con backoff y la misma Idempotency-Key."
 			var errRed net.Error
 			if errors.As(err, &errRed) && errRed.Timeout() {
-				estado = http.StatusGatewayTimeout
+				estado, codigo, titulo, detalle = http.StatusGatewayTimeout, "TIEMPO_AGOTADO",
+					"Tiempo agotado", "Rumbo no respondió a tiempo; el pedido pudo haberse procesado. Reintentar con la misma Idempotency-Key."
 			}
 			slog.ErrorContext(r.Context(), "no se pudo reenviar la request",
 				slog.String("metodo", r.Method), slog.String("ruta", r.URL.Path),
 				slog.String("destino", destino), slog.Int("estado_http", estado), slog.String("error", err.Error()))
-			w.WriteHeader(estado)
+			problema.EscribirHTTP(w, estado, codigo, titulo, detalle)
 		},
 	}
 }

@@ -14,7 +14,7 @@ DIR_HOST="$(pwd -W 2>/dev/null || pwd)/pruebas/carga"
 CARPETA="pruebas/carga"
 PROYECTO="${COMPOSE_PROJECT_NAME:-$(basename "$PWD" | tr '[:upper:]' '[:lower:]')}"
 RED="${RED:-${PROYECTO}_default}"
-IMAGEN_K6="${IMAGEN_K6:-grafana/k6:latest}"
+IMAGEN_K6="${IMAGEN_K6:-grafana/k6:1.3.0}" # versión fija: la misma herramienta en cada corrida
 
 muestrear_stats() {
   local archivo="$1"

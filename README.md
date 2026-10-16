@@ -53,13 +53,15 @@ servicios/        un módulo Go por microservicio + el gateway (go.work los agru
   notificaciones/ Notificaciones (capas)                 → MongoDB
   integracion/    Integración de carga (capas)           → MongoDB
 frontend/         aplicación web (React + Vite + TypeScript)
-infra/            scripts de inicialización: una base de datos y un usuario por servicio
-docs/             arquitectura, ADR, contrato publicado y postmortem
+infra/            inicialización de MySQL y MongoDB, NGINX (balanceador) y Grafana (tablero y alertas)
+pruebas/carga/    pruebas de carga con k6 (ADR-015)
+docs/             arquitectura, ADR, contrato publicado, capacidad, evidencias y postmortem
 compose.yaml      levanta todo el sistema
 ```
 
 ## Parte desplegada
-> _Pendiente: URL pública de la capacidad publicada (requerida para la Presentación Grupal)._
+La aplicación web se publica en **Vercel** y el backend en **Railway**; solo el API Gateway queda expuesto ([ADR-018](docs/adr/ADR-018-despliegue-en-la-nube.md)).
+> _Pendiente: la URL pública se agrega acá y en [`docs/contracts/README.md`](docs/contracts/README.md) cuando se despliegue (requerida para la Presentación Grupal)._
 
 ## Forma de trabajo
 El proyecto sigue un enfoque guiado por especificación: primero el dominio y las reglas de negocio (`SPEC.md`), después las decisiones de arquitectura registradas antes de programar (`docs/adr/`) y recién entonces el código. Los cambios de decisión no borran la historia: quedan registrados en nuevos ADR.
@@ -71,7 +73,7 @@ El proyecto sigue un enfoque guiado por especificación: primero el dominio y la
 | Ramas | Una por tarea, corta y creada desde `main`: `feat/…`, `fix/…`, `docs/…`, `adr/…` (ej. `feat/asignacion-recorridos`, `adr/d6-busqueda`). |
 | Commits | En español, con prefijo de tipo: `feat: asignar chofer a recorrido`, `docs: ADR-005 búsqueda`. |
 | Pull requests | Cada PR describe qué cambia y qué ADR o funcionalidad (`F-xx` de `SPEC.md`) toca. Se integra a `main` cuando pasa la **verificación automática**. La revisión de otro integrante se suma cuando es posible. |
-| Integración continua | GitHub Actions (`.github/workflows/ci.yml`) verifica cada PR: formato, compilación, `go vet` y tests de los seis módulos Go, más lint y build del frontend. |
+| Integración continua | GitHub Actions (`.github/workflows/ci.yml`) verifica cada PR: formato, compilación, `go vet` y tests de los siete módulos Go (los seis servicios y `comun`), más lint y build del frontend. |
 | Entregas | Cada entrega se marca con un tag en `main`: `entrega-1`, `entrega-2`, `presentacion`. |
 | Decisiones | Un ADR ya integrado no se edita: un cambio de decisión se registra con un ADR nuevo que reemplaza al anterior. |
 
@@ -83,4 +85,7 @@ El proyecto sigue un enfoque guiado por especificación: primero el dominio y la
 | [`docs/adr/`](docs/adr/README.md) | Registro de decisiones arquitectónicas (un ADR por decisión) |
 | [`docs/contracts/`](docs/contracts/README.md) | Capacidad publicada: contrato versionado, ejemplos y errores; contratos consumidos en `docs/contracts/consumidos/` |
 | [`docs/interfaces-internas.md`](docs/interfaces-internas.md) | Contrato interno entre servicios: mensajes, endpoints internos, identidad, errores, logs, métricas y trazas |
+| [`docs/capacidad/`](docs/capacidad/informe-entrega-2.md) | Informe de las pruebas de carga (capacidad, caché y balanceo); scripts en [`pruebas/carga/`](pruebas/carga/README.md) |
+| [`docs/evidencias/`](docs/evidencias/entrega-2.md) | Evidencia de observabilidad: traza distribuida, logs correlacionados, balanceo y pruebas de fallas |
+| [`docs/diagramas/`](docs/diagramas/README.md) | Diagramas C4 como código (C4-PlantUML) |
 | [`docs/POSTMORTEM.md`](docs/POSTMORTEM.md) | Informe de la caída provocada |

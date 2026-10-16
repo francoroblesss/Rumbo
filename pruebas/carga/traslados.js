@@ -7,7 +7,7 @@
 //
 // Uso (lo corre ejecutar.sh):
 //   docker run --rm --network rumbo_default -v "$PWD/pruebas/carga:/scripts" \
-//     grafana/k6 run /scripts/traslados.js -e ESCENARIO=A
+//     grafana/k6:1.3.0 run /scripts/traslados.js -e ESCENARIO=A
 import http from 'k6/http';
 import { check } from 'k6';
 

@@ -1,0 +1,59 @@
+@startuml c4-contenedores
+' Rumbo — C4 nivel 2: contenedores. Fuente del diagrama; se renderiza con docs/diagramas/README.md.
+!include <C4/C4_Container>
+
+AddElementTag("pendiente", $bgColor="#bbbbbb", $borderColor="#888888", $fontColor="#222222", $legendText="Decidido, se implementa para la Presentación")
+AddElementTag("infra", $bgColor="#438dd5", $legendText="Infraestructura derivada (no es fuente de verdad)")
+
+title Rumbo · C4 nivel 2 · Contenedores (Entrega 2)
+
+Person(usuarios, "Cliente, operador, chofer y administrador", "Usan Rumbo desde el navegador.")
+System_Ext(almacenamiento, "Sistema de gestión de almacenamiento", "Otro grupo: consume la capacidad publicada.")
+System_Ext(aeropuerto, "Sistema de aeropuerto", "Otro grupo: condiciones climáticas.")
+
+System_Boundary(rumbo, "Rumbo") {
+  Container(web, "Aplicación web", "React + Vite + TypeScript", "Interfaz única para los cuatro roles.", $tags="pendiente")
+  Container(gateway, "API Gateway", "Go", "Punto de entrada único: valida el token firmado, reemplaza la identidad en headers, limita pedidos por organización (60/min), asigna X-Correlation-ID, deadline de 5 s.")
+
+  Container(identidad, "Identidad y clientes", "Go · capas", "Usuarios, roles, login y tokens; organizaciones cliente; padrón de personas.")
+  Container(balanceador, "Balanceador de Integración", "NGINX 1.28", "Round robin entre las dos réplicas; health check pasivo; vuelve a resolver las réplicas cada 10 s.")
+  Container(integracion, "Integración de carga (×2 réplicas)", "Go · capas", "Contrato público 'Solicitar traslado' v2: idempotencia, traducción al modelo interno, relay de pendientes, vista del estado.")
+  Container(operaciones, "Operaciones · núcleo", "Go · hexagonal", "Solicitudes y sus estados, contrapropuestas, vencimiento, traslados; outbox y relay; consulta el clima.")
+  Container(recursos, "Recursos", "Go · capas", "Choferes, vehículos, actividad, tarifas y preliquidación.", $tags="pendiente")
+  Container(notificaciones, "Notificaciones", "Go · capas", "Bandeja de avisos de cada usuario.", $tags="pendiente")
+
+  ContainerDb(mongo, "MongoDB", "MongoDB 7 · tres bases", "identidad · integracion · notificaciones (una base y un usuario por servicio).")
+  ContainerDb(mysql, "MySQL", "MySQL 8.4 · dos bases", "operaciones · recursos (una base y un usuario por servicio).")
+  ContainerDb(memcached, "Memcached", "Memcached 1.6", "Caché compartida por las dos réplicas: GET /v2/traslados/{id}, TTL 60 s.", $tags="infra")
+  ContainerQueue(rabbit, "RabbitMQ", "RabbitMQ 3", "Comando de solicitudes externas y eventos de Operaciones; reintento con TTL y DLQ por cola.")
+  ContainerDb(solr, "Apache Solr", "Solr 9 · core traslados", "Índice de búsqueda de traslados, derivado de Operaciones.", $tags="pendiente")
+  Container(lgtm, "Grafana LGTM", "OpenTelemetry · Prometheus · Loki · Tempo · Grafana", "Logs, métricas, trazas, tablero y alertas. Todos los servicios Go le exportan por OTLP.", $tags="infra")
+}
+
+Rel(usuarios, web, "Usa", "HTTPS")
+Rel(web, gateway, "Llama", "HTTPS/JSON · /api/v1")
+Rel(almacenamiento, gateway, "Solicita traslados y consulta su estado", "HTTPS/JSON · /v2, token")
+
+Rel(gateway, identidad, "Login y emisión de tokens", "HTTP/JSON")
+Rel(gateway, balanceador, "/v2/traslados", "HTTP/JSON")
+Rel(gateway, operaciones, "API del operador", "HTTP/JSON")
+Rel(gateway, recursos, "Rutea", "HTTP/JSON")
+Rel(gateway, notificaciones, "Rutea", "HTTP/JSON")
+Rel(balanceador, integracion, "Reparte", "HTTP")
+
+Rel(integracion, memcached, "Cache-aside", "memcache")
+Rel(integracion, mongo, "Lee / escribe base integracion", "MongoDB")
+Rel(integracion, operaciones, "Respuesta a contrapropuesta, cancelación", "HTTP · 2 s · breaker")
+Rel(integracion, rabbit, "Publica el comando; consume estados", "AMQP")
+Rel(operaciones, rabbit, "Consume el comando; publica eventos (outbox)", "AMQP")
+Rel(operaciones, mysql, "Lee / escribe base operaciones", "MySQL")
+Rel(operaciones, aeropuerto, "Operabilidad del aeropuerto", "HTTP · 1 s · breaker · caché 5 min")
+Rel(operaciones, solr, "Indexa y busca traslados", "HTTP")
+Rel(identidad, mongo, "Lee / escribe base identidad", "MongoDB")
+Rel(recursos, mysql, "Lee / escribe base recursos", "MySQL")
+Rel(notificaciones, mongo, "Lee / escribe base notificaciones", "MongoDB")
+Rel(recursos, rabbit, "Recorrido finalizado", "AMQP")
+Rel(notificaciones, rabbit, "Eventos para avisos", "AMQP")
+
+SHOW_LEGEND()
+@enduml

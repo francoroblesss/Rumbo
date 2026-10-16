@@ -198,7 +198,7 @@ services:
 
   # Balanceador de Integración de carga (ADR-009): round robin entre las dos réplicas.
   balanceador-integracion:
-    image: nginx:alpine
+    image: nginx:1.28-alpine # 1.27.3+ para "resolve" en el upstream
     volumes:
       - ./infra/nginx/integracion.conf:/etc/nginx/nginx.conf:ro
     depends_on:

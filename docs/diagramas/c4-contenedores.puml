@@ -31,7 +31,7 @@ System_Boundary(rumbo, "Rumbo") {
 }
 
 Rel(usuarios, web, "Usa", "HTTPS")
-Rel(web, gateway, "Llama", "HTTPS/JSON · /api/v1")
+Rel(web, gateway, "Llama", "HTTPS/JSON · /api")
 Rel(almacenamiento, gateway, "Solicita traslados y consulta su estado", "HTTPS/JSON · /traslados, token")
 
 Rel(gateway, identidad, "Login y emisión de tokens", "HTTP/JSON")

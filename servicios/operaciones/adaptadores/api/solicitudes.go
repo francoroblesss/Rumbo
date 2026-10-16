@@ -39,7 +39,7 @@ func NuevoHandler(casos puertos.Solicitudes) *Handler {
 
 // Registrar agrega las rutas (docs/interfaces-internas.md §4.1 y §4.2).
 func (h *Handler) Registrar(r gin.IRouter) {
-	// API del operador: llega por el gateway (/api/v1/operaciones/...), que ya validó el token.
+	// API del operador: llega por el gateway (/api/operaciones/...), que ya validó el token.
 	// La autorización la decide Operaciones sobre sus datos (teórico 6).
 	operador := r.Group("/solicitudes", identidad.RequiereRol(identidad.RolOperador, identidad.RolAdministrador))
 	operador.GET("", h.listar)
@@ -50,7 +50,7 @@ func (h *Handler) Registrar(r gin.IRouter) {
 	operador.POST("/:id/cancelacion-tardia", h.resolverCancelacionTardia)
 
 	// Endpoints internos para Integración de carga: el gateway no expone /internas/.
-	internas := r.Group("/internas/v1/solicitudes")
+	internas := r.Group("/internas/solicitudes")
 	internas.POST("/:id/respuesta-contrapropuesta", h.responderContrapropuesta)
 	internas.POST("/:id/cancelacion", h.cancelar)
 }

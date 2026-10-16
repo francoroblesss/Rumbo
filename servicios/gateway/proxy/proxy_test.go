@@ -31,7 +31,7 @@ func TestQuitaElPrefijoAntesDeReenviar(t *testing.T) {
 	defer servicio.Close()
 
 	rec := httptest.NewRecorder()
-	Nuevo(servicio.URL, "/api/v1/recursos").ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/recursos/choferes", nil))
+	Nuevo(servicio.URL, "/api/recursos").ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/recursos/choferes", nil))
 
 	if rutaRecibida != "/choferes" {
 		t.Fatalf("el servicio recibió %q, se esperaba /choferes", rutaRecibida)

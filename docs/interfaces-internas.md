@@ -43,7 +43,7 @@ JWT firmado **HS256** con `TOKEN_SECRETO`, librería `github.com/golang-jwt/jwt/
 
 ### Rutas públicas (sin token) en el gateway
 - `POST /auth/token` (client credentials del contrato público) → Identidad `POST /auth/token`.
-- `POST /api/v1/identidad/login` (usuarios de la web) → Identidad `POST /login`.
+- `POST /api/identidad/login` (usuarios de la web) → Identidad `POST /login`.
 
 Todo lo demás exige `Authorization: Bearer <token>` (401 `NO_AUTENTICADO` si falta o es inválido).
 
@@ -70,13 +70,13 @@ Base: `OPERACIONES_URL` (en Docker, `http://operaciones:8082`). Headers obligato
 
 | Método y ruta | Cuerpo | Respuesta |
 | --- | --- | --- |
-| `POST /internas/v1/solicitudes/{id}/respuesta-contrapropuesta` | `{"acepta": true}` | `200` con la **vista de solicitud** (§6) · `404 NO_ENCONTRADA` · `409 ESTADO_NO_PERMITE_OPERACION` / `CONTRAPROPUESTA_VENCIDA` · `422 DATOS_INVALIDOS` |
-| `POST /internas/v1/solicitudes/{id}/cancelacion` | `{"motivo": "texto"}` | `200` con la vista · `404` · `409 ESTADO_NO_PERMITE_OPERACION` · `422` |
+| `POST /internas/solicitudes/{id}/respuesta-contrapropuesta` | `{"acepta": true}` | `200` con la **vista de solicitud** (§6) · `404 NO_ENCONTRADA` · `409 ESTADO_NO_PERMITE_OPERACION` / `CONTRAPROPUESTA_VENCIDA` · `422 DATOS_INVALIDOS` |
+| `POST /internas/solicitudes/{id}/cancelacion` | `{"motivo": "texto"}` | `200` con la vista · `404` · `409 ESTADO_NO_PERMITE_OPERACION` · `422` |
 
 - Operaciones verifica que la solicitud sea de `X-Rumbo-Organizacion` (si no, `404`).
 - Si Operaciones todavía no recibió la solicitud (`404` para una solicitud que Integración tiene como `RECIBIDA`), Integración responde **`503 SERVICIO_NO_DISPONIBLE`** con `Retry-After: 5`: es un estado transitorio, no un error del consumidor.
 
-### 4.2 Operaciones — API del operador (a través del gateway, `/api/v1/operaciones/...`)
+### 4.2 Operaciones — API del operador (a través del gateway, `/api/operaciones/...`)
 Requiere rol `operador` o `administrador`.
 
 | Método y ruta (en Operaciones) | Cuerpo | Efecto |

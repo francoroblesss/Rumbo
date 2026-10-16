@@ -124,7 +124,7 @@ func TestLaIdentidadDelClienteNoLlegaAlServicio(t *testing.T) {
 	}
 
 	// Con token: llegan los valores del token, no los que mandó el cliente.
-	e.pedir(http.MethodGet, "/api/v1/operaciones/solicitudes", token(t, "org-1", "cliente"), falsos)
+	e.pedir(http.MethodGet, "/api/operaciones/solicitudes", token(t, "org-1", "cliente"), falsos)
 	recibida := e.operaciones.recibida
 	if recibida.Header.Get("X-Rumbo-Roles") != "cliente" || recibida.Header.Get("X-Rumbo-Organizacion") != "org-1" ||
 		recibida.Header.Get("X-Rumbo-Usuario") != "usr-7" {
@@ -142,7 +142,7 @@ func TestLaIdentidadDelClienteNoLlegaAlServicio(t *testing.T) {
 
 func TestLasRutasInternasNoSeExponen(t *testing.T) {
 	e := nuevoEntorno(t)
-	w := e.pedir(http.MethodPost, "/api/v1/operaciones/internas/v1/solicitudes/sol-1/cancelacion",
+	w := e.pedir(http.MethodPost, "/api/operaciones/internas/solicitudes/sol-1/cancelacion",
 		token(t, "org-1", "sistema_externo"), nil)
 	if w.Code != http.StatusNotFound || e.operaciones.llamadas != 0 {
 		t.Fatalf("estado = %d, llamadas = %d", w.Code, e.operaciones.llamadas)
@@ -154,8 +154,8 @@ func TestLasRutasPublicasPasanSinToken(t *testing.T) {
 	if w := e.pedir(http.MethodPost, "/auth/token", "", nil); w.Code != http.StatusNoContent {
 		t.Errorf("POST /auth/token: estado = %d", w.Code)
 	}
-	if w := e.pedir(http.MethodPost, "/api/v1/identidad/login", "", nil); w.Code != http.StatusNoContent {
-		t.Errorf("POST /api/v1/identidad/login: estado = %d", w.Code)
+	if w := e.pedir(http.MethodPost, "/api/identidad/login", "", nil); w.Code != http.StatusNoContent {
+		t.Errorf("POST /api/identidad/login: estado = %d", w.Code)
 	}
 	if got := e.identidad.recibida.URL.Path; got != "/login" {
 		t.Errorf("el login se reenvía a Identidad como /login, llegó %q", got)

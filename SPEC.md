@@ -251,6 +251,6 @@ Anunciados en la Entrega 2 (consigna §7). Se implementan para la Presentación 
 | Fecha | Cambio | Motivo |
 | --- | --- | --- |
 | 2026-10-11 | F-28: la capacidad publicada pasa de "Solicitar traslado de carga" (carga con bultos y peso obligatorios) a **"Solicitar traslado"** genérico: `cosa`, `origen` y `destino` obligatorios; sin hora pedida, Rumbo propone una con una contrapropuesta. Se agrega CA-29 | Corrección de la Entrega 1 (ADR-006) |
-| 2026-10-16 | F-28: las rutas de la capacidad publicada dejan de llevar versión (`/v2/traslados` → `/traslados`); el contrato pasa a la versión 3.0.0 sin otros cambios | Indicación recibida por el grupo (ADR-019) |
+| 2026-10-16 | F-28: las rutas de la capacidad publicada dejan de llevar versión (`/v2/traslados` → `/traslados`); el contrato pasa a la versión 3.0.0 sin otros cambios | Indicación del profesor en clase (ADR-019) |
 | 2026-10-14 | Se anuncian los bonus (§7): actualizaciones en tiempo real y tests de punta a punta | Consigna §7: los bonus se anuncian en la Entrega 2 |
 | 2026-10-14 | F-29 pasa a "Alerta climática en traslados al aeropuerto". Se agregan R-41 (regla de clima: consulta de operabilidad, alerta climática y decisión del operador) y CA-30 y CA-31 | Consumo de la capacidad de clima del otro grupo (D9, ADR-012) |

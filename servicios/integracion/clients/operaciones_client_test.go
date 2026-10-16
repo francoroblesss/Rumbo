@@ -75,7 +75,7 @@ func TestClienteEnviaHeadersYCuerpo(t *testing.T) {
 	if _, err := NewOperacionesClient(srv.URL).Cancelar(ctx, "org-1", "clave-0001", "sol-1", "ya no hace falta"); err != nil {
 		t.Fatal(err)
 	}
-	if recibida.Method != http.MethodPost || recibida.URL.Path != "/internas/v1/solicitudes/sol-1/cancelacion" {
+	if recibida.Method != http.MethodPost || recibida.URL.Path != "/internas/solicitudes/sol-1/cancelacion" {
 		t.Fatalf("ruta incorrecta: %s %s", recibida.Method, recibida.URL.Path)
 	}
 	h := recibida.Header

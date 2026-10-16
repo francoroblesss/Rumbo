@@ -131,7 +131,7 @@ func TestTokenValidoPropagaLaIdentidad(t *testing.T) {
 
 func TestTokenSinOrganizacionNoPropagaOrganizacion(t *testing.T) {
 	token := firmar(t, jwt.SigningMethodHS256, secreto, func(r *reclamos) { r.Org = "" })
-	_, llegada := pedir(t, http.MethodGet, "/api/v1/operaciones/solicitudes", "Bearer "+token)
+	_, llegada := pedir(t, http.MethodGet, "/api/operaciones/solicitudes", "Bearer "+token)
 	if llegada == nil {
 		t.Fatal("la request tendría que llegar")
 	}
@@ -141,14 +141,14 @@ func TestTokenSinOrganizacionNoPropagaOrganizacion(t *testing.T) {
 }
 
 func TestRutasPublicasNoPidenToken(t *testing.T) {
-	for _, ruta := range []string{"/auth/token", "/api/v1/identidad/login"} {
+	for _, ruta := range []string{"/auth/token", "/api/identidad/login"} {
 		w, llegada := pedir(t, http.MethodPost, ruta, "")
 		if w.Code != http.StatusNoContent || llegada == nil {
 			t.Errorf("POST %s sin token: estado = %d, esperaba que pase", ruta, w.Code)
 		}
 	}
 	// Solo son públicas con POST: el resto de los métodos y rutas sigue pidiendo token.
-	w, llegada := pedir(t, http.MethodGet, "/api/v1/identidad/login", "")
+	w, llegada := pedir(t, http.MethodGet, "/api/identidad/login", "")
 	verificar401(t, "GET login", w, llegada)
 	w, llegada = pedir(t, http.MethodPost, "/traslados", "")
 	verificar401(t, "POST traslados sin token", w, llegada)

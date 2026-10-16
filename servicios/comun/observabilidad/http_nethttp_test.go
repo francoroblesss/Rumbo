@@ -43,15 +43,15 @@ func TestInstrumentarHTTPPropagaCorrelacion(t *testing.T) {
 
 func TestRutaAgrupada(t *testing.T) {
 	casos := map[string]string{
-		"/traslados":                         "/traslados",
-		"/traslados/sol-7f3a":                "/traslados",
-		"/traslados/sol-7f3a/cancelacion":    "/traslados",
-		"/auth/token":                        "/auth",
-		"/api/v1/operaciones/solicitudes":    "/api/v1/operaciones",
-		"/api/v1/operaciones/solicitudes/42": "/api/v1/operaciones",
-		"/api/v1/identidad/login":            "/api/v1/identidad",
-		"/api":                               "/api",
-		"/":                                  "/",
+		"/traslados":                      "/traslados",
+		"/traslados/sol-7f3a":             "/traslados",
+		"/traslados/sol-7f3a/cancelacion": "/traslados",
+		"/auth/token":                     "/auth",
+		"/api/operaciones/solicitudes":    "/api/operaciones",
+		"/api/operaciones/solicitudes/42": "/api/operaciones",
+		"/api/identidad/login":            "/api/identidad",
+		"/api":                            "/api",
+		"/":                               "/",
 	}
 	for path, esperada := range casos {
 		if obtenida := rutaAgrupada(path); obtenida != esperada {

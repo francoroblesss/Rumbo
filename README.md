@@ -35,7 +35,7 @@ Consumo de memoria: el sistema completo usa unos **2,5–3,5 GB** de RAM; convie
 
 | Componente | Dirección |
 | --- | --- |
-| API Gateway (único punto de entrada) | http://localhost:8080 — contrato público en `/auth/token` y `/traslados`, API interna en `/api/v1/<servicio>/...` |
+| API Gateway (único punto de entrada) | http://localhost:8080 — contrato público en `/auth/token` y `/traslados`, API interna en `/api/<servicio>/...` |
 | Panel de RabbitMQ | http://localhost:15672 |
 | Grafana: logs, métricas, trazas y tablero (`admin`/`admin`; solo con el perfil `observabilidad`) | http://localhost:3000 |
 | Mock del clima que consume Rumbo | http://localhost:4020 |

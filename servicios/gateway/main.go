@@ -56,12 +56,12 @@ func armar(cfg config.Config, limitador *limite.Limitador) http.Handler {
 	mux.Handle("/traslados", proxy.Nuevo(cfg.IntegracionURL, ""))
 	mux.Handle("/traslados/", proxy.Nuevo(cfg.IntegracionURL, ""))
 
-	// API interna para la aplicación web, versionada: /api/v1/<servicio>/... se reenvía
-	// al servicio sin el prefijo (ej. /api/v1/recursos/choferes → /choferes en Recursos).
-	mux.Handle("/api/v1/identidad/", proxy.Nuevo(cfg.IdentidadURL, "/api/v1/identidad"))
-	mux.Handle("/api/v1/operaciones/", proxy.Nuevo(cfg.OperacionesURL, "/api/v1/operaciones"))
-	mux.Handle("/api/v1/recursos/", proxy.Nuevo(cfg.RecursosURL, "/api/v1/recursos"))
-	mux.Handle("/api/v1/notificaciones/", proxy.Nuevo(cfg.NotificacionesURL, "/api/v1/notificaciones"))
+	// API interna para la aplicación web: /api/<servicio>/... se reenvía al servicio sin el
+	// prefijo (ej. /api/recursos/choferes → /choferes en Recursos). Sin versión en la ruta (ADR-019).
+	mux.Handle("/api/identidad/", proxy.Nuevo(cfg.IdentidadURL, "/api/identidad"))
+	mux.Handle("/api/operaciones/", proxy.Nuevo(cfg.OperacionesURL, "/api/operaciones"))
+	mux.Handle("/api/recursos/", proxy.Nuevo(cfg.RecursosURL, "/api/recursos"))
+	mux.Handle("/api/notificaciones/", proxy.Nuevo(cfg.NotificacionesURL, "/api/notificaciones"))
 
 	// Cualquier otra ruta: 404 con el mismo formato de error que el resto.
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {

@@ -1,7 +1,7 @@
 # ADR-011 — Búsqueda de traslados con Apache Solr (D6)
 
 - **Fecha:** 2026-10-14
-- **Estado:** aceptada (se implementa para la Presentación Grupal)
+- **Estado:** aceptada (se implementa para la Presentación Grupal) — la ruta del endpoint pasa a `/api/operaciones/traslados/busqueda` y la de reindexación a `/api/operaciones/admin/reindexacion`, sin versión ([ADR-019](ADR-019-contrato-sin-version-en-la-ruta.md)). El resto sigue vigente.
 
 ## Contexto
 La consigna (§2.6) pide que una entidad del dominio tenga búsqueda con un **motor de búsqueda**, con **paginación**, **filtros relevantes**, al menos **un criterio de ordenamiento**, un índice **sincronizado** con los cambios y un **retraso máximo tolerable** definido. El dominio definió la **búsqueda de traslados** (`dominio.md` §13 bis, `SPEC.md` F-27):

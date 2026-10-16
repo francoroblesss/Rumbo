@@ -40,7 +40,7 @@ Consumo de memoria: el sistema completo usa unos **2,5–3,5 GB** de RAM; convie
 | Grafana: logs, métricas, trazas y tablero (`admin`/`admin`; solo con el perfil `observabilidad`) | http://localhost:3000 |
 | Mock del clima que consume Rumbo | http://localhost:4020 |
 | MySQL (por ejemplo, desde SQL Workbench) | `localhost:13306` |
-| Aplicación web (desarrollo) | `cd frontend && npm install && npm run dev` → http://localhost:5173 |
+| Aplicación web: consola del operador (desarrollo; ingreso con `ADMIN_EMAIL` / `ADMIN_PASSWORD` de `.env`) | `cd frontend && npm install && npm run dev` → http://localhost:5173 |
 
 ## Estructura del repositorio
 ```

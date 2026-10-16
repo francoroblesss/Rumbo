@@ -18,7 +18,7 @@ Fuente: [`diagramas/c4-contexto.puml`](diagramas/c4-contexto.puml) (C4-PlantUML;
 
 Fuente: [`diagramas/c4-contenedores.puml`](diagramas/c4-contenedores.puml). En gris, lo que ya está decidido y se implementa para la Presentación Grupal.
 
-- Una **aplicación web** y un **API Gateway** como punto de entrada único: token firmado, ruteo, límite de pedidos y correlation id.
+- Una **aplicación web** y un **API Gateway** como punto de entrada único: token firmado, ruteo, límite de pedidos y correlation id. La web habla solo con el gateway; en la Entrega 2 tiene la consola del operador ([`frontend/README.md`](../frontend/README.md)).
 - **Cinco microservicios en Go:** Identidad y clientes, Operaciones (núcleo), Recursos, Notificaciones e Integración de carga.
   - Integración corre en **dos réplicas** detrás de un balanceador **NGINX** (D12, [ADR-009](adr/ADR-009-balanceo.md)).
 - **Almacenamiento:** una base de datos por microservicio, dos en **MySQL** y tres en **MongoDB**. Cada servicio accede solo a la suya.

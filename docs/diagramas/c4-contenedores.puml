@@ -12,7 +12,7 @@ System_Ext(almacenamiento, "Sistema de gestión de almacenamiento", "Otro grupo:
 System_Ext(aeropuerto, "Sistema de aeropuerto", "Otro grupo: condiciones climáticas.")
 
 System_Boundary(rumbo, "Rumbo") {
-  Container(web, "Aplicación web", "React + Vite + TypeScript", "Interfaz única para los cuatro roles.", $tags="pendiente")
+  Container(web, "Aplicación web", "React + Vite + TypeScript", "Interfaz única. Hoy: consola del operador; cliente y chofer para la Presentación.")
   Container(gateway, "API Gateway", "Go", "Punto de entrada único: valida el token firmado, reemplaza la identidad en headers, limita pedidos por organización (60/min), asigna X-Correlation-ID, deadline de 5 s.")
 
   Container(identidad, "Identidad y clientes", "Go · capas", "Usuarios, roles, login y tokens; organizaciones cliente; padrón de personas.")

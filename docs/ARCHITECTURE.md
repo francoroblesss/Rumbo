@@ -36,8 +36,8 @@ Cinco microservicios detrás de un API Gateway. Justificación en [ADR-001](adr/
 - Recursos y Notificaciones reciben eventos de Operaciones (recorrido finalizado, avisos).
 - La capacidad publicada entra por el Gateway a **Integración de carga**, que entrega las solicitudes a Operaciones y recibe los cambios de estado por eventos. Las decisiones de negocio las toma Operaciones.
 - La capacidad consumida (clima) sale desde Operaciones.
-### 3.1 Organización interna de cada servicio (bajo nivel, preliminar)
-La consigna pide al menos dos estilos de arquitectura distintos. La justificación formal va en D2 (Entrega 2); esta es la estructura con la que se empezó:
+### 3.1 Organización interna de cada servicio (bajo nivel)
+La consigna pide al menos dos estilos de arquitectura distintos. Justificación en [ADR-010](adr/ADR-010-estilos-internos.md) (D2); esta es la estructura con la que se empezó:
 
 | Servicio | Estilo | Estructura |
 | --- | --- | --- |
@@ -85,7 +85,7 @@ Detalle en [ADR-004](adr/ADR-004-comunicacion-entre-servicios.md) (D5).
 ## 6. Integración con otros grupos
 - **Capacidad publicada — Solicitar traslado** ([ADR-002](adr/ADR-002-contrato-propio.md), versión vigente en [ADR-006](adr/ADR-006-contrato-generico-v2.md)): API REST **`/v2`** descrita en OpenAPI 3.1 ([`contracts/`](contracts/README.md)). Es genérica: tres datos obligatorios (`cosa`, `origen`, `destino`). Entra por el API Gateway (token firmado) y la atiende el servicio **Integración de carga**, que la traduce al modelo interno y la entrega a Operaciones. El procesamiento es asíncrono (`202` + estado `RECIBIDA`); sin hora pedida, Rumbo propone una (`CONTRAPROPUESTA`). El seguimiento es por consulta, los `POST` son idempotentes y los errores usan Problem Details. Hay un mock generado con Prism. La versión 1.0.0 (`/v1`, específica de carga) quedó reemplazada sin haber tenido consumidores.
 - **Rutas del gateway:** contrato público en `/v2/auth/` y `/v2/traslados`; API interna de la aplicación web en `/api/v1/<servicio>/`.
-<!-- Capacidad consumida (D9): sistema de aeropuerto (clima); la llamada sale desde Operaciones. -->
+- **Capacidad consumida — Clima del sistema de aeropuerto** ([ADR-012](adr/ADR-012-consumo-clima.md)): Operaciones consulta la operabilidad del aeropuerto (`GET /v1/airports/SACO/conditions`, contrato fijado en [`contracts/consumidos/`](contracts/consumidos/README.md)) al aceptar un traslado al aeropuerto dentro de las próximas 6 h; si no es operable, el traslado queda con alerta climática y decide el operador. Es fail-open (si el proveedor falla, la alerta queda "clima no verificado" y la aceptación sigue), con timeout de 1 s, un reintento solo ante errores transitorios, circuit breaker (5 fallas, 30 s), caché local de 5 min y test de contrato con `kin-openapi`.
 
 ## 7. Búsqueda, caché y balanceo de carga
 **Caché** ([ADR-007](adr/ADR-007-cache.md), D7): **Memcached**, compartido por las dos réplicas de Integración de carga, con el patrón **cache-aside** sobre la consulta por id del contrato público (`GET /v2/traslados/{id}`), implementado como decorador del repositorio. La clave incluye la organización (`integracion:solicitud:{organizacion_id}:{solicitud_id}:v1`), el TTL es de **60 s** (más un jitter de 0 a 10 s) y la clave se **invalida** (se borra) cada vez que se aplica un evento de Operaciones o una escritura propia. Si Memcached falla o tarda más de 100 ms, se lee de MongoDB: la caída de la caché nunca produce un error. Se mide con `rumbo_cache_operaciones_total{cache="solicitudes", resultado="hit|miss|error"}`.

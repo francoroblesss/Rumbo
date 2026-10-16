@@ -95,7 +95,7 @@ Rumbo es una plataforma única de gestión operativa de **traslados programados 
 | F-26 | **Bandeja de avisos** para cliente, chofer y operador. | R-38 |
 | F-27 | **Buscar traslados** con texto libre, filtros, orden y paginación. | R-39, R-40 |
 | F-28 | **Capacidad publicada "Solicitar traslado"** para sistemas externos: trasladar una **cosa** desde un **origen** hasta un **destino** (tres datos obligatorios; hora y demás opcionales). Contrato v2 en `docs/contracts/`. | R-02, R-04, R-06 a R-09, R-15 a R-17 |
-| F-29 | **Uso de condiciones climáticas** del sistema de aeropuerto. | Se define al conocer su contrato |
+| F-29 | **Alerta climática en traslados al aeropuerto** con la capacidad de clima del sistema de aeropuerto (consulta al aceptar y al iniciar el recorrido) | R-41 |
 
 ## 4. Reglas de negocio
 
@@ -134,6 +134,7 @@ Rumbo es una plataforma única de gestión operativa de **traslados programados 
 - **R-23** **Capacidad por tramo:** entre cada par de paradas consecutivas, la ocupación a bordo no puede superar la capacidad del vehículo. Se cuentan personas, incluidos los acompañantes, o kg de carga. Una persona en silla de ruedas exige un vehículo adaptado.
 - **R-24** Un chofer tiene como máximo un vehículo propio, que solo maneja él, y puede manejar vehículos de Rumbo. Ida y vuelta se asignan por separado: pueden tener chofer o vehículo distintos.
 - **R-25** Al cambiar un horario, Rumbo detecta los recorridos en conflicto y el operador los resuelve.
+- **R-41** En un traslado con origen o destino en el aeropuerto (`SACO`, marcado por el operador al aceptar) y hora comprometida dentro de las próximas 6 h, Rumbo consulta la operabilidad del aeropuerto al aceptar y al iniciar el recorrido: si no es operable, el traslado queda con una alerta climática con sus motivos, se avisa al operador y al cliente, y el operador decide mantener, proponer otro horario o cancelar; si el servicio de clima no responde, se sigue sin el dato y la alerta queda "clima no verificado".
 
 ### Ejecución e incidentes
 - **R-26** En un traslado de varias personas, la ausencia se registra **por persona**. El tramo se completa con quienes viajaron y queda `NO_REALIZADO` solo si no viajó nadie.
@@ -236,6 +237,8 @@ RECIBIDA ──operador──> ACEPTADA                   (crea traslados o plan
 - **CA-27** (F-28) **Dado** el sistema externo, **cuando** repite la misma solicitud con la misma clave de idempotencia, **entonces** se registra una sola solicitud y recibe la misma respuesta.
 - **CA-28** (F-26, R-38) **Dado** un recorrido reasignado a otro chofer, **cuando** se confirma, **entonces** ambos choferes reciben un aviso en su bandeja.
 - **CA-29** (F-28, R-07) **Dado** el sistema externo, **cuando** solicita un traslado solo con cosa, origen y destino (sin hora), **entonces** queda `RECIBIDA` y, al revisarla, el operador le propone un horario (`CONTRAPROPUESTA`) en lugar de fijarlo por su cuenta.
+- **CA-30** (F-29, R-41) **Dado** un traslado al aeropuerto dentro de las próximas 6 h y el aeropuerto no operable, **cuando** el operador acepta la solicitud, **entonces** el traslado queda con alerta climática y sus motivos, y se avisa al operador y al cliente.
+- **CA-31** (F-29, R-41) **Dado** el servicio de clima caído, **cuando** el operador acepta una solicitud al aeropuerto, **entonces** la aceptación se completa y el traslado queda "clima no verificado".
 
 ## 7. Bonus anunciados
 Anunciados en la Entrega 2 (consigna §7). Se implementan para la Presentación Grupal; tienen que estar integrados, documentados, testeados y defendidos.
@@ -248,3 +251,4 @@ Anunciados en la Entrega 2 (consigna §7). Se implementan para la Presentación 
 | Fecha | Cambio | Motivo |
 | --- | --- | --- |
 | 2026-10-11 | F-28: la capacidad publicada pasa de "Solicitar traslado de carga" (carga con bultos y peso obligatorios) a **"Solicitar traslado"** genérico: `cosa`, `origen` y `destino` obligatorios; sin hora pedida, Rumbo propone una con una contrapropuesta. Se agrega CA-29 | Corrección de la Entrega 1 (ADR-006) |
+| 2026-10-14 | F-29 pasa a "Alerta climática en traslados al aeropuerto". Se agregan R-41 (regla de clima: consulta de operabilidad, alerta climática y decisión del operador) y CA-30 y CA-31 | Consumo de la capacidad de clima del otro grupo (D9, ADR-012) |

@@ -13,6 +13,9 @@ type Config struct {
 	RabbitURI    string // broker de mensajes
 	RecursosURL  string // servicio Recursos
 	IdentidadURL string // servicio Identidad y clientes
+	ClimaURL     string // API de Clima del sistema de aeropuerto (ADR-012)
+	ClimaAPIKey  string // clave de consumidor del proveedor de clima (secreto)
+	ClimaICAO    string // aeropuerto consultado
 }
 
 // Cargar lee la configuración del entorno. Las URIs con credenciales no tienen valor por
@@ -24,6 +27,9 @@ func Cargar() Config {
 		RabbitURI:    obligatorio("RABBITMQ_URI"),
 		RecursosURL:  valor("RECURSOS_URL", "http://localhost:8083"),
 		IdentidadURL: valor("IDENTIDAD_URL", "http://localhost:8081"),
+		ClimaURL:     obligatorio("CLIMA_URL"),
+		ClimaAPIKey:  obligatorio("CLIMA_API_KEY"),
+		ClimaICAO:    valor("CLIMA_ICAO", "SACO"),
 	}
 }
 

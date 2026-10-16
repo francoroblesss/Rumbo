@@ -107,6 +107,8 @@ RECIBIDA
 - **Vuelta a confirmar:** un traslado puede incluir una vuelta **con horario pendiente** (ej. no se sabe cuándo termina el tratamiento). Es distinto de "sin vuelta". El horario se confirma después, y el operador debe programarla y asignarla antes de ejecutarla.
 - Los **tiempos** (duración de tramos y viajes entre paradas) los **estima el operador**. Rumbo no calcula rutas ni distancias (ver consultas al profesor).
 
+**Clima en traslados al aeropuerto.** Una ubicación puede marcarse como el aeropuerto (Córdoba, `SACO`); en esta etapa lo marca el operador al aceptar la solicitud. Para un traslado con origen o destino en el aeropuerto cuya hora comprometida esté dentro de las próximas 6 h, Rumbo consulta la operabilidad del aeropuerto (al aceptar y al iniciar el recorrido). Si no es operable, el traslado queda con una alerta climática (con sus motivos), se avisa al operador y al cliente, y el operador decide mantener, proponer otro horario o cancelar. Si el servicio de clima no responde, se sigue sin el dato y la alerta queda "clima no verificado".
+
 ## 9. Modificaciones y cancelaciones
 - **24 h o más de anticipación:** el cliente puede pedir el cambio o cancelar. Si el cambio afecta horarios o recursos, se revisa la disponibilidad.
 - **Menos de 24 h:** es una **excepción**, y el operador la aprueba o no.
@@ -198,7 +200,7 @@ Por ahora los avisos llegan **solo dentro de Rumbo**: cada usuario los ve en su 
 
 ## 15. Integración con otros grupos
 - **Capacidad que Rumbo publica: "Solicitar traslado"** (genérica desde el 11/10/2026, ver registro de cambios). Un sistema externo pide **trasladar una cosa desde un origen hasta un destino**: solo `cosa` (descripción y cantidad), `origen` y `destino` son obligatorios; peso, volumen, hora, tolerancia y referencia externa son opcionales. Rumbo responde "solicitud recibida". **Si no se indicó hora, el operador propone una** (contrapropuesta, §6). Desde ahí sigue el flujo normal: revisión, planificación, asignación, ejecución y resultado. Adentro de Rumbo se trata como un traslado de carga. El otro sistema **inicia una operación real** dentro de Rumbo, que es lo que exige la consigna.
-- **Capacidad que Rumbo consume:** la asignan los profesores. Se sabe que es un **sistema de aeropuerto que expone condiciones climáticas**. El flujo de Rumbo en el que impacta **se define al conocer su contrato** (ver §17).
+- **Capacidad que Rumbo consume:** la API de Clima del sistema de aeropuerto (contrato fijado en `docs/contracts/consumidos/`). Se usa en la regla de clima de §8 (ADR-012).
 
 ## 16. Fuera de alcance
 - Facturación y cobros a clientes, incluidas multas por cancelación.
@@ -218,9 +220,9 @@ Por ahora los avisos llegan **solo dentro de Rumbo**: cada usuario los ve en su 
 | --- | --- | --- |
 | 1 | ¿Se puede calcular automáticamente tiempos y distancias con un servicio de mapas? | El operador estima los tiempos de cada parada. |
 | 2 | ¿Los avisos deberían llegar también por email u otro canal externo? | Solo dentro de Rumbo (bandeja de notificaciones). |
-| 3 | **Dependencia externa:** contrato del sistema de aeropuerto (clima) y flujo de Rumbo en el que impacta. | Se define al conocer el contrato; tiene que tener consecuencias en un flujo importante (consigna §4.1). |
 
 ## Registro de cambios
 | Fecha | Cambio | Motivo |
 | --- | --- | --- |
 | 2026-10-11 | §15: la capacidad publicada pasa de "Solicitar traslado de carga" (empresa de stock; descripción, bultos, peso, hora y referencia obligatorios) a **"Solicitar traslado"** genérico (cosa, origen y destino; el resto opcional; sin hora, contrapropuesta) | Corrección de la Entrega 1 del profesor: "traslado = función con 3 parámetros: cosa, inicio y destino; más abstracto para que gestión de almacenamiento nos consuma" (ADR-006) |
+| 2026-10-14 | §8: regla de clima para traslados al aeropuerto (consulta de operabilidad, alerta climática y decisión del operador) | Consumo de la capacidad de clima del otro grupo (D9, ADR-012) |

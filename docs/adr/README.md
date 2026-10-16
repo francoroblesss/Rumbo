@@ -14,7 +14,7 @@ Cada decisión se conserva en un archivo independiente `ADR-NNN-titulo-corto.md`
 | D7 | Caché | E2 | [ADR-007](ADR-007-cache.md) |
 | D8 | Contrato propio | E1 (actualizar en E2 si cambió) | [ADR-002](ADR-002-contrato-propio.md), contrato reemplazado por [ADR-006](ADR-006-contrato-generico-v2.md) (v2) |
 | D9 | Consumo del proveedor | E2 | [ADR-012](ADR-012-consumo-clima.md) |
-| D10 | Resiliencia | E2 | [ADR-008](ADR-008-resiliencia.md) |
+| D10 | Resiliencia | E2 | [ADR-008](ADR-008-resiliencia.md), reconexión reemplazada por [ADR-017](ADR-017-reconexion-broker-y-balanceador.md) |
 | D11 | Observabilidad | E2 primera versión | [ADR-014](ADR-014-observabilidad.md) |
 | D12 | Balanceo de carga | E2 | [ADR-009](ADR-009-balanceo.md) |
 | D13 | Capacidad y costos | E2 | [ADR-015](ADR-015-capacidad-y-costos.md) |
@@ -24,6 +24,7 @@ Cada decisión se conserva en un archivo independiente `ADR-NNN-titulo-corto.md`
 | --- | --- |
 | [ADR-005](ADR-005-mysql-como-motor-relacional.md) | MySQL como motor relacional (reemplaza parcialmente a ADR-003) |
 | [ADR-006](ADR-006-contrato-generico-v2.md) | Contrato genérico "Solicitar traslado" v2 (reemplaza parcialmente a ADR-002) |
+| [ADR-017](ADR-017-reconexion-broker-y-balanceador.md) | Reconexión al broker sin terminar el proceso y resolución dinámica de réplicas en NGINX (reemplaza parcialmente a ADR-008) |
 
 ## Formato
 ```

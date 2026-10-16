@@ -1,7 +1,7 @@
 # ADR-016 — Validación de la comunicación entre servicios (D5) con latencias medidas
 
 - **Fecha:** 2026-10-16
-- **Estado:** aceptada
+- **Estado:** aceptada — los dos ajustes pendientes del outbox y del balanceador se resolvieron en [ADR-017](ADR-017-reconexion-broker-y-balanceador.md).
 - **Reemplaza parcialmente a:** ninguno (ningún timeout cambia)
 
 ## Contexto

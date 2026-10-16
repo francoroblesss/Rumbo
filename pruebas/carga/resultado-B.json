@@ -1,0 +1,64 @@
+{
+  "escenario": "B",
+  "fecha": "2026-10-16T15:32:59.490Z",
+  "inicio_escalones": 1792164569,
+  "duracion_escalon_s": 30,
+  "escalones": [
+    {
+      "objetivo_rps": 1,
+      "logrado_rps": 1,
+      "requests": 30,
+      "p95_ms": 4.6,
+      "p99_ms": 5,
+      "errores_pct": 0
+    },
+    {
+      "objetivo_rps": 2,
+      "logrado_rps": 2.03,
+      "requests": 61,
+      "p95_ms": 3,
+      "p99_ms": 4.9,
+      "errores_pct": 0
+    },
+    {
+      "objetivo_rps": 5,
+      "logrado_rps": 5,
+      "requests": 150,
+      "p95_ms": 2.5,
+      "p99_ms": 4,
+      "errores_pct": 0
+    },
+    {
+      "objetivo_rps": 10,
+      "logrado_rps": 10.03,
+      "requests": 301,
+      "p95_ms": 2.7,
+      "p99_ms": 5,
+      "errores_pct": 0
+    },
+    {
+      "objetivo_rps": 20,
+      "logrado_rps": 20.03,
+      "requests": 601,
+      "p95_ms": 2.7,
+      "p99_ms": 5.2,
+      "errores_pct": 0
+    },
+    {
+      "objetivo_rps": 50,
+      "logrado_rps": 50.03,
+      "requests": 1501,
+      "p95_ms": 2.7,
+      "p99_ms": 5.7,
+      "errores_pct": 0
+    },
+    {
+      "objetivo_rps": 100,
+      "logrado_rps": 100,
+      "requests": 3000,
+      "p95_ms": 2.4,
+      "p99_ms": 4.1,
+      "errores_pct": 0
+    }
+  ]
+}

@@ -23,7 +23,7 @@ import (
 	"github.com/francoroblesss/Rumbo/servicios/operaciones/puertos"
 )
 
-// Parámetros de ADR-012.
+// Parámetros de ADR-012 (ruta del contrato 2.0.1 en ADR-020).
 const (
 	TimeoutIntento    = 1 * time.Second // por intento
 	EsperaMinima      = 100 * time.Millisecond
@@ -39,7 +39,7 @@ const (
 )
 
 // Cliente es el adaptador de salida hacia la API de Clima del sistema de aeropuerto (contrato
-// fijado en docs/contracts/consumidos/clima-v1.yaml). Implementa puertos.ConsultaClima: traduce
+// fijado en docs/contracts/consumidos/clima.yaml). Implementa puertos.ConsultaClima: traduce
 // su JSON a dominio.Operabilidad, así el núcleo no conoce el contrato del proveedor (teórico 8).
 type Cliente struct {
 	url     string
@@ -155,7 +155,7 @@ type respuesta struct {
 
 func (c *Cliente) intento(ctx context.Context, icao string) (dominio.Operabilidad, error) {
 	pedido, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		c.url+"/v1/airports/"+url.PathEscape(icao)+"/conditions", nil)
+		c.url+"/airports/"+url.PathEscape(icao)+"/conditions", nil)
 	if err != nil {
 		return dominio.Operabilidad{}, &errorIntento{causa: err}
 	}

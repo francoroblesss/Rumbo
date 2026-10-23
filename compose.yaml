@@ -100,9 +100,9 @@ services:
   # copia fijada del contrato del otro grupo. En producción se reemplaza por la URL real.
   clima-mock:
     image: stoplight/prism:5
-    command: ["mock", "-h", "0.0.0.0", "-p", "4010", "-m", "false", "/contratos/clima-v1.yaml"]
+    command: ["mock", "-h", "0.0.0.0", "-p", "4010", "-m", "false", "/contratos/clima.yaml"]
     volumes:
-      - ./docs/contracts/consumidos/clima-v1.yaml:/contratos/clima-v1.yaml:ro
+      - ./docs/contracts/consumidos/clima.yaml:/contratos/clima.yaml:ro
     ports:
       - "4020:4010"
 
@@ -135,7 +135,7 @@ services:
       MYSQL_DSN: operaciones:${OPERACIONES_DB_PASSWORD}@tcp(mysql:3306)/operaciones?parseTime=true&multiStatements=true
       RECURSOS_URL: http://recursos:8083
       IDENTIDAD_URL: http://identidad:8081
-      CLIMA_URL: http://clima-mock:4010
+      CLIMA_URL: ${CLIMA_URL:-http://clima-mock:4010}
       CLIMA_API_KEY: ${CLIMA_API_KEY}
       CLIMA_ICAO: SACO
     depends_on:

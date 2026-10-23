@@ -1,7 +1,7 @@
 # ADR-012 — Consumo de la capacidad de clima del sistema de aeropuerto (D9)
 
 - **Fecha:** 2026-10-14
-- **Estado:** aceptada
+- **Estado:** aceptada — **reemplazada parcialmente por [ADR-020](ADR-020-contrato-clima-2.md)**: la ruta pasa a `/airports/{icao}/conditions` y la copia fijada a `clima.yaml` 2.0.1. El resto sigue vigente.
 
 ## Contexto
 La consigna (§4.1) pide consumir una capacidad publicada por otro grupo:

@@ -26,9 +26,9 @@ import (
 // incompatible, al actualizar la copia este test falla.
 
 // Desde servicios/operaciones/adaptadores/clima hasta la raíz del repo hay cuatro niveles.
-var rutaContrato = filepath.Join("..", "..", "..", "..", "docs", "contracts", "consumidos", "clima-v1.yaml")
+var rutaContrato = filepath.Join("..", "..", "..", "..", "docs", "contracts", "consumidos", "clima.yaml")
 
-const rutaOperacion = "/v1/airports/{icao}/conditions"
+const rutaOperacion = "/airports/{icao}/conditions"
 
 func cargarContrato(t *testing.T) *openapi3.T {
 	t.Helper()
@@ -276,8 +276,8 @@ func TestContratoErrores(t *testing.T) {
 func TestValidadorDetectaPedidosInvalidos(t *testing.T) {
 	doc := cargarContrato(t)
 	base := "http://proveedor.test"
-	sinClave := httptest.NewRequest(http.MethodGet, base+"/v1/airports/SACO/conditions", nil)
-	icaoInvalido := httptest.NewRequest(http.MethodGet, base+"/v1/airports/cor/conditions", nil)
+	sinClave := httptest.NewRequest(http.MethodGet, base+"/airports/SACO/conditions", nil)
+	icaoInvalido := httptest.NewRequest(http.MethodGet, base+"/airports/cor/conditions", nil)
 	icaoInvalido.Header.Set("X-API-Key", "clave")
 	for nombre, r := range map[string]*http.Request{"sin X-API-Key": sinClave, "ICAO inválido": icaoInvalido} {
 		r.Host = "proveedor.test"

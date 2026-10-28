@@ -143,7 +143,9 @@ type manejadorMySQL struct {
 	grupo     string      // prefijo de los atributos siguientes ("" o "grupo.")
 }
 
-func (m manejadorMySQL) Enabled(_ context.Context, nivel slog.Level) bool { return nivel >= slog.LevelInfo }
+func (m manejadorMySQL) Enabled(_ context.Context, nivel slog.Level) bool {
+	return nivel >= slog.LevelInfo
+}
 
 func (m manejadorMySQL) Handle(_ context.Context, r slog.Record) error {
 	f := filaLog{CreadoEn: r.Time.UTC(), Nivel: r.Level.String(), Servicio: m.servicio, Instancia: m.instancia,

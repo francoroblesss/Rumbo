@@ -12,7 +12,7 @@ System_Ext(almacenamiento, "Sistema de gestión de almacenamiento", "Otro grupo:
 System_Ext(aeropuerto, "Sistema de aeropuerto", "Otro grupo: condiciones climáticas.")
 
 System_Boundary(rumbo, "Rumbo") {
-  Container(web, "Aplicación web", "React + Vite + TypeScript", "Interfaz única. Hoy: consola del operador; cliente y chofer para la Presentación.")
+  Container(web, "Aplicación web", "React + Vite + TypeScript", "Interfaz de los usuarios de Rumbo: operador, chofer, cliente y administrador. No expone la capacidad publicada.", $tags="pendiente")
   Container(gateway, "API Gateway", "Go", "Punto de entrada único: valida el token firmado, reemplaza la identidad en headers, limita pedidos por organización (60/min), asigna X-Correlation-ID, deadline de 5 s.")
 
   Container(identidad, "Identidad y clientes", "Go · capas", "Usuarios, roles, login y tokens; organizaciones cliente; padrón de personas.")
@@ -27,7 +27,8 @@ System_Boundary(rumbo, "Rumbo") {
   ContainerDb(memcached, "Memcached", "Memcached 1.6", "Caché compartida por las dos réplicas: GET /traslados/{id}, TTL 60 s.", $tags="infra")
   ContainerQueue(rabbit, "RabbitMQ", "RabbitMQ 3", "Eventos de Operaciones; reintento con TTL y DLQ por cola.")
   ContainerDb(solr, "Apache Solr", "Solr 9 · core traslados", "Índice de búsqueda de traslados, derivado de Operaciones.", $tags="pendiente")
-  Container(lgtm, "Grafana LGTM", "OpenTelemetry · Prometheus · Loki · Tempo · Grafana", "Logs, métricas, trazas, tablero y alertas. Todos los servicios Go le exportan por OTLP.", $tags="infra")
+  Container(lgtm, "Grafana LGTM", "OpenTelemetry · Prometheus · Tempo · Grafana", "Métricas, trazas, tablero y alertas. Los servicios Go le exportan por OTLP; los logs los lee del MySQL de logs.", $tags="infra")
+  ContainerDb(mysqllogs, "MySQL de logs", "MySQL 8.4 · base observabilidad", "Tabla logs (INFO, WARN, ERROR) de todos los servicios, insertada en lotes; 7 días.", $tags="infra")
 }
 
 Rel(usuarios, web, "Usa", "HTTPS")
@@ -51,6 +52,7 @@ Rel(operaciones, aeropuerto, "Operabilidad del aeropuerto", "HTTP · 1 s · brea
 Rel(operaciones, solr, "Indexa y busca traslados", "HTTP")
 Rel(identidad, mongo, "Lee / escribe base identidad", "MongoDB")
 Rel(recursos, mysql, "Lee / escribe base recursos", "MySQL")
+Rel(lgtm, mysqllogs, "Lee los logs (solo SELECT)", "MySQL")
 Rel(notificaciones, mongo, "Lee / escribe base notificaciones", "MongoDB")
 Rel(recursos, rabbit, "Recorrido finalizado", "AMQP")
 Rel(notificaciones, rabbit, "Eventos para avisos", "AMQP")

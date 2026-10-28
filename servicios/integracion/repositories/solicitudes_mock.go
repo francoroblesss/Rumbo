@@ -56,6 +56,20 @@ func (m *SolicitudesMock) BuscarPorID(_ context.Context, organizacionID, id stri
 	return s, nil
 }
 
+func (m *SolicitudesMock) BuscarPorClave(_ context.Context, organizacionID, clave string) (models.SolicitudExterna, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.Error != nil {
+		return models.SolicitudExterna{}, m.Error
+	}
+	for _, s := range m.solicitudes {
+		if s.OrganizacionID == organizacionID && s.Idempotencia.Clave == clave {
+			return s, nil
+		}
+	}
+	return models.SolicitudExterna{}, ErrNoEncontrada
+}
+
 func (m *SolicitudesMock) Listar(_ context.Context, f FiltroListado) ([]models.SolicitudExterna, int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -66,7 +80,7 @@ func (m *SolicitudesMock) Listar(_ context.Context, f FiltroListado) ([]models.S
 	for _, s := range m.solicitudes {
 		if s.OrganizacionID != f.OrganizacionID ||
 			(f.ActualizadoDesde != nil && !s.ActualizadoEn.After(*f.ActualizadoDesde)) ||
-			(f.Estado != "" && s.Vista.Estado != f.Estado) {
+			(f.Estado != "" && (s.Vista.Traslado == nil || s.Vista.Traslado.Estado != f.Estado)) {
 			continue
 		}
 		filtradas = append(filtradas, s)
@@ -83,36 +97,6 @@ func (m *SolicitudesMock) Listar(_ context.Context, f FiltroListado) ([]models.S
 	return append([]models.SolicitudExterna{}, filtradas[desde:hasta]...), total, nil
 }
 
-func (m *SolicitudesMock) ReclamarPendiente(_ context.Context, instancia string, ahora time.Time) (models.SolicitudExterna, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.Error != nil {
-		return models.SolicitudExterna{}, m.Error
-	}
-	for id, s := range m.solicitudes {
-		if s.PendienteEnvio && (s.ReclamadoHasta == nil || s.ReclamadoHasta.Before(ahora)) {
-			hasta := ahora.Add(DuracionReclamo)
-			s.ReclamadoHasta, s.ReclamadoPor = &hasta, instancia
-			m.solicitudes[id] = s
-			return s, nil
-		}
-	}
-	return models.SolicitudExterna{}, ErrNoHayPendientes
-}
-
-func (m *SolicitudesMock) MarcarEnviada(_ context.Context, id string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.Error != nil {
-		return m.Error
-	}
-	if s, ok := m.solicitudes[id]; ok {
-		s.PendienteEnvio, s.ReclamadoHasta, s.ReclamadoPor = false, nil, ""
-		m.solicitudes[id] = s
-	}
-	return nil
-}
-
 func (m *SolicitudesMock) AplicarVista(_ context.Context, id string, version int64, vista models.VistaSolicitud, ahora time.Time) (string, bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -126,19 +110,4 @@ func (m *SolicitudesMock) AplicarVista(_ context.Context, id string, version int
 	s.Vista, s.Version, s.ActualizadoEn = vista, version, ahora
 	m.solicitudes[id] = s
 	return s.OrganizacionID, true, nil
-}
-
-func (m *SolicitudesMock) ContarPendientes(_ context.Context) (int64, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.Error != nil {
-		return 0, m.Error
-	}
-	var n int64
-	for _, s := range m.solicitudes {
-		if s.PendienteEnvio {
-			n++
-		}
-	}
-	return n, nil
 }

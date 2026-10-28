@@ -49,18 +49,17 @@ type DatosSolicitud struct {
 	Observaciones         *string
 }
 
-// NuevaSolicitudExterna registra una solicitud que llegó por la capacidad publicada, con el mismo
-// id que le dio Integración de carga.
-func NuevaSolicitudExterna(id, organizacionID string, d DatosSolicitud, ahora time.Time) (*Solicitud, Evento, error) {
-	if strings.TrimSpace(id) == "" || strings.TrimSpace(organizacionID) == "" ||
-		strings.TrimSpace(d.Cosa.Descripcion) == "" || d.Cosa.Cantidad < 1 ||
-		!d.Desde.completa() || !d.Hasta.completa() {
-		return nil, "", ErrDatosInvalidos
+// NuevaSolicitud registra un pedido que el operador tiene que revisar (aceptar, contraproponer o
+// rechazar). Es el ciclo de los clientes que usan la aplicación web; los sistemas externos no
+// pasan por acá, reservan una franja (NuevaReservaExterna).
+func NuevaSolicitud(id, organizacionID string, origen OrigenSolicitud, d DatosSolicitud, ahora time.Time) (*Solicitud, Evento, error) {
+	if err := validarDatos(id, organizacionID, d); err != nil {
+		return nil, "", err
 	}
 	return &Solicitud{
 		ID:                    id,
 		OrganizacionID:        organizacionID,
-		Origen:                OrigenExterno,
+		Origen:                origen,
 		ReferenciaExterna:     d.ReferenciaExterna,
 		Cosa:                  d.Cosa,
 		Desde:                 d.Desde,
@@ -73,6 +72,59 @@ func NuevaSolicitudExterna(id, organizacionID string, d DatosSolicitud, ahora ti
 		CreadoEn:              ahora,
 		ActualizadoEn:         ahora,
 	}, EventoRecibida, nil
+}
+
+// NuevaReservaExterna registra lo que pidió un sistema externo por la capacidad publicada: toma
+// un lugar de la franja y deja la solicitud ya aceptada, con su traslado comprometido a llegar
+// antes del fin de la franja. No hay revisión del operador ni contrapropuesta: la respuesta es
+// definitiva en el momento (ADR-021). Si la franja no tiene lugar, no se crea nada.
+func NuevaReservaExterna(id, idTraslado, organizacionID string, d DatosSolicitud, franja *Franja, ahora time.Time) (*Solicitud, Evento, error) {
+	if err := validarDatos(id, organizacionID, d); err != nil {
+		return nil, "", err
+	}
+	if err := franja.Reservar(d.Cosa.peso()); err != nil {
+		return nil, "", err
+	}
+	inicio := franja.Inicio
+	return &Solicitud{
+		ID:                id,
+		OrganizacionID:    organizacionID,
+		Origen:            OrigenExterno,
+		ReferenciaExterna: d.ReferenciaExterna,
+		Cosa:              d.Cosa,
+		Desde:             d.Desde,
+		Hasta:             d.Hasta,
+		Observaciones:     d.Observaciones,
+		Estado:            SolicitudAceptada,
+		Traslado: &Traslado{
+			ID:                      idTraslado,
+			Estado:                  TrasladoProgramado,
+			HoraLlegadaComprometida: franja.Fin,
+			FranjaInicio:            &inicio,
+		},
+		Version:       1,
+		CreadoEn:      ahora,
+		ActualizadoEn: ahora,
+	}, EventoAceptada, nil
+}
+
+func validarDatos(id, organizacionID string, d DatosSolicitud) error {
+	if strings.TrimSpace(id) == "" || strings.TrimSpace(organizacionID) == "" ||
+		strings.TrimSpace(d.Cosa.Descripcion) == "" || d.Cosa.Cantidad < 1 ||
+		(d.Cosa.PesoKg != nil && *d.Cosa.PesoKg <= 0) ||
+		!d.Desde.completa() || !d.Hasta.completa() {
+		return ErrDatosInvalidos
+	}
+	return nil
+}
+
+// LiberaFranja indica si el traslado reservó una franja que ahora hay que devolver, y cuánto peso.
+func (s *Solicitud) LiberaFranja() (time.Time, float64, bool) {
+	t := s.Traslado
+	if t == nil || t.FranjaInicio == nil || t.Estado != TrasladoCancelado {
+		return time.Time{}, 0, false
+	}
+	return *t.FranjaInicio, s.Cosa.peso(), true
 }
 
 func (u Ubicacion) completa() bool {
@@ -173,6 +225,8 @@ func (s *Solicitud) Vencer(ahora time.Time) (Evento, error) {
 //   - aceptada, con 24 h o más de anticipación, el traslado se cancela y la cancelación queda
 //     APROBADA; con menos, queda PENDIENTE_APROBACION para que decida el operador. En los dos
 //     casos la cancelación queda registrada (dominio.md §9);
+//   - un sistema externo no espera la decisión de nadie (ADR-021): su cancelación se aplica
+//     siempre y, si es tardía, queda marcada para que el operador se entere;
 //   - un traslado iniciado o terminado no se cancela.
 func (s *Solicitud) Cancelar(motivo string, ahora time.Time) (Evento, error) {
 	if strings.TrimSpace(motivo) == "" {
@@ -188,8 +242,9 @@ func (s *Solicitud) Cancelar(motivo string, ahora time.Time) (Evento, error) {
 			(s.Cancelacion != nil && s.Cancelacion.Estado == CancelacionPendienteAprobacion) {
 			return "", ErrEstadoNoPermite
 		}
-		cancelacion := &Cancelacion{Estado: CancelacionPendienteAprobacion, Motivo: motivo, SolicitadaEn: ahora}
-		if s.Traslado.HoraLlegadaComprometida.Sub(ahora) >= PlazoCancelacion {
+		tardia := s.Traslado.HoraLlegadaComprometida.Sub(ahora) < PlazoCancelacion
+		cancelacion := &Cancelacion{Estado: CancelacionPendienteAprobacion, Motivo: motivo, SolicitadaEn: ahora, Tardia: tardia}
+		if !tardia || s.Origen == OrigenExterno {
 			cancelacion.Estado = CancelacionAprobada
 			s.Traslado.Estado = TrasladoCancelado
 		}

@@ -63,7 +63,9 @@ func main() {
 	}
 	unidadDeTrabajo := mysql.NuevaUnidadDeTrabajo(db)
 	consultaClima := clima.NuevoCliente(cfg.ClimaURL, cfg.ClimaAPIKey)
-	solicitudes := aplicacion.NuevasSolicitudes(unidadDeTrabajo, consultaClima, cfg.ClimaICAO,
+	calendario := cfg.Calendario
+	calendario.Zona = aplicacion.ZonaRumbo()
+	solicitudes := aplicacion.NuevasSolicitudes(unidadDeTrabajo, consultaClima, cfg.ClimaICAO, calendario,
 		func() time.Time { return time.Now().UTC() }, observabilidad.Instancia())
 
 	router := gin.New()
@@ -78,8 +80,6 @@ func main() {
 		terminar("no se pudo preparar el relay del outbox", err)
 	}
 	go relay.Ejecutar(ctx)
-
-	go adaptadormensajeria.ConsumirSolicitudesExternas(ctx, conexionRabbit, solicitudes)
 
 	go vencerContrapropuestas(ctx, solicitudes)
 

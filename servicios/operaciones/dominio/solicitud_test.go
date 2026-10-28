@@ -19,7 +19,7 @@ func datosValidos(hora *time.Time) DatosSolicitud {
 
 func recibida(t *testing.T, hora *time.Time) *Solicitud {
 	t.Helper()
-	s, _, err := NuevaSolicitudExterna("sol-1", "org-1", datosValidos(hora), ahora)
+	s, _, err := NuevaSolicitud("sol-1", "org-1", OrigenInterno, datosValidos(hora), ahora)
 	if err != nil {
 		t.Fatalf("crear solicitud: %v", err)
 	}
@@ -57,16 +57,17 @@ func esperarEvento(t *testing.T, ev Evento, err error, esperado Evento) {
 	}
 }
 
-func TestNuevaSolicitudExterna(t *testing.T) {
-	s, ev, err := NuevaSolicitudExterna("sol-1", "org-1", datosValidos(nil), ahora)
+func TestNuevaSolicitud(t *testing.T) {
+	s, ev, err := NuevaSolicitud("sol-1", "org-1", OrigenInterno, datosValidos(nil), ahora)
 	esperarEvento(t, ev, err, EventoRecibida)
-	if s.Estado != SolicitudRecibida || s.Version != 1 || s.Origen != OrigenExterno || !s.CreadoEn.Equal(ahora) {
+	if s.Estado != SolicitudRecibida || s.Version != 1 || s.Origen != OrigenInterno || !s.CreadoEn.Equal(ahora) {
 		t.Fatalf("solicitud inesperada: %+v", s)
 	}
 
 	invalidos := map[string]func(*DatosSolicitud){
 		"sin descripción":       func(d *DatosSolicitud) { d.Cosa.Descripcion = " " },
 		"cantidad cero":         func(d *DatosSolicitud) { d.Cosa.Cantidad = 0 },
+		"peso cero":             func(d *DatosSolicitud) { cero := 0.0; d.Cosa.PesoKg = &cero },
 		"origen sin nombre":     func(d *DatosSolicitud) { d.Desde.Nombre = "" },
 		"origen sin dirección":  func(d *DatosSolicitud) { d.Desde.Direccion = "" },
 		"destino sin nombre":    func(d *DatosSolicitud) { d.Hasta.Nombre = "" },
@@ -76,7 +77,7 @@ func TestNuevaSolicitudExterna(t *testing.T) {
 		t.Run(nombre, func(t *testing.T) {
 			d := datosValidos(nil)
 			romper(&d)
-			_, _, err := NuevaSolicitudExterna("sol-1", "org-1", d, ahora)
+			_, _, err := NuevaSolicitud("sol-1", "org-1", OrigenInterno, d, ahora)
 			esperarError(t, err, ErrDatosInvalidos)
 		})
 	}

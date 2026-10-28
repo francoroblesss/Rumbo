@@ -26,9 +26,9 @@ const (
 	claveOrganizacion  = "organizacion"
 )
 
-// TrasladosController atiende el contrato público "Solicitar traslado". Solo valida la forma
-// del pedido HTTP (headers, query, cuerpo de las acciones) y traduce los errores del servicio a
-// Problem Details; las reglas están en el servicio.
+// TrasladosController atiende el contrato público "Reservar traslado" (ADR-021). Solo valida la
+// forma del pedido HTTP (headers, query, cuerpo de las acciones) y traduce los errores del
+// servicio a Problem Details; las reglas están en el servicio y en Operaciones.
 type TrasladosController struct {
 	servicio *services.SolicitudesService
 }
@@ -41,11 +41,11 @@ func NewTrasladosController(servicio *services.SolicitudesService) *TrasladosCon
 // Registrar agrega las rutas al router. Todas exigen el rol sistema_externo y una organización:
 // autenticación en el gateway, autorización acá (teórico 6).
 func (tc *TrasladosController) Registrar(router gin.IRouter) {
+	router.GET("/disponibilidad", identidad.RequiereRol(identidad.RolSistemaExterno), requiereOrganizacion, tc.disponibilidad)
 	grupo := router.Group("/traslados", identidad.RequiereRol(identidad.RolSistemaExterno), requiereOrganizacion)
 	grupo.POST("", tc.crear)
 	grupo.GET("", tc.listar)
 	grupo.GET("/:id", tc.obtener)
-	grupo.POST("/:id/respuesta-contrapropuesta", tc.responderContrapropuesta)
 	grupo.POST("/:id/cancelacion", tc.cancelar)
 }
 
@@ -60,6 +60,29 @@ func requiereOrganizacion(c *gin.Context) {
 	}
 	c.Set(claveOrganizacion, org)
 	c.Next()
+}
+
+func (tc *TrasladosController) disponibilidad(c *gin.Context) {
+	fecha := c.Query("fecha")
+	if _, err := time.Parse(time.DateOnly, fecha); err != nil {
+		jsonMalFormado(c, "fecha es obligatoria y tiene que ser AAAA-MM-DD.")
+		return
+	}
+	var peso *float64
+	if v, ok := c.GetQuery("peso_kg"); ok {
+		n, err := strconv.ParseFloat(v, 64)
+		if err != nil || n <= 0 {
+			jsonMalFormado(c, "peso_kg tiene que ser un número mayor que 0.")
+			return
+		}
+		peso = &n
+	}
+	d, err := tc.servicio.Disponibilidad(c.Request.Context(), fecha, peso)
+	if err != nil {
+		escribirError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, disponibilidadAContrato(d))
 }
 
 func (tc *TrasladosController) crear(c *gin.Context) {
@@ -93,7 +116,7 @@ func (tc *TrasladosController) listar(c *gin.Context) {
 		filtro.ActualizadoDesde = &desde
 	}
 	if v, ok := c.GetQuery("estado"); ok {
-		if !slices.Contains(models.EstadosSolicitud, v) {
+		if !slices.Contains(models.EstadosTraslado, v) {
 			jsonMalFormado(c, "estado no es uno de los estados del contrato.")
 			return
 		}
@@ -118,27 +141,6 @@ func (tc *TrasladosController) listar(c *gin.Context) {
 
 func (tc *TrasladosController) obtener(c *gin.Context) {
 	vista, err := tc.servicio.Obtener(c.Request.Context(), c.GetString(claveOrganizacion), c.Param("id"))
-	if err != nil {
-		escribirError(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, aContrato(vista))
-}
-
-func (tc *TrasladosController) responderContrapropuesta(c *gin.Context) {
-	clave, ok := claveIdempotencia(c)
-	if !ok {
-		return
-	}
-	var pedido models.RespuestaContrapropuesta
-	if !leerJSON(c, &pedido) {
-		return
-	}
-	if pedido.Acepta == nil {
-		datosInvalidos(c, problema.ErrorCampo{Campo: "acepta", Mensaje: "es obligatorio"})
-		return
-	}
-	vista, err := tc.servicio.ResponderContrapropuesta(c.Request.Context(), c.GetString(claveOrganizacion), clave, c.Param("id"), *pedido.Acepta)
 	if err != nil {
 		escribirError(c, err)
 		return

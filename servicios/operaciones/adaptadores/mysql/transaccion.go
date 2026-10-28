@@ -41,9 +41,9 @@ type ubicacionFila struct {
 const columnas = `s.id, s.organizacion_id, s.origen_solicitud, s.referencia_externa, s.cosa, s.origen, s.destino,
 	s.hora_llegada_solicitada, s.tolerancia_minutos, s.observaciones, s.estado, s.contrapropuesta_hora,
 	s.contrapropuesta_vence, s.motivo_rechazo, s.cancelacion_estado, s.cancelacion_motivo,
-	s.cancelacion_solicitada_en, s.version, s.creado_en, s.actualizado_en,
+	s.cancelacion_solicitada_en, s.cancelacion_tardia, s.version, s.creado_en, s.actualizado_en,
 	t.id, t.estado, t.hora_llegada_comprometida, t.demora_minutos, t.finalizado_en, t.detalle_resultado,
-	t.aeropuerto_extremo, t.alerta_estado, t.alerta_motivos, t.alerta_observado_en`
+	t.aeropuerto_extremo, t.alerta_estado, t.alerta_motivos, t.alerta_observado_en, t.franja_inicio`
 
 const desdeSolicitudes = ` FROM solicitudes s LEFT JOIN traslados t ON t.solicitud_id = s.id`
 
@@ -58,8 +58,10 @@ func leerSolicitud(fila escaner) (*dominio.Solicitud, error) {
 		contraHora, contraVence               sql.NullTime
 		cancEstado, cancMotivo                sql.NullString
 		cancEn                                sql.NullTime
+		cancTardia                            bool
 		tID, tEstado                          sql.NullString
 		tHora, tFinalizado, tObservado        sql.NullTime
+		tFranja                               sql.NullTime
 		tDemora                               sql.NullInt64
 		tDetalle, tExtremo, tAlerta           sql.NullString
 		tMotivos                              []byte
@@ -69,9 +71,9 @@ func leerSolicitud(fila escaner) (*dominio.Solicitud, error) {
 	err := fila.Scan(&s.ID, &s.OrganizacionID, &origen, &referencia, &cosa, &desde, &hasta,
 		&horaPedida, &s.ToleranciaMinutos, &observaciones, &estado, &contraHora,
 		&contraVence, &motivoRech, &cancEstado, &cancMotivo,
-		&cancEn, &s.Version, &s.CreadoEn, &s.ActualizadoEn,
+		&cancEn, &cancTardia, &s.Version, &s.CreadoEn, &s.ActualizadoEn,
 		&tID, &tEstado, &tHora, &tDemora, &tFinalizado, &tDetalle,
-		&tExtremo, &tAlerta, &tMotivos, &tObservado)
+		&tExtremo, &tAlerta, &tMotivos, &tObservado, &tFranja)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, puertos.ErrNoEncontrada
 	}
@@ -100,7 +102,7 @@ func leerSolicitud(fila escaner) (*dominio.Solicitud, error) {
 	}
 	if cancEstado.Valid {
 		s.Cancelacion = &dominio.Cancelacion{Estado: dominio.EstadoCancelacion(cancEstado.String),
-			Motivo: cancMotivo.String, SolicitadaEn: cancEn.Time.UTC()}
+			Motivo: cancMotivo.String, SolicitadaEn: cancEn.Time.UTC(), Tardia: cancTardia}
 	}
 	if tID.Valid {
 		t := &dominio.Traslado{
@@ -109,6 +111,7 @@ func leerSolicitud(fila escaner) (*dominio.Solicitud, error) {
 			HoraLlegadaComprometida: tHora.Time.UTC(),
 			FinalizadoEn:            hora(tFinalizado),
 			DetalleResultado:        texto(tDetalle),
+			FranjaInicio:            hora(tFranja),
 		}
 		if tDemora.Valid {
 			demora := int(tDemora.Int64)
@@ -168,14 +171,6 @@ func (t *transaccion) Listar(ctx context.Context, estado string, desde, limite i
 	return lista, total, filas.Err()
 }
 
-func (t *transaccion) Existe(ctx context.Context, id string) (bool, error) {
-	var existe bool
-	if err := t.tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM solicitudes WHERE id = ?)`, id).Scan(&existe); err != nil {
-		return false, fmt.Errorf("verificar solicitud: %w", err)
-	}
-	return existe, nil
-}
-
 // valores devuelve las columnas de la solicitud en el orden de las sentencias de abajo.
 func valores(s *dominio.Solicitud) ([]any, error) {
 	cosa, err1 := json.Marshal(cosaFila{Descripcion: s.Cosa.Descripcion, Cantidad: s.Cosa.Cantidad, PesoKg: s.Cosa.PesoKg, VolumenM3: s.Cosa.VolumenM3})
@@ -186,16 +181,17 @@ func valores(s *dominio.Solicitud) ([]any, error) {
 	}
 	var contraHora, contraVence, cancEn *time.Time
 	var cancEstado, cancMotivo *string
+	cancTardia := false
 	if c := s.Contrapropuesta; c != nil {
 		contraHora, contraVence = &c.Hora, &c.VenceEn
 	}
 	if c := s.Cancelacion; c != nil {
 		estado := string(c.Estado)
-		cancEstado, cancMotivo, cancEn = &estado, &c.Motivo, &c.SolicitadaEn
+		cancEstado, cancMotivo, cancEn, cancTardia = &estado, &c.Motivo, &c.SolicitadaEn, c.Tardia
 	}
 	return []any{s.OrganizacionID, string(s.Origen), s.ReferenciaExterna, string(cosa), string(desde), string(hasta),
 		utc(s.HoraLlegadaSolicitada), s.ToleranciaMinutos, s.Observaciones, string(s.Estado), utc(contraHora),
-		utc(contraVence), s.MotivoRechazo, cancEstado, cancMotivo, utc(cancEn), s.Version,
+		utc(contraVence), s.MotivoRechazo, cancEstado, cancMotivo, utc(cancEn), cancTardia, s.Version,
 		s.CreadoEn.UTC(), s.ActualizadoEn.UTC(), s.ID}, nil
 }
 
@@ -207,8 +203,8 @@ func (t *transaccion) Insertar(ctx context.Context, s *dominio.Solicitud) error 
 	if _, err := t.tx.ExecContext(ctx, `INSERT INTO solicitudes (organizacion_id, origen_solicitud,
 		referencia_externa, cosa, origen, destino, hora_llegada_solicitada, tolerancia_minutos, observaciones,
 		estado, contrapropuesta_hora, contrapropuesta_vence, motivo_rechazo, cancelacion_estado,
-		cancelacion_motivo, cancelacion_solicitada_en, version, creado_en, actualizado_en, id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, v...); err != nil {
+		cancelacion_motivo, cancelacion_solicitada_en, cancelacion_tardia, version, creado_en, actualizado_en, id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, v...); err != nil {
 		return fmt.Errorf("insertar solicitud: %w", err)
 	}
 	return t.guardarTraslado(ctx, s)
@@ -223,7 +219,7 @@ func (t *transaccion) Actualizar(ctx context.Context, s *dominio.Solicitud) erro
 		referencia_externa = ?, cosa = ?, origen = ?, destino = ?, hora_llegada_solicitada = ?,
 		tolerancia_minutos = ?, observaciones = ?, estado = ?, contrapropuesta_hora = ?,
 		contrapropuesta_vence = ?, motivo_rechazo = ?, cancelacion_estado = ?, cancelacion_motivo = ?,
-		cancelacion_solicitada_en = ?, version = ?, creado_en = ?, actualizado_en = ? WHERE id = ?`, v...); err != nil {
+		cancelacion_solicitada_en = ?, cancelacion_tardia = ?, version = ?, creado_en = ?, actualizado_en = ? WHERE id = ?`, v...); err != nil {
 		return fmt.Errorf("actualizar solicitud: %w", err)
 	}
 	return t.guardarTraslado(ctx, s)
@@ -258,14 +254,14 @@ func (t *transaccion) guardarTraslado(ctx context.Context, s *dominio.Solicitud)
 	}
 	_, err := t.tx.ExecContext(ctx, `INSERT INTO traslados (id, solicitud_id, estado, hora_llegada_comprometida,
 		demora_minutos, finalizado_en, detalle_resultado, aeropuerto_extremo, alerta_estado, alerta_motivos,
-		alerta_observado_en) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		alerta_observado_en, franja_inicio) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON DUPLICATE KEY UPDATE estado = VALUES(estado), hora_llegada_comprometida = VALUES(hora_llegada_comprometida),
 		demora_minutos = VALUES(demora_minutos), finalizado_en = VALUES(finalizado_en),
 		detalle_resultado = VALUES(detalle_resultado), aeropuerto_extremo = VALUES(aeropuerto_extremo),
 		alerta_estado = VALUES(alerta_estado), alerta_motivos = VALUES(alerta_motivos),
-		alerta_observado_en = VALUES(alerta_observado_en)`,
+		alerta_observado_en = VALUES(alerta_observado_en), franja_inicio = VALUES(franja_inicio)`,
 		tr.ID, s.ID, string(tr.Estado), tr.HoraLlegadaComprometida.UTC(), tr.DemoraMinutos, utc(tr.FinalizadoEn),
-		tr.DetalleResultado, extremo, alertaEstado, motivos, utc(observado))
+		tr.DetalleResultado, extremo, alertaEstado, motivos, utc(observado), utc(tr.FranjaInicio))
 	if err != nil {
 		return fmt.Errorf("guardar traslado: %w", err)
 	}
@@ -315,17 +311,60 @@ func (t *transaccion) AgregarAlOutbox(ctx context.Context, exchange, routingKey 
 	return nil
 }
 
-func (t *transaccion) RegistrarMensaje(ctx context.Context, mensajeID string) (bool, error) {
-	r, err := t.tx.ExecContext(ctx, `INSERT IGNORE INTO mensajes_procesados (mensaje_id, procesado_en) VALUES (?, ?)`,
-		mensajeID, time.Now().UTC())
-	if err != nil {
-		return false, fmt.Errorf("registrar mensaje: %w", err)
+const columnasFranja = `inicio, fin, cupo_traslados, cupo_kg, traslados_reservados, kg_reservados`
+
+func leerFranja(fila escaner) (dominio.Franja, error) {
+	var f dominio.Franja
+	if err := fila.Scan(&f.Inicio, &f.Fin, &f.CupoTraslados, &f.CupoKg, &f.TrasladosReservados, &f.KgReservados); err != nil {
+		return dominio.Franja{}, fmt.Errorf("leer franja: %w", err)
 	}
-	n, err := r.RowsAffected()
-	if err != nil {
-		return false, err
+	f.Inicio, f.Fin = f.Inicio.UTC(), f.Fin.UTC()
+	return f, nil
+}
+
+func (t *transaccion) FranjaParaActualizar(ctx context.Context, plantilla dominio.Franja) (*dominio.Franja, error) {
+	// ON DUPLICATE KEY UPDATE (y no INSERT IGNORE): si la fila ya existe, toma el bloqueo
+	// exclusivo de entrada. INSERT IGNORE tomaría uno compartido, y dos reservas simultáneas
+	// quedarían esperándose al pedir FOR UPDATE (deadlock).
+	if _, err := t.tx.ExecContext(ctx, `INSERT INTO franjas (inicio, fin, cupo_traslados, cupo_kg)
+		VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE inicio = inicio`,
+		plantilla.Inicio.UTC(), plantilla.Fin.UTC(), plantilla.CupoTraslados, plantilla.CupoKg); err != nil {
+		return nil, fmt.Errorf("crear franja: %w", err)
 	}
-	return n == 0, nil
+	// FOR UPDATE: la franja queda bloqueada hasta el fin de la transacción. Otra reserva sobre la
+	// misma franja espera acá y, cuando entra, ve el cupo ya descontado (D4, ADR-022).
+	f, err := leerFranja(t.tx.QueryRowContext(ctx, `SELECT `+columnasFranja+` FROM franjas WHERE inicio = ? FOR UPDATE`,
+		plantilla.Inicio.UTC()))
+	if err != nil {
+		return nil, err
+	}
+	return &f, nil
+}
+
+func (t *transaccion) GuardarFranja(ctx context.Context, f *dominio.Franja) error {
+	if _, err := t.tx.ExecContext(ctx, `UPDATE franjas SET traslados_reservados = ?, kg_reservados = ? WHERE inicio = ?`,
+		f.TrasladosReservados, f.KgReservados, f.Inicio.UTC()); err != nil {
+		return fmt.Errorf("guardar franja: %w", err)
+	}
+	return nil
+}
+
+func (t *transaccion) Franjas(ctx context.Context, desde, hasta time.Time) ([]dominio.Franja, error) {
+	filas, err := t.tx.QueryContext(ctx, `SELECT `+columnasFranja+` FROM franjas WHERE inicio BETWEEN ? AND ? ORDER BY inicio`,
+		desde.UTC(), hasta.UTC())
+	if err != nil {
+		return nil, fmt.Errorf("listar franjas: %w", err)
+	}
+	defer filas.Close()
+	var franjas []dominio.Franja
+	for filas.Next() {
+		f, err := leerFranja(filas)
+		if err != nil {
+			return nil, err
+		}
+		franjas = append(franjas, f)
+	}
+	return franjas, filas.Err()
 }
 
 func (t *transaccion) BuscarIdempotencia(ctx context.Context, org, endpoint, clave string) (*puertos.RespuestaGuardada, error) {

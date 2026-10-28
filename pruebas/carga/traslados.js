@@ -1,7 +1,9 @@
-// Prueba de carga de la capacidad publicada "Solicitar traslado" (método de ADR-015).
+// Prueba de carga de la capacidad publicada "Reservar traslado" (contrato 4.0.0, método de ADR-015).
 //
 // Escalones de tasa constante (1, 2, 5, 10, 20, 50 y 100 req/s, 30 s cada uno), uno detrás de
-// otro. Mezcla: 90 % GET /traslados/{id} (el polling del consumidor) y 10 % POST /traslados.
+// otro. Mezcla: 90 % GET /traslados/{id} (el polling del consumidor) y 10 % POST /traslados (reservas).
+// Las reservas se reparten entre las franjas de los próximos 29 días. Para que el cupo no corte la
+// prueba, levantar el sistema con un cupo alto: FRANJA_CUPO_TRASLADOS=100000 docker compose up -d.
 // Se ataca al balanceador de Integración dentro de la red de Docker, con los headers de identidad
 // que pondría el gateway (su límite de 60 pedidos por minuto cortaría la prueba).
 //
@@ -52,13 +54,22 @@ export const options = {
   setupTimeout: '60s',
 };
 
+// franjaAlAzar devuelve el inicio de una franja (8, 10, …, 18 h de Córdoba) entre mañana y dentro
+// de 29 días, en RFC 3339 con -03:00.
+function franjaAlAzar() {
+  const dias = 1 + Math.floor(Math.random() * 29);
+  const fecha = new Date(Date.now() - 3 * 3600 * 1000 + dias * 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const hora = String(8 + 2 * Math.floor(Math.random() * 6)).padStart(2, '0');
+  return `${fecha}T${hora}:00:00-03:00`;
+}
+
 function nuevoTraslado() {
   return JSON.stringify({
     referencia_externa: `k6-${ESCENARIO}-${Date.now()}`,
     cosa: { descripcion: 'cajas de mercadería seca', cantidad: 4, peso_kg: 80 },
     origen: { nombre: 'Depósito central', direccion: 'Av. Colón 1000, Córdoba' },
     destino: { nombre: 'Sucursal Nueva Córdoba', direccion: 'Obispo Trejo 300, Córdoba' },
-    tolerancia_minutos: 30,
+    franja_inicio: franjaAlAzar(),
   });
 }
 
@@ -67,17 +78,17 @@ function crear(tags) {
   return http.post(`${DESTINO}/traslados`, nuevoTraslado(), { headers, tags });
 }
 
-// setup crea las solicitudes que después se consultan por id.
+// setup crea las reservas que después se consultan por id.
 export function setup() {
   const ids = [];
   for (let i = 0; i < SOLICITUDES_INICIALES; i++) {
     const res = crear({ fase: 'setup' });
-    if (res.status === 202) {
+    if (res.status === 201) {
       ids.push(res.json('id'));
     }
   }
   if (ids.length === 0) {
-    throw new Error('setup no pudo crear ninguna solicitud: ¿está levantado el sistema?');
+    throw new Error('setup no pudo reservar ningún traslado: ¿está levantado el sistema (con cupo alto)?');
   }
   // inicio marca cuándo arrancan los escalones: resumir.mjs lo cruza con docker stats.
   return { ids, inicio: Math.floor(Date.now() / 1000) };
@@ -90,7 +101,7 @@ export default function (datos) {
     check(res, { 'consulta 200': (r) => r.status === 200 });
   } else {
     const res = crear({ operacion: 'crear' });
-    check(res, { 'creación 202': (r) => r.status === 202 });
+    check(res, { 'reserva 201': (r) => r.status === 201 });
   }
 }
 

@@ -55,9 +55,10 @@ func repoMongoDePrueba(t *testing.T) *SolicitudesMongo {
 
 func nuevaSolicitud(id, org, clave string, actualizado time.Time) models.SolicitudExterna {
 	return models.SolicitudExterna{
-		ID: id, OrganizacionID: org, PendienteEnvio: true,
-		Idempotencia:  models.ClaveIdempotencia{Clave: clave, HashCuerpo: "hash-" + id},
-		Vista:         models.VistaSolicitud{ID: id, Estado: models.EstadoRecibida, CreadoEn: actualizado, ActualizadoEn: actualizado},
+		ID: id, OrganizacionID: org, Version: 1,
+		Idempotencia: models.ClaveIdempotencia{Clave: clave, HashCuerpo: "hash-" + id},
+		Vista: models.VistaSolicitud{ID: id, Estado: "ACEPTADA", Version: 1, CreadoEn: actualizado, ActualizadoEn: actualizado,
+			Traslado: &models.Traslado{Estado: models.EstadoProgramado}},
 		CreadoEn:      actualizado,
 		ActualizadoEn: actualizado,
 	}
@@ -82,66 +83,19 @@ func TestMongoIndiceUnicoDeIdempotencia(t *testing.T) {
 	}
 }
 
-func TestMongoReclamarPendienteSinDoblesReclamos(t *testing.T) {
+func TestMongoBuscarPorClave(t *testing.T) {
 	repo := repoMongoDePrueba(t)
 	ctx := context.Background()
 	ahora := time.Now().UTC().Truncate(time.Millisecond)
-	const total = 20
-	for i := 0; i < total; i++ {
-		if _, err := repo.Crear(ctx, nuevaSolicitud(fmt.Sprintf("sol-%02d", i), "org-1", fmt.Sprintf("clave-%04d", i), ahora)); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	// Dos "réplicas" reclaman a la vez: cada solicitud la tiene que reclamar una sola.
-	var mu sync.Mutex
-	reclamadas := map[string]string{}
-	var wg sync.WaitGroup
-	for _, instancia := range []string{"integracion-1", "integracion-2"} {
-		wg.Add(1)
-		go func(instancia string) {
-			defer wg.Done()
-			for {
-				s, err := repo.ReclamarPendiente(ctx, instancia, ahora)
-				if errors.Is(err, ErrNoHayPendientes) {
-					return
-				}
-				if err != nil {
-					t.Error(err)
-					return
-				}
-				mu.Lock()
-				if otra, ok := reclamadas[s.ID]; ok {
-					t.Errorf("%s reclamada por %s y por %s", s.ID, otra, instancia)
-				}
-				reclamadas[s.ID] = instancia
-				mu.Unlock()
-			}
-		}(instancia)
-	}
-	wg.Wait()
-	if len(reclamadas) != total {
-		t.Fatalf("se reclamaron %d de %d", len(reclamadas), total)
-	}
-
-	// Mientras el reclamo está vigente nadie más la toma; al vencer, sí.
-	if _, err := repo.ReclamarPendiente(ctx, "integracion-1", ahora.Add(10*time.Second)); !errors.Is(err, ErrNoHayPendientes) {
-		t.Fatalf("con los reclamos vigentes no tenía que haber pendientes: %v", err)
-	}
-	vencida, err := repo.ReclamarPendiente(ctx, "integracion-2", ahora.Add(DuracionReclamo+time.Second))
-	if err != nil || vencida.ReclamadoPor != "integracion-2" {
-		t.Fatalf("un reclamo vencido se tiene que poder retomar: %+v %v", vencida, err)
-	}
-
-	if err := repo.MarcarEnviada(ctx, vencida.ID); err != nil {
+	if _, err := repo.Crear(ctx, nuevaSolicitud("sol-1", "org-1", "clave-0001", ahora)); err != nil {
 		t.Fatal(err)
 	}
-	if n, _ := repo.ContarPendientes(ctx); n != total-1 {
-		t.Fatalf("pendientes: %d, se esperaban %d", n, total-1)
+	s, err := repo.BuscarPorClave(ctx, "org-1", "clave-0001")
+	if err != nil || s.ID != "sol-1" || s.Idempotencia.HashCuerpo != "hash-sol-1" {
+		t.Fatalf("no se encontró por clave: %+v %v", s, err)
 	}
-	enviada, _ := repo.BuscarPorID(ctx, "org-1", vencida.ID)
-	if enviada.PendienteEnvio || enviada.ReclamadoHasta != nil || enviada.ReclamadoPor != "" {
-		t.Fatalf("MarcarEnviada tiene que borrar el reclamo: %+v", enviada)
+	if _, err := repo.BuscarPorClave(ctx, "org-2", "clave-0001"); !errors.Is(err, ErrNoEncontrada) {
+		t.Fatalf("la clave es por organización: %v", err)
 	}
 }
 
@@ -152,19 +106,21 @@ func TestMongoAplicarVistaIgnoraVersionesViejas(t *testing.T) {
 	if _, err := repo.Crear(ctx, nuevaSolicitud("sol-1", "org-1", "clave-0001", ahora)); err != nil {
 		t.Fatal(err)
 	}
-	org, aplicado, err := repo.AplicarVista(ctx, "sol-1", 3, models.VistaSolicitud{ID: "sol-1", Estado: models.EstadoAceptada, Version: 3}, ahora.Add(time.Minute))
+	asignado := models.VistaSolicitud{ID: "sol-1", Version: 3, Traslado: &models.Traslado{Estado: models.EstadoAsignado}}
+	org, aplicado, err := repo.AplicarVista(ctx, "sol-1", 3, asignado, ahora.Add(time.Minute))
 	if err != nil || !aplicado || org != "org-1" {
 		t.Fatalf("la versión 3 se tenía que aplicar: %q %v %v", org, aplicado, err)
 	}
 	for _, version := range []int64{3, 2, 1} {
-		_, aplicado, err := repo.AplicarVista(ctx, "sol-1", version, models.VistaSolicitud{Estado: models.EstadoRecibida}, ahora.Add(2*time.Minute))
+		viejo := models.VistaSolicitud{Traslado: &models.Traslado{Estado: models.EstadoProgramado}}
+		_, aplicado, err := repo.AplicarVista(ctx, "sol-1", version, viejo, ahora.Add(2*time.Minute))
 		if err != nil || aplicado {
 			t.Fatalf("la versión %d es vieja o repetida y no se tenía que aplicar: %v %v", version, aplicado, err)
 		}
 	}
 	s, _ := repo.BuscarPorID(ctx, "org-1", "sol-1")
-	if s.Version != 3 || s.Vista.Estado != models.EstadoAceptada || !s.ActualizadoEn.Equal(ahora.Add(time.Minute)) {
-		t.Fatalf("estado incorrecto: versión %d, %s, %v", s.Version, s.Vista.Estado, s.ActualizadoEn)
+	if s.Version != 3 || s.Vista.Traslado.Estado != models.EstadoAsignado || !s.ActualizadoEn.Equal(ahora.Add(time.Minute)) {
+		t.Fatalf("estado incorrecto: versión %d, %s, %v", s.Version, s.Vista.Traslado.Estado, s.ActualizadoEn)
 	}
 	if _, aplicado, err := repo.AplicarVista(ctx, "sol-no-existe", 5, models.VistaSolicitud{}, ahora); err != nil || aplicado {
 		t.Fatalf("una solicitud desconocida no se aplica ni da error: %v %v", aplicado, err)
@@ -198,8 +154,9 @@ func TestMongoListarConActualizadoDesdeYPaginacion(t *testing.T) {
 		t.Fatalf("filtro actualizado_desde incorrecto: %d %v", total, ids(pagina))
 	}
 
-	_, _, _ = repo.AplicarVista(ctx, "sol-0", 1, models.VistaSolicitud{ID: "sol-0", Estado: models.EstadoAceptada}, base.Add(time.Hour))
-	pagina, total, _ = repo.Listar(ctx, FiltroListado{OrganizacionID: "org-1", Estado: models.EstadoAceptada, Pagina: 1, Tamanio: 20})
+	completado := models.VistaSolicitud{ID: "sol-0", Traslado: &models.Traslado{Estado: models.EstadoCompletado}}
+	_, _, _ = repo.AplicarVista(ctx, "sol-0", 2, completado, base.Add(time.Hour))
+	pagina, total, _ = repo.Listar(ctx, FiltroListado{OrganizacionID: "org-1", Estado: models.EstadoCompletado, Pagina: 1, Tamanio: 20})
 	if total != 1 || pagina[0].ID != "sol-0" {
 		t.Fatalf("filtro por estado incorrecto: %d %v", total, ids(pagina))
 	}

@@ -18,14 +18,17 @@ type Transaccion interface {
 	ObtenerParaActualizar(ctx context.Context, id string) (*dominio.Solicitud, error) // SELECT … FOR UPDATE; ErrNoEncontrada
 	Obtener(ctx context.Context, id string) (*dominio.Solicitud, error)               // lectura sin bloqueo; ErrNoEncontrada
 	Listar(ctx context.Context, estado string, desde, limite int) ([]*dominio.Solicitud, int, error)
-	Existe(ctx context.Context, id string) (bool, error)
 	Insertar(ctx context.Context, s *dominio.Solicitud) error
 	Actualizar(ctx context.Context, s *dominio.Solicitud) error
 	IDsContrapropuestasVencidas(ctx context.Context, ahora time.Time, limite int) ([]string, error) // FOR UPDATE SKIP LOCKED
 	AgregarAlOutbox(ctx context.Context, exchange, routingKey string, sobre mensajeria.Sobre) error // guarda también el contexto de traza
-	RegistrarMensaje(ctx context.Context, mensajeID string) (yaProcesado bool, err error)
 	BuscarIdempotencia(ctx context.Context, org, endpoint, clave string) (*RespuestaGuardada, error)
 	GuardarIdempotencia(ctx context.Context, org, endpoint, clave, hash string, r RespuestaGuardada) error
+	// FranjaParaActualizar devuelve la franja que empieza en plantilla.Inicio bloqueada hasta el
+	// fin de la transacción; si nadie reservó en ella todavía, la crea con el cupo de plantilla.
+	FranjaParaActualizar(ctx context.Context, plantilla dominio.Franja) (*dominio.Franja, error)
+	GuardarFranja(ctx context.Context, f *dominio.Franja) error
+	Franjas(ctx context.Context, desde, hasta time.Time) ([]dominio.Franja, error) // ya guardadas, sin bloqueo
 }
 
 // RespuestaGuardada es la respuesta de un endpoint interno conservada para su clave de

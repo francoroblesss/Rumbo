@@ -42,7 +42,8 @@ correr() {
   muestrear_stats "$CARPETA/stats-$escenario.txt" &
   local pid_stats=$!
   local pid_d5=""
-  if [ "$escenario" = "C" ] && [ "${MEDIR_D5:-1}" = "1" ]; then
+  # d5.js es la medición histórica de ADR-016 y no corre con el contrato 4.0.0 (ver su encabezado).
+  if [ "$escenario" = "C" ] && [ "${MEDIR_D5:-0}" = "1" ]; then
     # D5 (ADR-016): las llamadas salientes se miden durante el escalón de 10 req/s, que empieza
     # 90 s después del setup; d5.js tarda ~7 s en preparar sus solicitudes.
     (sleep 83 && k6 /scripts/d5.js > "$CARPETA/k6-d5.log" 2>&1) &

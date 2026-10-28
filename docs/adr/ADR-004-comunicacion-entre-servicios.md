@@ -1,7 +1,7 @@
 # ADR-004 — Comunicación entre servicios (D5)
 
 - **Fecha:** 2026-10-04
-- **Estado:** aceptada (versión inicial para la Entrega 1; se valida en la Entrega 2)
+- **Estado:** aceptada (versión inicial para la Entrega 1; se valida en la Entrega 2) — **reemplazada parcialmente por [ADR-021](ADR-021-capacidad-de-autoservicio.md)**: el comando `integracion.solicitud_carga.recibida` (cola `operaciones.solicitudes-externas`) y la "pendiente de envío" de Integración desaparecen; la reserva es una llamada síncrona de Integración a Operaciones. El resto sigue vigente.
 
 ## Contexto
 ADR-001 definió cinco servicios y sus relaciones, y ADR-003 su persistencia. La consigna (§2.5) pide comunicación **síncrona** con timeout, manejo de errores, respuestas tardías o ausentes y política de reintentos, y comunicación **asíncrona** por mensajería, con publicación y consumo de un evento de dominio y tratamiento de mensajes fallidos.

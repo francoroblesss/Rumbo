@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/sony/gobreaker/v2"
@@ -17,21 +19,29 @@ import (
 
 	"github.com/francoroblesss/Rumbo/servicios/comun/identidad"
 	"github.com/francoroblesss/Rumbo/servicios/comun/observabilidad"
+	"github.com/francoroblesss/Rumbo/servicios/comun/problema"
 	"github.com/francoroblesss/Rumbo/servicios/integracion/models"
 )
 
 // Errores del cliente: el servicio los traduce a los códigos del contrato público.
 var (
-	ErrNoEncontrada   = errors.New("Operaciones no tiene la solicitud")
-	ErrDatosInvalidos = errors.New("Operaciones rechazó los datos")
-	ErrNoDisponible   = errors.New("Operaciones no está disponible")
+	ErrNoEncontrada = errors.New("Operaciones no tiene la solicitud")
+	ErrNoDisponible = errors.New("Operaciones no está disponible")
 )
 
-// ErrConflicto es un 409 de Operaciones, con su código (ESTADO_NO_PERMITE_OPERACION,
-// CONTRAPROPUESTA_VENCIDA…).
-type ErrConflicto struct{ Codigo string }
+// ErrRechazo es una respuesta 4xx de Operaciones (una regla de negocio o un dato inválido), con
+// su Problem Details: el código ya es uno del contrato público, así que se reenvía tal cual.
+type ErrRechazo struct {
+	Estado  int
+	Codigo  string
+	Titulo  string
+	Detalle string
+	Errores []problema.ErrorCampo
+}
 
-func (e ErrConflicto) Error() string { return "Operaciones respondió conflicto: " + e.Codigo }
+func (e ErrRechazo) Error() string {
+	return fmt.Sprintf("Operaciones rechazó el pedido: %d %s", e.Estado, e.Codigo)
+}
 
 // TimeoutOperaciones es el timeout de cada llamada (interfaces-internas §4.1, ADR-004).
 const TimeoutOperaciones = 2 * time.Second
@@ -41,7 +51,8 @@ var errFallaDependencia = errors.New("Operaciones respondió con error de servid
 
 // OperacionesClient llama a los endpoints internos de Operaciones (interfaces-internas §4.1).
 type OperacionesClient interface {
-	ResponderContrapropuesta(ctx context.Context, org, claveIdem, id string, acepta bool) (models.VistaSolicitud, error)
+	Disponibilidad(ctx context.Context, fecha string, pesoKg *float64) (models.Disponibilidad, error)
+	Reservar(ctx context.Context, org, claveIdem string, pedido models.PedidoTraslado) (models.VistaSolicitud, error)
 	Cancelar(ctx context.Context, org, claveIdem, id, motivo string) (models.VistaSolicitud, error)
 }
 
@@ -77,31 +88,58 @@ func NewOperacionesClient(baseURL string) OperacionesClient {
 	return &operacionesHTTP{baseURL: baseURL, http: observabilidad.ClienteHTTP(TimeoutOperaciones), breaker: breaker}
 }
 
-func (c *operacionesHTTP) ResponderContrapropuesta(ctx context.Context, org, claveIdem, id string, acepta bool) (models.VistaSolicitud, error) {
-	return c.llamar(ctx, org, claveIdem, "/internas/solicitudes/"+url.PathEscape(id)+"/respuesta-contrapropuesta",
-		map[string]bool{"acepta": acepta})
+func (c *operacionesHTTP) Disponibilidad(ctx context.Context, fecha string, pesoKg *float64) (models.Disponibilidad, error) {
+	q := url.Values{"fecha": {fecha}}
+	if pesoKg != nil {
+		q.Set("peso_kg", strconv.FormatFloat(*pesoKg, 'f', -1, 64))
+	}
+	var d models.Disponibilidad
+	err := c.llamar(ctx, http.MethodGet, "/internas/disponibilidad?"+q.Encode(), "", "", nil, &d)
+	return d, err
+}
+
+func (c *operacionesHTTP) Reservar(ctx context.Context, org, claveIdem string, pedido models.PedidoTraslado) (models.VistaSolicitud, error) {
+	var v models.VistaSolicitud
+	err := c.llamar(ctx, http.MethodPost, "/internas/reservas", org, claveIdem, pedido, &v)
+	return v, err
 }
 
 func (c *operacionesHTTP) Cancelar(ctx context.Context, org, claveIdem, id, motivo string) (models.VistaSolicitud, error) {
-	return c.llamar(ctx, org, claveIdem, "/internas/solicitudes/"+url.PathEscape(id)+"/cancelacion",
-		map[string]string{"motivo": motivo})
+	var v models.VistaSolicitud
+	err := c.llamar(ctx, http.MethodPost, "/internas/solicitudes/"+url.PathEscape(id)+"/cancelacion", org, claveIdem,
+		map[string]string{"motivo": motivo}, &v)
+	return v, err
 }
 
-func (c *operacionesHTTP) llamar(ctx context.Context, org, claveIdem, ruta string, cuerpo any) (models.VistaSolicitud, error) {
-	crudo, err := json.Marshal(cuerpo)
-	if err != nil {
-		return models.VistaSolicitud{}, fmt.Errorf("serializar pedido a Operaciones: %w", err)
+// llamar hace la request a través del breaker y decodifica la respuesta 2xx en destino.
+func (c *operacionesHTTP) llamar(ctx context.Context, metodo, ruta, org, claveIdem string, cuerpo, destino any) error {
+	var crudo []byte
+	if cuerpo != nil {
+		var err error
+		if crudo, err = json.Marshal(cuerpo); err != nil {
+			return fmt.Errorf("serializar pedido a Operaciones: %w", err)
+		}
 	}
 	// Solo cuentan como falla del breaker los errores de red, los timeouts y los 5xx. Un 4xx es
 	// una respuesta válida del negocio, no un problema de la dependencia (teórico 7).
 	resp, err := c.breaker.Execute(func() (*http.Response, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+ruta, bytes.NewReader(crudo))
+		var body io.Reader
+		if crudo != nil {
+			body = bytes.NewReader(crudo)
+		}
+		req, err := http.NewRequestWithContext(ctx, metodo, c.baseURL+ruta, body)
 		if err != nil {
 			return nil, err
 		}
-		req.Header.Set(identidad.HeaderOrganizacion, org)
-		req.Header.Set("Idempotency-Key", claveIdem)
-		req.Header.Set("Content-Type", "application/json")
+		if org != "" {
+			req.Header.Set(identidad.HeaderOrganizacion, org)
+		}
+		if claveIdem != "" {
+			req.Header.Set("Idempotency-Key", claveIdem)
+		}
+		if crudo != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
 		resp, err := c.http.Do(req)
 		if err != nil {
 			return nil, err
@@ -115,28 +153,28 @@ func (c *operacionesHTTP) llamar(ctx context.Context, org, claveIdem, ruta strin
 	if err != nil {
 		// Incluye el breaker abierto (gobreaker.ErrOpenState / ErrTooManyRequests).
 		slog.WarnContext(ctx, "no se pudo llamar a Operaciones", slog.String("ruta", ruta), slog.String("error", err.Error()))
-		return models.VistaSolicitud{}, fmt.Errorf("%w: %v", ErrNoDisponible, err)
+		return fmt.Errorf("%w: %v", ErrNoDisponible, err)
 	}
 	defer resp.Body.Close()
 
-	switch resp.StatusCode {
-	case http.StatusOK:
-		var vista models.VistaSolicitud
-		if err := json.NewDecoder(resp.Body).Decode(&vista); err != nil {
-			return models.VistaSolicitud{}, fmt.Errorf("decodificar la vista de Operaciones: %w", err)
+	switch {
+	case resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated:
+		if err := json.NewDecoder(resp.Body).Decode(destino); err != nil {
+			return fmt.Errorf("decodificar la respuesta de Operaciones: %w", err)
 		}
-		return vista, nil
-	case http.StatusNotFound:
-		return models.VistaSolicitud{}, ErrNoEncontrada
-	case http.StatusConflict:
+		return nil
+	case resp.StatusCode == http.StatusNotFound:
+		return ErrNoEncontrada
+	case resp.StatusCode >= http.StatusBadRequest && resp.StatusCode < http.StatusInternalServerError:
 		var p struct {
-			Codigo string `json:"codigo"`
+			Codigo  string                `json:"codigo"`
+			Titulo  string                `json:"title"`
+			Detalle string                `json:"detail"`
+			Errores []problema.ErrorCampo `json:"errores"`
 		}
 		_ = json.NewDecoder(resp.Body).Decode(&p)
-		return models.VistaSolicitud{}, ErrConflicto{Codigo: p.Codigo}
-	case http.StatusUnprocessableEntity:
-		return models.VistaSolicitud{}, ErrDatosInvalidos
+		return ErrRechazo{Estado: resp.StatusCode, Codigo: p.Codigo, Titulo: p.Titulo, Detalle: p.Detalle, Errores: p.Errores}
 	default:
-		return models.VistaSolicitud{}, fmt.Errorf("respuesta inesperada de Operaciones: %d", resp.StatusCode)
+		return fmt.Errorf("respuesta inesperada de Operaciones: %d", resp.StatusCode)
 	}
 }

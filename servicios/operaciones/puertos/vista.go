@@ -47,7 +47,14 @@ type VistaTraslado struct {
 	DemoraMinutos           *int         `json:"demora_minutos"`
 	FinalizadoEn            *string      `json:"finalizado_en"`
 	DetalleResultado        *string      `json:"detalle_resultado"`
+	Franja                  *VistaFranja `json:"franja"`
 	AlertaClimatica         *VistaAlerta `json:"alerta_climatica"`
+}
+
+// VistaFranja es la ventana de llegada comprometida en una reserva externa.
+type VistaFranja struct {
+	Inicio string `json:"inicio"`
+	Fin    string `json:"fin"`
 }
 
 type VistaAlerta struct {
@@ -60,6 +67,7 @@ type VistaCancelacion struct {
 	Estado       string `json:"estado"`
 	Motivo       string `json:"motivo"`
 	SolicitadaEn string `json:"solicitada_en"`
+	Tardia       bool   `json:"tardia"`
 }
 
 // Pagina es una página del listado del operador.
@@ -68,4 +76,19 @@ type Pagina struct {
 	Pagina     int     `json:"pagina"`
 	Tamanio    int     `json:"tamanio"`
 	Total      int     `json:"total"`
+}
+
+// Disponibilidad son las franjas de una fecha que todavía se pueden reservar (ADR-021).
+type Disponibilidad struct {
+	Fecha   string             `json:"fecha"`
+	Franjas []FranjaDisponible `json:"franjas"`
+}
+
+// FranjaDisponible dice si una carga del peso consultado entra en la franja y cuánto lugar queda.
+type FranjaDisponible struct {
+	Inicio               string  `json:"inicio"`
+	Fin                  string  `json:"fin"`
+	Disponible           bool    `json:"disponible"`
+	TrasladosDisponibles int     `json:"traslados_disponibles"`
+	KgDisponibles        float64 `json:"kg_disponibles"`
 }

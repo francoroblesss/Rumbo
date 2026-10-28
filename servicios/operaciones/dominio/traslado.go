@@ -7,7 +7,8 @@ import "time"
 type Traslado struct {
 	ID                      string // "tra-" + uuid
 	Estado                  EstadoTraslado
-	HoraLlegadaComprometida time.Time
+	HoraLlegadaComprometida time.Time  // en una reserva externa, el fin de la franja
+	FranjaInicio            *time.Time // solo en una reserva externa (ADR-021)
 	DemoraMinutos           *int
 	FinalizadoEn            *time.Time
 	DetalleResultado        *string

@@ -25,11 +25,11 @@ import (
 	"github.com/francoroblesss/Rumbo/servicios/integracion/services"
 )
 
-// Integración de carga: atiende la capacidad publicada "Solicitar traslado" (contrato genérico)
-// y la traduce al modelo interno de Operaciones (ADR-001, ADR-006).
+// Integración de carga: atiende la capacidad publicada "Reservar traslado" (ADR-021) y la
+// traduce al modelo interno de Operaciones (ADR-001).
 // Arquitectura interna en capas: controllers → services → repositories / clients.
 func main() {
-	// El contexto se cancela al recibir la señal de apagado: detiene el relay y el consumidor.
+	// El contexto se cancela al recibir la señal de apagado: detiene el consumidor.
 	ctx, detener := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer detener()
 
@@ -50,11 +50,11 @@ func main() {
 	defer mongoCliente.Disconnect(context.Background())
 
 	// El broker se conecta en segundo plano y se reconecta solo: el servicio atiende HTTP aunque
-	// RabbitMQ no esté, y las solicitudes quedan pendientes de envío hasta que vuelva (ADR-004).
+	// RabbitMQ no esté; los cambios de estado llegan cuando vuelve (ADR-017).
 	conexionRabbit := mensajeria.Conectar(ctx, cfg.RabbitURI)
 	defer conexionRabbit.Cerrar()
 
-	// 2. Cableado (DI manual): repositorio → caché → cliente → servicio → controlador, relay y consumidor.
+	// 2. Cableado (DI manual): repositorio → caché → cliente → servicio → controlador y consumidor.
 	repoMongo := repositories.NewSolicitudesMongo(mongoCliente.Database("integracion"))
 	if err := repoMongo.AsegurarIndices(ctx); err != nil {
 		terminar("no se pudieron crear los índices", err)
@@ -66,15 +66,6 @@ func main() {
 	servicio := services.NewSolicitudesService(repo, operaciones, time.Now)
 	controlador := controllers.NewTrasladosController(servicio)
 
-	publicador := mensajeria.NuevoPublicador(conexionRabbit)
-	defer publicador.Cerrar()
-
-	relay := messaging.NewRelay(repo, publicador, observabilidad.Instancia())
-	go func() {
-		if err := relay.Ejecutar(ctx); err != nil {
-			terminar("el relay de solicitudes pendientes se detuvo", err)
-		}
-	}()
 	go messaging.ConsumirEstados(ctx, conexionRabbit, servicio.AplicarEvento)
 
 	// 3. Servidor HTTP instrumentado (traza, correlation id, métrica y log por request).

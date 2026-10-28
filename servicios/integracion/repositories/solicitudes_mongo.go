@@ -29,8 +29,7 @@ func NewSolicitudesMongo(db *mongo.Database) *SolicitudesMongo {
 // AsegurarIndices crea (de forma idempotente) los índices que necesitan las consultas:
 //   - único por (organización, clave de idempotencia): la base garantiza que un reintento no
 //     duplique la solicitud, aunque lleguen dos a la vez a réplicas distintas;
-//   - (organización, actualizado_en): el listado del polling;
-//   - parcial sobre las pendientes de envío: el relay solo recorre las que faltan publicar.
+//   - (organización, actualizado_en): el listado del polling.
 func (r *SolicitudesMongo) AsegurarIndices(ctx context.Context) error {
 	_, err := r.coleccion.Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{
@@ -40,11 +39,6 @@ func (r *SolicitudesMongo) AsegurarIndices(ctx context.Context) error {
 		{
 			Keys:    bson.D{{Key: "organizacion_id", Value: 1}, {Key: "actualizado_en", Value: 1}},
 			Options: options.Index().SetName("organizacion_actualizado_en"),
-		},
-		{
-			Keys: bson.D{{Key: "pendiente_envio", Value: 1}, {Key: "reclamado_hasta", Value: 1}},
-			Options: options.Index().SetName("pendientes_envio").
-				SetPartialFilterExpression(bson.D{{Key: "pendiente_envio", Value: true}}),
 		},
 	})
 	if err != nil {
@@ -81,13 +75,26 @@ func (r *SolicitudesMongo) BuscarPorID(ctx context.Context, organizacionID, id s
 	return s, nil
 }
 
+func (r *SolicitudesMongo) BuscarPorClave(ctx context.Context, organizacionID, clave string) (models.SolicitudExterna, error) {
+	var s models.SolicitudExterna
+	filtro := bson.D{{Key: "organizacion_id", Value: organizacionID}, {Key: "idempotencia.clave", Value: clave}}
+	err := r.coleccion.FindOne(ctx, filtro).Decode(&s)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return models.SolicitudExterna{}, ErrNoEncontrada
+	}
+	if err != nil {
+		return models.SolicitudExterna{}, fmt.Errorf("buscar por clave de idempotencia: %w", err)
+	}
+	return s, nil
+}
+
 func (r *SolicitudesMongo) Listar(ctx context.Context, f FiltroListado) ([]models.SolicitudExterna, int64, error) {
 	filtro := bson.D{{Key: "organizacion_id", Value: f.OrganizacionID}}
 	if f.ActualizadoDesde != nil {
 		filtro = append(filtro, bson.E{Key: "actualizado_en", Value: bson.D{{Key: "$gt", Value: *f.ActualizadoDesde}}})
 	}
 	if f.Estado != "" {
-		filtro = append(filtro, bson.E{Key: "vista.estado", Value: f.Estado})
+		filtro = append(filtro, bson.E{Key: "vista.traslado.estado", Value: f.Estado})
 	}
 	total, err := r.coleccion.CountDocuments(ctx, filtro)
 	if err != nil {
@@ -106,43 +113,6 @@ func (r *SolicitudesMongo) Listar(ctx context.Context, f FiltroListado) ([]model
 		return nil, 0, fmt.Errorf("leer solicitudes: %w", err)
 	}
 	return solicitudes, total, nil
-}
-
-// ReclamarPendiente usa findOneAndUpdate: buscar y marcar es una sola operación atómica, así
-// dos réplicas nunca reclaman la misma solicitud.
-func (r *SolicitudesMongo) ReclamarPendiente(ctx context.Context, instancia string, ahora time.Time) (models.SolicitudExterna, error) {
-	filtro := bson.D{
-		{Key: "pendiente_envio", Value: true},
-		{Key: "$or", Value: bson.A{
-			bson.D{{Key: "reclamado_hasta", Value: nil}},
-			bson.D{{Key: "reclamado_hasta", Value: bson.D{{Key: "$lt", Value: ahora}}}},
-		}},
-	}
-	cambio := bson.D{{Key: "$set", Value: bson.D{
-		{Key: "reclamado_hasta", Value: ahora.Add(DuracionReclamo)},
-		{Key: "reclamado_por", Value: instancia},
-	}}}
-	var s models.SolicitudExterna
-	err := r.coleccion.FindOneAndUpdate(ctx, filtro, cambio,
-		options.FindOneAndUpdate().SetReturnDocument(options.After)).Decode(&s)
-	if errors.Is(err, mongo.ErrNoDocuments) {
-		return models.SolicitudExterna{}, ErrNoHayPendientes
-	}
-	if err != nil {
-		return models.SolicitudExterna{}, fmt.Errorf("reclamar solicitud pendiente: %w", err)
-	}
-	return s, nil
-}
-
-func (r *SolicitudesMongo) MarcarEnviada(ctx context.Context, id string) error {
-	_, err := r.coleccion.UpdateOne(ctx, bson.D{{Key: "_id", Value: id}}, bson.D{
-		{Key: "$set", Value: bson.D{{Key: "pendiente_envio", Value: false}}},
-		{Key: "$unset", Value: bson.D{{Key: "reclamado_hasta", Value: ""}, {Key: "reclamado_por", Value: ""}}},
-	})
-	if err != nil {
-		return fmt.Errorf("marcar enviada la solicitud %s: %w", id, err)
-	}
-	return nil
 }
 
 // AplicarVista compara la versión y actualiza en la misma operación (filtro version < nueva):
@@ -170,12 +140,4 @@ func (r *SolicitudesMongo) AplicarVista(ctx context.Context, id string, version 
 		return "", true, fmt.Errorf("leer organización de %s: %w", id, err)
 	}
 	return doc.OrganizacionID, true, nil
-}
-
-func (r *SolicitudesMongo) ContarPendientes(ctx context.Context) (int64, error) {
-	n, err := r.coleccion.CountDocuments(ctx, bson.D{{Key: "pendiente_envio", Value: true}})
-	if err != nil {
-		return 0, fmt.Errorf("contar pendientes de envío: %w", err)
-	}
-	return n, nil
 }

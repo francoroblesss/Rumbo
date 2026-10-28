@@ -1,7 +1,7 @@
 # ADR-008 — Resiliencia ante fallos de dependencias (D10)
 
 - **Fecha:** 2026-10-14
-- **Estado:** aceptada — **reemplazada parcialmente por [ADR-017](ADR-017-reconexion-broker-y-balanceador.md)**: la reconexión a RabbitMQ (fila "Todos — RabbitMQ al arrancar") ya no termina el proceso. El resto sigue vigente.
+- **Estado:** aceptada — **reemplazada parcialmente por [ADR-017](ADR-017-reconexion-broker-y-balanceador.md)**: la reconexión a RabbitMQ (fila "Todos — RabbitMQ al arrancar") ya no termina el proceso. Las filas de Integración → Operaciones y Integración → RabbitMQ quedan **reemplazadas por [ADR-021](ADR-021-capacidad-de-autoservicio.md)**: la reserva necesita a Operaciones en el momento (`503` reintentable con breaker) e Integración ya no publica. El resto sigue vigente.
 
 ## Contexto
 La consigna (§2.9) pide identificar las dependencias de cada servicio, definir qué pasa cuando una falla o responde lento, implementar al menos un mecanismo de protección y demostrarlo con una caída provocada (registrada en `docs/POSTMORTEM.md`). El teórico 7 da los criterios:

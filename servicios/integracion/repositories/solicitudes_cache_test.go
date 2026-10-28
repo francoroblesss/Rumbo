@@ -49,7 +49,7 @@ func (c *cacheFalsa) Delete(clave string) error {
 
 func solicitudDePrueba() models.SolicitudExterna {
 	return models.SolicitudExterna{ID: "sol-1", OrganizacionID: "org-1",
-		Vista: models.VistaSolicitud{ID: "sol-1", Estado: models.EstadoRecibida}}
+		Vista: models.VistaSolicitud{ID: "sol-1", Estado: "RECIBIDA"}}
 }
 
 func TestCacheMissGuardaYHitNoConsultaMongo(t *testing.T) {
@@ -68,7 +68,7 @@ func TestCacheMissGuardaYHitNoConsultaMongo(t *testing.T) {
 		t.Fatalf("TTL fuera de 60 s + jitter de 0 a 10 s: %v", ttl)
 	}
 	s, err := repo.BuscarPorID(context.Background(), "org-1", "sol-1")
-	if err != nil || s.Vista.Estado != models.EstadoRecibida {
+	if err != nil || s.Vista.Estado != "RECIBIDA" {
 		t.Fatalf("hit incorrecto: %+v %v", s, err)
 	}
 	if mock.LecturasPorID != 1 {
@@ -106,7 +106,7 @@ func TestCacheAplicarVistaBorraLaClave(t *testing.T) {
 	repo := NewSolicitudesCache(mock, cache)
 	_, _ = repo.BuscarPorID(context.Background(), "org-1", "sol-1")
 
-	_, aplicado, err := repo.AplicarVista(context.Background(), "sol-1", 2, models.VistaSolicitud{ID: "sol-1", Estado: models.EstadoAceptada}, time.Now())
+	_, aplicado, err := repo.AplicarVista(context.Background(), "sol-1", 2, models.VistaSolicitud{ID: "sol-1", Estado: "ACEPTADA"}, time.Now())
 	if err != nil || !aplicado {
 		t.Fatalf("no se aplicó: %v", err)
 	}
@@ -114,7 +114,7 @@ func TestCacheAplicarVistaBorraLaClave(t *testing.T) {
 		t.Fatalf("aplicar la vista tiene que borrar la clave: %v", cache.borros)
 	}
 	s, _ := repo.BuscarPorID(context.Background(), "org-1", "sol-1")
-	if s.Vista.Estado != models.EstadoAceptada {
+	if s.Vista.Estado != "ACEPTADA" {
 		t.Fatal("después de invalidar se tiene que leer el estado nuevo")
 	}
 

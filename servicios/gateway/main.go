@@ -51,8 +51,10 @@ func main() {
 func armar(cfg config.Config, limitador *limite.Limitador) http.Handler {
 	mux := http.NewServeMux()
 
-	// Contrato público "Solicitar traslado" (ADR-006), sin versión en la ruta (ADR-019): token y traslados.
+	// Contrato público "Reservar traslado" (ADR-021), sin versión en la ruta (ADR-019): token,
+	// disponibilidad y traslados.
 	mux.Handle("/auth/", proxy.Nuevo(cfg.IdentidadURL, ""))
+	mux.Handle("/disponibilidad", proxy.Nuevo(cfg.IntegracionURL, ""))
 	mux.Handle("/traslados", proxy.Nuevo(cfg.IntegracionURL, ""))
 	mux.Handle("/traslados/", proxy.Nuevo(cfg.IntegracionURL, ""))
 

@@ -10,7 +10,7 @@ Fuente: [`diagramas/c4-contexto.puml`](diagramas/c4-contexto.puml) (C4-PlantUML;
 
 - Rumbo tiene cuatro tipos de usuario, que lo usan a través de la web: **cliente** (de una organización), **operador**, **chofer** y **administrador**.
 - Se integra con dos sistemas de otros grupos:
-  - el **sistema de gestión de almacenamiento** (otro grupo) consume la capacidad publicada **"Solicitar traslado"** (API REST en `/traslados`): trasladar una cosa desde un origen hasta un destino;
+  - el **sistema de gestión de almacenamiento** (otro grupo) consume la capacidad publicada **"Reservar traslado"** (API REST en `/disponibilidad` y `/traslados`): reservar el traslado de una cosa desde un origen hasta un destino en una franja, con respuesta inmediata;
   - Rumbo consume las **condiciones climáticas** del **sistema de aeropuerto**.
 
 ## 2. Diagrama de contenedores
@@ -33,15 +33,15 @@ Cinco microservicios detrás de un API Gateway. Justificación en [ADR-001](adr/
 | Servicio | Responsabilidad | Datos de los que es dueño |
 | --- | --- | --- |
 | **Identidad y clientes** | Quién es cada usuario, qué puede hacer y a qué organización y padrón pertenece | Usuarios, roles y credenciales; organizaciones cliente; padrón de personas transportadas |
-| **Operaciones** | Recibir lo que hay que trasladar, planificarlo, asignarlo y seguir su ejecución | Solicitudes, planes, traslados y tramos, recorridos y paradas, asignaciones, incidentes |
+| **Operaciones** | Recibir lo que hay que trasladar (incluidas las reservas de franjas), planificarlo, asignarlo y seguir su ejecución | Solicitudes, franjas y su cupo, planes, traslados y tramos, recorridos y paradas, asignaciones, incidentes |
 | **Recursos** | Con qué y con quién se traslada, y cuánto le corresponde a cada chofer | Choferes (jornada, ausencias), vehículos (capacidad, accesibilidad, propietario), actividad, tarifas, preliquidaciones |
 | **Notificaciones** | Hacer llegar a cada usuario sus avisos | Bandeja de avisos por usuario |
-| **Integración de carga** | Atender el contrato público "Solicitar traslado" y traducirlo al modelo interno | Solicitudes externas (id externo ↔ interno, idempotencia, último estado conocido) |
+| **Integración de carga** | Atender el contrato público "Reservar traslado" y traducirlo al modelo interno | Copia de las reservas externas (idempotencia, último estado conocido) |
 
-- La operación crítica (**asignación**) vive entera en Operaciones.
+- Las operaciones críticas (**reserva de franja** y **asignación**) viven enteras en Operaciones ([ADR-022](adr/ADR-022-consistencia-y-concurrencia.md)).
 - Operaciones consulta a Recursos (disponibilidad y vehículo) y a Identidad y clientes (padrón, del que guarda una copia en el traslado).
 - Recursos y Notificaciones reciben eventos de Operaciones (recorrido finalizado, avisos).
-- La capacidad publicada entra por el Gateway a **Integración de carga**, que entrega las solicitudes a Operaciones y recibe los cambios de estado por eventos. Las decisiones de negocio las toma Operaciones.
+- La capacidad publicada entra por el Gateway a **Integración de carga**, que le pide la reserva a Operaciones por HTTP (respuesta inmediata) y recibe los cambios de estado por eventos. Las decisiones de negocio las toma Operaciones ([ADR-021](adr/ADR-021-capacidad-de-autoservicio.md)).
 - La capacidad consumida (clima) sale desde Operaciones.
 ### 3.1 Organización interna de cada servicio (bajo nivel)
 La consigna pide al menos dos estilos de arquitectura distintos. Justificación en [ADR-010](adr/ADR-010-estilos-internos.md) (D2); esta es la estructura con la que se empezó:
@@ -63,11 +63,17 @@ Detalle en [ADR-003](adr/ADR-003-persistencia.md) (D3); el motor relacional es M
 | Recursos | MySQL, base `recursos` | Preliquidación (montos, correcciones, cierres): finanzas y auditoría |
 | Identidad y clientes | MongoDB, base `identidad` | Padrón con esquema variable por tipo de servicio (discriminador + JSON Schema) |
 | Notificaciones | MongoDB, base `notificaciones` | Avisos independientes, leídos por usuario y fecha |
-| Integración de carga | MongoDB, base `integracion` | Solicitud externa leída como unidad; solicitud, idempotencia y "pendiente de envío" en una escritura atómica por documento |
+| Integración de carga | MongoDB, base `integracion` | Copia de la reserva externa leída como unidad; reserva, clave de idempotencia y última vista en un mismo documento |
 
 - **Una base de datos por microservicio**, cada una con su propio usuario. Las bases viven en una instancia por motor.
 - El índice de búsqueda, la caché y el broker son derivados, no fuente de verdad.
-- **Operación con garantías de consistencia:** el cambio de estado de una solicitud y su evento se confirman en la misma transacción de MySQL (outbox), con idempotencia por `Idempotency-Key` en la entrada y por id de mensaje en los consumidores. La decisión completa de consistencia y concurrencia (D4, con la asignación de recursos) se documenta para la Presentación.
+- **Operación con garantías de consistencia: la reserva de una franja** ([ADR-022](adr/ADR-022-consistencia-y-concurrencia.md), D4). En una transacción de MySQL:
+  - se resuelve la `Idempotency-Key`;
+  - se bloquea la fila de la franja (`SELECT … FOR UPDATE`);
+  - se verifica y descuenta el cupo;
+  - se crean la solicitud y el traslado, y el evento va al outbox.
+
+  Nunca se reserva más que el cupo, un reintento no reserva dos veces y el evento no se pierde. Hay un test de concurrencia contra MySQL real: 20 reservas simultáneas sobre 3 lugares dan exactamente 3. La asignación de chofer y vehículo sigue la misma receta.
 
 ## 5. Comunicación entre servicios
 Detalle en [ADR-004](adr/ADR-004-comunicacion-entre-servicios.md) (D5).
@@ -78,19 +84,25 @@ Detalle en [ADR-004](adr/ADR-004-comunicacion-entre-servicios.md) (D5).
 | Cliente → Gateway → servicio | 5 s total; el gateway no reintenta | 502 / 504; reintenta el cliente con `Idempotency-Key` |
 | Operaciones → Recursos (disponibilidad, vehículo) | 800 ms, 1 reintento con jitter | Se rechaza la asignación (fail-closed) |
 | Operaciones → Identidad (datos de personas) | 800 ms, 1 reintento con jitter | La solicitud no se acepta; sigue `RECIBIDA` |
-| Integración de carga → Operaciones (contrapropuesta, cancelación) | 2 s, sin reintento | 503 al consumidor, que reintenta con la misma clave |
+| Integración de carga → Operaciones (disponibilidad, reserva, cancelación) | 2 s, sin reintento, circuit breaker | 503 al consumidor, que reintenta con la misma clave ([ADR-021](adr/ADR-021-capacidad-de-autoservicio.md)) |
 
 **Asíncrona (RabbitMQ):**
 - Eventos en exchanges `topic` por productor (`rumbo.operaciones`, `rumbo.recursos`), con una cola por servicio consumidor.
-- Un comando en cola de trabajo: `operaciones.solicitudes-externas`.
+- La reserva de la capacidad publicada es **síncrona** (el consumidor necesita la respuesta en el momento, ADR-021); ya no hay comando en cola.
 - **Evento de dominio principal:** `operaciones.recorrido.finalizado` → Recursos registra la actividad.
 - Garantías: outbox, entrega at-least-once, ACK después del efecto, consumidores idempotentes, 3 reintentos con backoff y jitter, DLQ por cola con dueño y alerta.
 
 **Correlación:** el `X-Correlation-ID` se asigna en el gateway y se propaga en HTTP y en los mensajes.
 
 ## 6. Integración con otros grupos
-- **Capacidad publicada — Solicitar traslado** ([ADR-002](adr/ADR-002-contrato-propio.md), capacidad genérica en [ADR-006](adr/ADR-006-contrato-generico-v2.md), rutas sin versión en [ADR-019](adr/ADR-019-contrato-sin-version-en-la-ruta.md)): API REST en **`/traslados`** descrita en OpenAPI 3.1, versión 3.0.0 del contrato. Las rutas no llevan versión: el contrato se versiona en su documento y los cambios incompatibles se coordinan con el consumidor ([`contracts/`](contracts/README.md)). Es genérica: tres datos obligatorios (`cosa`, `origen`, `destino`). Entra por el API Gateway (token firmado) y la atiende el servicio **Integración de carga**, que la traduce al modelo interno y la entrega a Operaciones. El procesamiento es asíncrono (`202` + estado `RECIBIDA`); sin hora pedida, Rumbo propone una (`CONTRAPROPUESTA`). El seguimiento es por consulta, los `POST` son idempotentes y los errores usan Problem Details. Hay un mock generado con Prism. Las versiones 1.0.0 (`/v1`, específica de carga) y 2.1.0 (`/v2`) quedaron reemplazadas sin haber tenido consumidores.
-- **Rutas del gateway:** contrato público en `/auth/` y `/traslados` (sin versión); API interna de la aplicación web en `/api/<servicio>/`. Ninguna ruta lleva versión ([ADR-019](adr/ADR-019-contrato-sin-version-en-la-ruta.md)).
+- **Capacidad publicada — Reservar traslado** ([ADR-021](adr/ADR-021-capacidad-de-autoservicio.md), sobre [ADR-002](adr/ADR-002-contrato-propio.md), [ADR-006](adr/ADR-006-contrato-generico-v2.md) y [ADR-019](adr/ADR-019-contrato-sin-version-en-la-ruta.md)): API REST descrita en OpenAPI 3.1, contrato **4.0.0** ([`contracts/`](contracts/README.md)).
+  - Es de **autoservicio**: el sistema externo consulta las franjas con lugar (`GET /disponibilidad`) y reserva una (`POST /traslados`). La respuesta es definitiva en el momento: `201` con el traslado `PROGRAMADO`, o `409 SIN_DISPONIBILIDAD`. No hay revisión del operador ni contrapropuesta.
+  - El seguimiento es por consulta y la cancelación se aplica en el momento (si es tardía, queda marcada).
+  - Es genérica: `cosa`, `origen` y `destino`, más la franja.
+  - Entra por el API Gateway (token firmado) y la atiende **Integración de carga**, que le pide la reserva a Operaciones por HTTP.
+  - Los `POST` son idempotentes, los errores usan Problem Details y hay un mock generado con Prism.
+  - Las versiones 1.0.0, 2.1.0 y 3.0.0 quedaron reemplazadas; ninguna tuvo consumidores fuera del mock.
+- **Rutas del gateway:** contrato público en `/auth/`, `/disponibilidad` y `/traslados` (sin versión); API interna de la aplicación web en `/api/<servicio>/`. Ninguna ruta lleva versión ([ADR-019](adr/ADR-019-contrato-sin-version-en-la-ruta.md)).
 - **Capacidad consumida — Clima del sistema de aeropuerto** ([ADR-012](adr/ADR-012-consumo-clima.md), [ADR-020](adr/ADR-020-contrato-clima-2.md)): Operaciones consulta la operabilidad del aeropuerto (`GET /airports/SACO/conditions`, contrato 2.0.1 fijado en [`contracts/consumidos/`](contracts/consumidos/README.md); la URL real del proveedor se configura con `CLIMA_URL`, por defecto el mock) al aceptar un traslado al aeropuerto dentro de las próximas 6 h; si no es operable, el traslado queda con alerta climática y decide el operador. Es fail-open (si el proveedor falla, la alerta queda "clima no verificado" y la aceptación sigue), con timeout de 1 s, un reintento solo ante errores transitorios, circuit breaker (5 fallas, 30 s), caché local de 5 min y test de contrato con `kin-openapi`.
 
 ## 7. Búsqueda, caché y balanceo de carga
@@ -105,8 +117,8 @@ Dependencias de cada servicio y qué pasa cuando fallan ([ADR-008](adr/ADR-008-r
 
 | Servicio | Dependencia | Si falla o tarda | Mecanismo |
 | --- | --- | --- | --- |
-| Integración de carga | **Operaciones** (HTTP: responder contrapropuesta, cancelar) | Responde `503 SERVICIO_NO_DISPONIBLE` con `Retry-After`. El consumidor reintenta con la misma `Idempotency-Key` | Timeout de 2 s + **circuit breaker** |
-| Integración de carga | RabbitMQ (publicar el comando, recibir estados) | **Sigue aceptando solicitudes** (`202`): quedan pendientes de envío y el relay las publica cuando el broker vuelve. El consumidor de estados se retoma solo al reconectar | Pendiente de envío + relay con reintentos (ADR-004) + reconexión ([ADR-017](adr/ADR-017-reconexion-broker-y-balanceador.md)) |
+| Integración de carga | **Operaciones** (HTTP: disponibilidad, reservar, cancelar) | Responde `503 SERVICIO_NO_DISPONIBLE` con `Retry-After`. El consumidor reintenta con la misma `Idempotency-Key` y nunca reserva dos veces. Las consultas de traslados ya reservados siguen funcionando (salen de la copia de Integración) | Timeout de 2 s + **circuit breaker** ([ADR-021](adr/ADR-021-capacidad-de-autoservicio.md)) |
+| Integración de carga | RabbitMQ (recibir estados) | Las reservas siguen funcionando; la copia local se atrasa hasta que el broker vuelve y el consumidor se retoma solo | Reconexión ([ADR-017](adr/ADR-017-reconexion-broker-y-balanceador.md)) |
 | Integración de carga | Memcached | Lee de MongoDB; nunca un error al consumidor | Degradación (ADR-007) |
 | Integración de carga | MongoDB (su base) | `503 SERVICIO_NO_DISPONIBLE` | Timeout del driver |
 | Operaciones | Sistema de aeropuerto (clima) | Sigue sin el dato: alerta "clima no verificado" (fail-open) | Timeout + reintento + breaker + caché (D9) |
@@ -121,7 +133,7 @@ Detalle en [ADR-014](adr/ADR-014-observabilidad.md) (D11).
 - **Stack:** OpenTelemetry en todos los servicios Go (módulo `servicios/comun/observabilidad`) y una sola imagen, `grafana/otel-lgtm`, que reúne el colector OTLP, Prometheus (métricas), Loki (logs), Tempo (trazas) y Grafana (tablero y alertas) en `http://localhost:3000`. Se activa con el perfil `observabilidad` de `compose.yaml`.
 - **Logs:** `slog` en JSON por stdout y a Loki, con `servicio`, `instancia`, `correlation_id`, `trace_id` y `span_id`. El gateway asigna el `X-Correlation-ID`, que viaja por HTTP y en los mensajes de RabbitMQ.
 - **Métricas principales:** `rumbo_http_duracion_segundos` (RED por servicio e instancia), `rumbo_mensajes_procesados_total` (incluye la DLQ), `rumbo_outbox_pendientes`, `rumbo_cache_operaciones_total`, `rumbo_circuito_estado`, `rumbo_gateway_rechazos_total`, `rumbo_solicitudes_total` y `rumbo_clima_consultas_total` (nombres fijos en `docs/interfaces-internas.md` §8).
-- **Trazas:** propagación W3C Trace Context por HTTP y por RabbitMQ, incluido el paso por el outbox. El flujo principal se ve en una sola traza: gateway → Integración (`POST /traslados`) → publicar y consumir en Operaciones → publicar y consumir en Integración.
+- **Trazas:** propagación W3C Trace Context por HTTP y por RabbitMQ, incluido el paso por el outbox. El flujo principal se ve en una sola traza: gateway → Integración (`POST /traslados`) → Operaciones (`POST /internas/reservas`) → publicar `operaciones.solicitud.aceptada` → consumir en Integración.
 - **Tablero:** "Rumbo — estado general" (carpeta *Rumbo*), con 11 paneles: requests, errores 5xx y latencia p95 por servicio, requests por instancia de Integración (balanceo), hit ratio de las cachés, pendientes de outbox, mensajes por resultado, estado de los circuitos, consultas de clima, rechazos del gateway y logs de error. Se provisiona desde `infra/grafana/`.
 - **SLO y alertas** (provisionadas desde `infra/grafana/alertas/`): 99 % de los `POST /traslados` en menos de 300 ms y menos de 1 % de respuestas 5xx. Tres reglas con evaluación cada minuto: `SLO latencia traslados` y `SLO errores traslados` (`for: 5m`) y `Mensajes en DLQ` (`for: 1m`, porque con `5m` un mensaje aislado no llegaba a dispararla; ver [ADR-016](adr/ADR-016-validacion-d5.md)).
 
@@ -147,7 +159,9 @@ Los scripts de `infra/` crean, al iniciar por primera vez, una base de datos y u
 ## 10. Limitaciones conocidas y deuda técnica aceptada
 - **Principal límite de capacidad ([ADR-015](adr/ADR-015-capacidad-y-costos.md)):** la CPU de la réplica de Integración. Ningún escenario llegó al límite hasta 100 req/s (p95 ≤ 5,6 ms y 0 % de errores), y `integracion-1` usa 22,7 % de un núcleo a 100 req/s sin caché. El siguiente paso es medir escalones mayores.
 - **La búsqueda ([ADR-011](adr/ADR-011-busqueda.md)) se implementa para la Presentación.**
-- **Operaciones corre en una sola réplica.**
+- **Operaciones corre en una sola réplica**, y desde [ADR-021](adr/ADR-021-capacidad-de-autoservicio.md) la reserva la necesita en el momento: si Operaciones cae, la capacidad publicada responde `503` (reintentable) en lugar de aceptar y procesar después.
+- **El cupo de las franjas es una capacidad que Rumbo decide ofrecer, no se calcula con los vehículos reales** ([ADR-021](adr/ADR-021-capacidad-de-autoservicio.md)). El operador tiene que respetar las reservas al armar los recorridos.
+- **Las reservas sobre una misma franja se atienden de a una** (bloqueo de la fila, [ADR-022](adr/ADR-022-consistencia-y-concurrencia.md)). Falta medir con k6 cómo afecta a muchas reservas simultáneas sobre la misma franja.
 - **`grafana/otel-lgtm` es para desarrollo, no para producción.**
 - **El clima se midió contra el mock del proveedor** (Prism). El proveedor ya publicó su URL real (contrato 2.0.1, [ADR-020](adr/ADR-020-contrato-clima-2.md)); falta la clave para repetir la medición de [ADR-016](adr/ADR-016-validacion-d5.md). Mientras el servicio real está dormido, los traslados al aeropuerto quedan "clima no verificado".
 - **Consumidores detenidos sin que el proceso caiga ([ADR-017](adr/ADR-017-reconexion-broker-y-balanceador.md)):** con RabbitMQ caído, cada servicio sigue vivo y atiende HTTP, pero no consume. Se detecta por los logs (`se cerró la conexión con RabbitMQ`) y por `rumbo_outbox_pendientes`, que crece mientras el broker no está; todavía no hay una alerta específica.

@@ -33,7 +33,7 @@ Un mismo modelo de traslados para los cuatro servicios. Los paneles comparten fu
 | **Administrador** | Personal de Rumbo | Usuarios y roles; alta de clientes (organizaciones) y sus usuarios; choferes; vehículos; tarifas de preliquidación; revisar y corregir actividad; cerrar preliquidaciones. Además puede hacer todo lo del operador. |
 
 - Una misma persona puede tener **más de un rol**. Eso no implica dar los mismos permisos a todos.
-- **No hay auto-registro**: el administrador da de alta cada organización (con su tipo de servicio) y sus usuarios. El sistema del otro grupo es un cliente de tipo stock con credenciales propias.
+- **No hay auto-registro**: el administrador da de alta cada organización (con su tipo de servicio) y sus usuarios. El sistema del otro grupo es un cliente de tipo stock con credenciales propias, que **reserva franjas** sin pasar por la revisión del operador (§15).
 - **Persona transportada ≠ cliente**: el pasajero (paciente, alumno, empleado) **no tiene cuenta** ni solicita nada. Pide siempre la organización.
 
 ## 4. Conceptos del dominio
@@ -42,6 +42,7 @@ Un mismo modelo de traslados para los cuatro servicios. Los paneles comparten fu
 | **Cliente** | Organización que contrata a Rumbo, con un tipo de servicio (pacientes, escolar, empresa privada, stock). |
 | **Persona transportada** | Integrante del padrón de un cliente: nombre, documento, teléfono/contacto, domicilio, observaciones y necesidades (silla de ruedas, parada asignada, edificio de trabajo, etc.). La carga el cliente desde su panel o el operador en su nombre. |
 | **Carga** | Lo que se traslada en un servicio de stock: **descripción, cantidad de bultos y peso total (kg)** obligatorios; volumen opcional; referencia externa del cliente. Rumbo **no gestiona el inventario** del cliente, solo registra qué traslada. |
+| **Franja** | Ventana de llegada (2 h) en la que Rumbo ofrece traslados de carga a sistemas externos, con un **cupo** de traslados y de kg. Reservar una franja es un compromiso: la carga llega antes del fin de la franja (§15). |
 | **Solicitud** | Pedido del cliente: qué personas (de su padrón) o qué carga, origen, destino, hora pedida (+ tolerancia opcional), ida sola o ida y vuelta, y fecha puntual **o** recurrencia (días de la semana + desde/hasta). |
 | **Plan recurrente** | Lo crea el **operador** al aceptar una solicitud recurrente. Define qué traslados se repiten y desde cuándo; a partir de él Rumbo genera los traslados concretos. |
 | **Traslado** | Movimiento concreto en una fecha: **una o varias personas (o una carga) con el mismo origen y destino**. Puede ser solo de ida o de ida y vuelta. 8 pacientes con 8 domicilios = 8 traslados; 5 empleados de la oficina al aeropuerto = 1 traslado de 5 personas. |
@@ -78,7 +79,7 @@ RECIBIDA
 - Ante falta de disponibilidad, Rumbo **prefiere contraproponer antes que rechazar**. El rechazo sigue siendo posible.
 - **Rumbo nunca cambia unilateralmente el horario pedido.** Si propone otro, el cliente acepta o rechaza.
 - La contrapropuesta **vence a las 24 h** sin respuesta; al vencer, Rumbo libera el horario propuesto.
-- El mismo ciclo aplica a **todos los clientes**, incluido el sistema del otro grupo (que también puede recibir y responder contrapropuestas).
+- Este ciclo aplica a los **clientes que usan la aplicación web**. El **sistema del otro grupo no pasa por él** (desde el 28/10/2026, ver registro de cambios): reserva una franja con cupo y la respuesta es inmediata, sin revisión del operador ni contrapropuesta (§15).
 - **Horario pedido:** en la **ida** es la hora de **llegada al destino** (turno, escuela, vuelo); en la **vuelta** es la hora de **recogida**. El cliente puede indicar una **tolerancia** en minutos (ej. ±30). Sin tolerancia, la hora es estricta.
 
 ## 7. Planes recurrentes
@@ -107,7 +108,7 @@ RECIBIDA
 - **Vuelta a confirmar:** un traslado puede incluir una vuelta **con horario pendiente** (ej. no se sabe cuándo termina el tratamiento). Es distinto de "sin vuelta". El horario se confirma después, y el operador debe programarla y asignarla antes de ejecutarla.
 - Los **tiempos** (duración de tramos y viajes entre paradas) los **estima el operador**. Rumbo no calcula rutas ni distancias (ver consultas al profesor).
 
-**Clima en traslados al aeropuerto.** Una ubicación puede marcarse como el aeropuerto (Córdoba, `SACO`); en esta etapa lo marca el operador al aceptar la solicitud. Para un traslado con origen o destino en el aeropuerto cuya hora comprometida esté dentro de las próximas 6 h, Rumbo consulta la operabilidad del aeropuerto (al aceptar y al iniciar el recorrido). Si no es operable, el traslado queda con una alerta climática (con sus motivos), se avisa al operador y al cliente, y el operador decide mantener, proponer otro horario o cancelar. Si el servicio de clima no responde, se sigue sin el dato y la alerta queda "clima no verificado".
+**Clima en traslados al aeropuerto.** Una ubicación puede marcarse como el aeropuerto (Córdoba, `SACO`); en esta etapa lo marca el operador al aceptar la solicitud; en una reserva externa, que no pasa por el operador, la consulta se hace al iniciar el recorrido. Para un traslado con origen o destino en el aeropuerto cuya hora comprometida esté dentro de las próximas 6 h, Rumbo consulta la operabilidad del aeropuerto (al aceptar y al iniciar el recorrido). Si no es operable, el traslado queda con una alerta climática (con sus motivos), se avisa al operador y al cliente, y el operador decide mantener, proponer otro horario o cancelar. Si el servicio de clima no responde, se sigue sin el dato y la alerta queda "clima no verificado".
 
 ## 9. Modificaciones y cancelaciones
 - **24 h o más de anticipación:** el cliente puede pedir el cambio o cancelar. Si el cambio afecta horarios o recursos, se revisa la disponibilidad.
@@ -116,6 +117,7 @@ RECIBIDA
 - El plazo se aplica **a cada tramo**. Así se puede cancelar la vuelta después de haber hecho la ida.
 - Un **tramo ya iniciado no se cancela**: lo que pase se registra como incidente.
 - **No hay multas ni cobros** por cancelación.
+- **Sistemas externos** (reservas, §15): la cancelación se aplica en el momento si el traslado no empezó y devuelve el lugar de la franja. Con menos de 24 h no espera la aprobación del operador: queda marcada como **tardía** y se le avisa.
 
 ## 10. Estados de la operación
 Se distinguen tres ciclos: la **solicitud** (qué pasó con el pedido, §6), el **traslado y sus tramos** (qué pasó con el servicio) y el **recorrido** (cómo avanzó la ejecución de sus paradas).
@@ -180,7 +182,7 @@ El chofer ve **"Mi recorrido de hoy"** (ej. "Ruta 08 — Carlos: 07:00 Juan Pér
 Por ahora los avisos llegan **solo dentro de Rumbo**: cada usuario los ve en su bandeja al ingresar (ver consultas al profesor).
 - **Al cliente:** cambios de su solicitud (aceptada, contrapropuesta, rechazada, vencida) y confirmación de modificaciones y cancelaciones. El avance de la ejecución **no se avisa**; el cliente lo consulta en su panel.
 - **Al chofer:** recorrido nuevo asignado, reasignación, cancelación o cambio de horario de una parada.
-- **Al operador:** solicitudes nuevas, traslados que requieren revisión por cambio de plan, incidentes reportados, pedidos de cambio con menos de 24 h y contrapropuestas respondidas o vencidas.
+- **Al operador:** solicitudes nuevas, traslados que requieren revisión por cambio de plan, incidentes reportados, pedidos de cambio con menos de 24 h, contrapropuestas respondidas o vencidas, y reservas de sistemas externos y sus cancelaciones tardías.
 
 ## 13 bis. Búsqueda de traslados
 - **Quién:** el operador y el administrador buscan entre **todos** los traslados; el cliente, **solo** entre los de su organización.
@@ -199,7 +201,12 @@ Por ahora los avisos llegan **solo dentro de Rumbo**: cada usuario los ve en su 
 - **Cierre:** el administrador revisa la actividad, puede **corregir horas o km con motivo** y **cierra** la preliquidación. Un período cerrado **no se reabre**: los errores posteriores se ajustan en el período siguiente. **Cerrar no es pagar ni emitir un recibo.**
 
 ## 15. Integración con otros grupos
-- **Capacidad que Rumbo publica: "Solicitar traslado"** (genérica desde el 11/10/2026, ver registro de cambios). Un sistema externo pide **trasladar una cosa desde un origen hasta un destino**: solo `cosa` (descripción y cantidad), `origen` y `destino` son obligatorios; peso, volumen, hora, tolerancia y referencia externa son opcionales. Rumbo responde "solicitud recibida". **Si no se indicó hora, el operador propone una** (contrapropuesta, §6). Desde ahí sigue el flujo normal: revisión, planificación, asignación, ejecución y resultado. Adentro de Rumbo se trata como un traslado de carga. El otro sistema **inicia una operación real** dentro de Rumbo, que es lo que exige la consigna.
+- **Capacidad que Rumbo publica: "Reservar traslado"** (de autoservicio desde el 28/10/2026, ver registro de cambios). Un sistema externo **reserva el traslado de una cosa desde un origen hasta un destino** en una **franja** de llegada:
+  - consulta qué franjas de un día tienen lugar;
+  - reserva una con `cosa` (descripción y cantidad), `origen`, `destino` y la franja; peso, volumen, referencia externa y observaciones son opcionales;
+  - Rumbo responde en el momento: **reservado** (el traslado queda `PROGRAMADO` y es un compromiso) o **sin lugar** (elige otra franja). No hay revisión del operador ni contrapropuesta: el sistema externo solo llama endpoints y nadie, ni de Rumbo ni del otro grupo, tiene que intervenir a mano.
+  - Cada franja tiene un **cupo** de traslados y de kg para todos los sistemas externos; dos reservas simultáneas nunca toman el mismo lugar.
+  - Desde ahí sigue el flujo normal: planificación (el operador arma el recorrido respetando la franja), asignación, ejecución y resultado, que el sistema externo consulta. Adentro de Rumbo se trata como un traslado de carga. El otro sistema **inicia una operación real** dentro de Rumbo, que es lo que exige la consigna.
 - **Capacidad que Rumbo consume:** la API de Clima del sistema de aeropuerto (contrato fijado en `docs/contracts/consumidos/`). Se usa en la regla de clima de §8 (ADR-012).
 
 ## 16. Fuera de alcance
@@ -226,3 +233,4 @@ Por ahora los avisos llegan **solo dentro de Rumbo**: cada usuario los ve en su 
 | --- | --- | --- |
 | 2026-10-11 | §15: la capacidad publicada pasa de "Solicitar traslado de carga" (empresa de stock; descripción, bultos, peso, hora y referencia obligatorios) a **"Solicitar traslado"** genérico (cosa, origen y destino; el resto opcional; sin hora, contrapropuesta) | Corrección de la Entrega 1 del profesor: "traslado = función con 3 parámetros: cosa, inicio y destino; más abstracto para que gestión de almacenamiento nos consuma" (ADR-006) |
 | 2026-10-14 | §8: regla de clima para traslados al aeropuerto (consulta de operabilidad, alerta climática y decisión del operador) | Consumo de la capacidad de clima del otro grupo (D9, ADR-012) |
+| 2026-10-28 | §15: la capacidad publicada pasa de "Solicitar traslado" (`RECIBIDA`, revisión del operador, contrapropuesta y cancelación tardía con aprobación) a **"Reservar traslado"** de autoservicio (franja con cupo, respuesta inmediata). Se agrega el concepto **Franja** (§4). §6: el ciclo de la solicitud queda solo para los clientes de la web. §9: la cancelación de un sistema externo se aplica siempre y la tardía se marca. §8 y §13 ajustados | Revisión del grupo: una capacidad publicada no puede depender de un ida y vuelta manual entre Rumbo y el otro sistema; el otro sistema solo tiene que llamar endpoints (ADR-021) |

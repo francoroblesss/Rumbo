@@ -553,40 +553,404 @@
     },
     {
       "id": 11,
-      "type": "logs",
-      "title": "11. Logs de error (correlation_id y trace_id)",
-      "description": "Logs en nivel error de todos los servicios. Abrir una línea muestra su correlation_id y su trace_id; el trace_id lleva a la traza en Tempo.",
+      "type": "table",
+      "title": "11. Errores recientes",
+      "description": "Logs de nivel ERROR del período (tabla logs en MySQL, ADR-023). trace_id abre la traza en Tempo; correlation_id filtra todos los logs de esa operación.",
       "datasource": {
-        "type": "loki",
-        "uid": "loki"
+        "type": "mysql",
+        "uid": "mysql-logs"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 24,
+        "w": 16,
+        "h": 8
       },
       "targets": [
         {
           "refId": "A",
           "datasource": {
-            "type": "loki",
-            "uid": "loki"
+            "type": "mysql",
+            "uid": "mysql-logs"
           },
-          "expr": "{service_name=~\".+\"} | detected_level=\"error\"",
-          "queryType": "range"
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT creado_en AS time, servicio, instancia, mensaje, correlation_id, trace_id, atributos\nFROM logs\nWHERE $__timeFilter(creado_en) AND nivel = 'ERROR' AND servicio IN (${servicio:sqlstring})\nORDER BY creado_en DESC, id DESC LIMIT 100"
         }
       ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "trace_id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Ver la traza en Tempo",
+                    "url": "/explore?left={\"datasource\": \"tempo\", \"queries\": [{\"refId\": \"A\", \"datasource\": {\"type\": \"tempo\", \"uid\": \"tempo\"}, \"queryType\": \"traceql\", \"query\": \"${__value.raw}\"}]}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "correlation_id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Todos los logs de esta operación",
+                    "url": "/d/rumbo-estado-general?var-correlation_id=${__value.raw}&${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "nivel"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "ERROR": {
+                        "color": "red",
+                        "index": 0
+                      },
+                      "WARN": {
+                        "color": "orange",
+                        "index": 1
+                      },
+                      "INFO": {
+                        "color": "text",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
       "options": {
-        "showTime": true,
-        "showLabels": false,
-        "showCommonLabels": false,
-        "wrapLogMessage": true,
-        "prettifyLogMessage": false,
-        "enableLogDetails": true,
-        "dedupStrategy": "none",
-        "sortOrder": "Descending"
+        "showHeader": true,
+        "cellHeight": "sm"
+      }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "12. Logs por minuto, por nivel",
+      "description": "Cuántos logs de cada nivel se escribieron por minuto (MySQL). Un salto de ERROR o WARN es la señal para bajar a la tabla de logs.",
+      "datasource": {
+        "type": "mysql",
+        "uid": "mysql-logs"
       },
       "gridPos": {
         "x": 0,
-        "y": 24,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mysql",
+            "uid": "mysql-logs"
+          },
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT $__timeGroupAlias(creado_en, '1m'), nivel AS metric, COUNT(*) AS value\nFROM logs\nWHERE $__timeFilter(creado_en) AND servicio IN (${servicio:sqlstring})\nGROUP BY 1, nivel ORDER BY 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ERROR"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "WARN"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "INFO"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "13. Logs descartados (no llegaron a MySQL)",
+      "description": "rumbo_logs_descartados_total: logs que no se guardaron porque la cola estaba llena o MySQL falló. Siguen en stdout (docker compose logs).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job, motivo) (increase(rumbo_logs_descartados_total[5m])) or vector(0)",
+          "legendFormat": "{{job}} {{motivo}}"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "table",
+      "title": "14. Logs (filtrar por nivel, servicio y correlation_id)",
+      "description": "Todos los logs INFO, WARN y ERROR del período. Para seguir una operación entre servicios, pegar su correlation_id (lo devuelve el gateway en X-Correlation-ID) en la variable de arriba.",
+      "datasource": {
+        "type": "mysql",
+        "uid": "mysql-logs"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 40,
         "w": 24,
-        "h": 10
+        "h": 12
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "mysql",
+            "uid": "mysql-logs"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT creado_en AS time, nivel, servicio, instancia, mensaje, correlation_id, trace_id, atributos\nFROM logs\nWHERE $__timeFilter(creado_en) AND nivel IN (${nivel:sqlstring}) AND servicio IN (${servicio:sqlstring}) AND (${correlation_id:sqlstring} = '' OR correlation_id = ${correlation_id:sqlstring})\nORDER BY creado_en DESC, id DESC LIMIT 500"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "trace_id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Ver la traza en Tempo",
+                    "url": "/explore?left={\"datasource\": \"tempo\", \"queries\": [{\"refId\": \"A\", \"datasource\": {\"type\": \"tempo\", \"uid\": \"tempo\"}, \"queryType\": \"traceql\", \"query\": \"${__value.raw}\"}]}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "correlation_id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Todos los logs de esta operación",
+                    "url": "/d/rumbo-estado-general?var-correlation_id=${__value.raw}&${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "nivel"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "ERROR": {
+                        "color": "red",
+                        "index": 0
+                      },
+                      "WARN": {
+                        "color": "orange",
+                        "index": 1
+                      },
+                      "INFO": {
+                        "color": "text",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
       }
     }
-  ]
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "nivel",
+        "label": "Nivel",
+        "type": "custom",
+        "multi": true,
+        "includeAll": false,
+        "query": "ERROR,WARN,INFO",
+        "current": {
+          "text": [
+            "ERROR",
+            "WARN",
+            "INFO"
+          ],
+          "value": [
+            "ERROR",
+            "WARN",
+            "INFO"
+          ]
+        },
+        "options": [
+          {
+            "text": "ERROR",
+            "value": "ERROR",
+            "selected": true
+          },
+          {
+            "text": "WARN",
+            "value": "WARN",
+            "selected": true
+          },
+          {
+            "text": "INFO",
+            "value": "INFO",
+            "selected": true
+          }
+        ]
+      },
+      {
+        "name": "servicio",
+        "label": "Servicio",
+        "type": "query",
+        "datasource": {
+          "type": "mysql",
+          "uid": "mysql-logs"
+        },
+        "multi": true,
+        "includeAll": true,
+        "refresh": 2,
+        "query": "SELECT DISTINCT servicio FROM logs ORDER BY servicio",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        }
+      },
+      {
+        "name": "correlation_id",
+        "label": "correlation_id (vacío = todos)",
+        "type": "textbox",
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        }
+      }
+    ]
+  }
 }

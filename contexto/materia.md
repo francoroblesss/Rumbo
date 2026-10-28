@@ -16,7 +16,7 @@
 | 5 | Motores de búsqueda, relevancia y RAG (9/9/2026) | Apache Solr: q/fq/qf/edismax + API Go detrás de interfaz |
 | 6 | API Gateway, Load Balancing, Service Discovery (16/9/2026) | Concurrencia en Go: goroutines, channels, select, mutex, worker pool, context |
 | 7 | Resiliencia ante fallos parciales (23/9/2026) | Balanceo con NGINX + 3 réplicas en Docker Compose |
-| 8 | Estilos de arquitectura de backend (DDD, Hexagonal, Clean, CQRS, Event Sourcing, reactivo) | _(sin práctico en el repo todavía)_ |
+| 8 | Estilos de arquitectura de backend (DDD, Hexagonal, Clean, CQRS, Event Sourcing, reactivo) | Observabilidad: Prometheus, logs en MySQL, TrackID, Grafana (`practica/clase-8-observabilidad.md`) |
 | 9 | Comunicación entre servicios: contratos y compatibilidad, REST, gRPC, GraphQL, SSE, WebSockets, webhooks, IA externa (14/10/2026) | _(sin práctico en el repo todavía)_ |
 | próx. | (apuntes mencionan "Producción y despliegue": SLOs, observabilidad) | Monitoreo: logs, métricas, trazas |
 

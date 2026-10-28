@@ -3,8 +3,9 @@
 #   docker compose up --build
 # Para ahorrar memoria se puede levantar solo una parte (las dependencias se levantan solas):
 #   docker compose up --build operaciones
-# La observabilidad (Grafana LGTM, ~1 GB de RAM) es opcional: se activa con el perfil
-# "observabilidad" (ver .env.example: COMPOSE_PROFILES y OTEL_EXPORTER_OTLP_ENDPOINT).
+# La observabilidad (Grafana LGTM, ~1 GB de RAM, y el MySQL de logs) es opcional: se activa con el
+# perfil "observabilidad" (ver .env.example: COMPOSE_PROFILES, OTEL_EXPORTER_OTLP_ENDPOINT y
+# LOGS_MYSQL_DSN).
 # Puertos publicados: gateway 8080 (único punto de entrada) y paneles de infraestructura.
 # Los microservicios no publican puertos: solo se llega a ellos a través del gateway.
 
@@ -13,6 +14,7 @@ x-servicio-go: &servicio-go
   environment: &entorno-comun
     RABBITMQ_URI: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
     OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    LOGS_MYSQL_DSN: ${LOGS_MYSQL_DSN:-}
 
 services:
   # ---------------- Infraestructura ----------------
@@ -79,12 +81,38 @@ services:
     ports:
       - "11211:11211"
 
-  # Observabilidad (D11): Grafana + Prometheus (métricas) + Loki (logs) + Tempo (trazas) en un
-  # solo contenedor, con un colector OpenTelemetry que recibe OTLP en 4317 (gRPC) y 4318 (HTTP).
+  # MySQL solo para los logs (ADR-023), separado del MySQL de negocio: una ráfaga de logs no le
+  # saca capacidad a las reservas, y si se cae, el negocio sigue (los logs quedan en stdout).
+  mysql-logs:
+    image: mysql:8.4
+    profiles: ["observabilidad"]
+    mem_limit: 512m
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: observabilidad
+      LOGS_DB_PASSWORD: ${LOGS_DB_PASSWORD}
+      GRAFANA_LOGS_DB_PASSWORD: ${GRAFANA_LOGS_DB_PASSWORD}
+    volumes:
+      - mysql-logs-datos:/var/lib/mysql
+      - ./infra/mysql-logs:/docker-entrypoint-initdb.d:ro
+    command: ["--innodb-buffer-pool-size=64M", "--performance-schema=OFF"]
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  # Observabilidad (D11): Grafana + Prometheus (métricas) + Tempo (trazas) en un solo contenedor,
+  # con un colector OpenTelemetry que recibe OTLP en 4317 (gRPC) y 4318 (HTTP). Los logs no van a
+  # Loki: Grafana los lee del MySQL de logs (ADR-023).
   lgtm:
     image: grafana/otel-lgtm:latest
     profiles: ["observabilidad"]
     mem_limit: 1536m
+    environment:
+      GRAFANA_LOGS_DB_PASSWORD: ${GRAFANA_LOGS_DB_PASSWORD}
+    depends_on:
+      mysql-logs: { condition: service_healthy }
     ports:
       - "3000:3000" # Grafana (admin/admin)
       - "4317:4317"
@@ -95,6 +123,7 @@ services:
       - ./infra/grafana/dashboards:/otel-lgtm/dashboards-rumbo:ro
       - ./infra/grafana/proveedor-tableros.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/rumbo.yaml:ro
       - ./infra/grafana/alertas/rumbo-alertas.yaml:/otel-lgtm/grafana/conf/provisioning/alerting/rumbo-alertas.yaml:ro
+      - ./infra/grafana/fuente-logs-mysql.yaml:/otel-lgtm/grafana/conf/provisioning/datasources/rumbo-logs-mysql.yaml:ro
 
   # Mock del contrato de clima que consume Operaciones (D9), generado con Prism a partir de la
   # copia fijada del contrato del otro grupo. En producción se reemplaza por la URL real.
@@ -217,6 +246,7 @@ services:
     environment:
       PUERTO: "8080"
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      LOGS_MYSQL_DSN: ${LOGS_MYSQL_DSN:-}
       TOKEN_SECRETO: ${TOKEN_SECRETO}
       IDENTIDAD_URL: http://identidad:8081
       OPERACIONES_URL: http://operaciones:8082
@@ -235,4 +265,5 @@ services:
 volumes:
   mysql-datos:
   lgtm-datos:
+  mysql-logs-datos:
   mongo-datos:

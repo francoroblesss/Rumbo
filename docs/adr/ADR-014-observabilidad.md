@@ -1,7 +1,7 @@
 # ADR-014 — Observabilidad: logs, métricas, trazas, tablero y alerta (D11)
 
 - **Fecha:** 2026-10-14
-- **Estado:** aceptada (primera versión, Entrega 2) — el recorrido de la traza del flujo principal queda **reemplazado por [ADR-021](ADR-021-capacidad-de-autoservicio.md)** (la reserva va por HTTP a Operaciones, sin el comando). El resto sigue vigente.
+- **Estado:** aceptada (primera versión, Entrega 2) — el recorrido de la traza del flujo principal queda **reemplazado por [ADR-021](ADR-021-capacidad-de-autoservicio.md)** (la reserva va por HTTP a Operaciones, sin el comando). Los **logs** (Loki y el panel 11) quedan **reemplazados por [ADR-023](ADR-023-logs-en-mysql.md)**: se guardan en MySQL y Grafana los lee de ahí. El resto sigue vigente.
 
 ## Contexto
 La consigna (§2.10) pide entender el estado de una operación **sin inspeccionar cada componente a mano**: como mínimo, **logs estructurados, métricas y un tablero**. La Entrega 2 exige logs **estructurados y correlacionados** y una **primera traza distribuida** del flujo principal. La Defensa exige logs, métricas y trazas completos, con el tablero y la alerta.

@@ -1,6 +1,7 @@
-// Package observabilidad configura logs, métricas y trazas de un servicio con OpenTelemetry
-// (D11). Los tres se exportan por OTLP al stack de Grafana (variable
-// OTEL_EXPORTER_OTLP_ENDPOINT) y los logs también salen en JSON por stdout.
+// Package observabilidad configura logs, métricas y trazas de un servicio (D11). Las métricas y
+// las trazas se exportan con OpenTelemetry por OTLP al stack de Grafana (variable
+// OTEL_EXPORTER_OTLP_ENDPOINT). Los logs salen en JSON por stdout y, si está LOGS_MYSQL_DSN, se
+// guardan también en la tabla logs del MySQL de observabilidad, que Grafana lee (ADR-023).
 // Contrato en docs/interfaces-internas.md §7, §8 y §9.
 package observabilidad
 
@@ -10,16 +11,12 @@ import (
 	"log/slog"
 	"os"
 
-	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
-	"go.opentelemetry.io/otel/log/global"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
-	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -70,7 +67,6 @@ func Iniciar(ctx context.Context, servicio string) (apagar func(context.Context)
 
 	opcionesTrazas := []sdktrace.TracerProviderOption{sdktrace.WithResource(res)}
 	opcionesMetricas := []sdkmetric.Option{sdkmetric.WithResource(res)}
-	opcionesLogs := []sdklog.LoggerProviderOption{sdklog.WithResource(res)}
 
 	if exportar {
 		// Los exportadores leen OTEL_EXPORTER_OTLP_ENDPOINT del entorno.
@@ -82,33 +78,31 @@ func Iniciar(ctx context.Context, servicio string) (apagar func(context.Context)
 		if err != nil {
 			return nil, err
 		}
-		expLogs, err := otlploghttp.New(ctx)
-		if err != nil {
-			return nil, err
-		}
 		opcionesTrazas = append(opcionesTrazas, sdktrace.WithBatcher(expTrazas))
 		opcionesMetricas = append(opcionesMetricas, sdkmetric.WithReader(sdkmetric.NewPeriodicReader(expMetricas)))
-		opcionesLogs = append(opcionesLogs, sdklog.WithProcessor(sdklog.NewBatchProcessor(expLogs)))
 	}
 
 	proveedorTrazas := sdktrace.NewTracerProvider(opcionesTrazas...)
 	proveedorMetricas := sdkmetric.NewMeterProvider(opcionesMetricas...)
-	proveedorLogs := sdklog.NewLoggerProvider(opcionesLogs...)
 	otel.SetTracerProvider(proveedorTrazas)
 	otel.SetMeterProvider(proveedorMetricas)
-	global.SetLoggerProvider(proveedorLogs)
-	apagados = append(apagados, proveedorTrazas.Shutdown, proveedorMetricas.Shutdown, proveedorLogs.Shutdown)
 
-	// Logs: JSON por stdout (legible con docker compose logs) y, si se exporta, también a
-	// Grafana por OpenTelemetry. Ambos llevan trace_id, span_id y correlation_id del contexto.
-	manejadores := []slog.Handler{
-		slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}).
-			WithAttrs([]slog.Attr{slog.String("servicio", servicio), slog.String("instancia", instancia)}),
+	// Logs: JSON por stdout (legible con docker compose logs) y, si está LOGS_MYSQL_DSN, también a
+	// la tabla logs de MySQL (ADR-023). Los dos llevan trace_id, span_id y correlation_id.
+	stdout := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}).
+		WithAttrs([]slog.Attr{slog.String("servicio", servicio), slog.String("instancia", instancia)})
+	manejadores := []slog.Handler{stdout}
+	if dsn := os.Getenv("LOGS_MYSQL_DSN"); dsn != "" {
+		mysql, apagarLogs, err := iniciarLogsMySQL(dsn, servicio, instancia, slog.New(stdout))
+		if err != nil {
+			return nil, err
+		}
+		manejadores = append(manejadores, mysql)
+		// Primero se vacía la cola de logs: así llegan los del apagado.
+		apagados = append([]func(context.Context) error{apagarLogs}, apagados...)
 	}
-	if exportar {
-		manejadores = append(manejadores, otelslog.NewHandler(servicio, otelslog.WithLoggerProvider(proveedorLogs)))
-	}
-	slog.SetDefault(slog.New(manejadorContexto{multiManejador(manejadores)}))
+	apagados = append(apagados, proveedorTrazas.Shutdown, proveedorMetricas.Shutdown)
+	slog.SetDefault(slog.New(manejadorContexto{slog.NewMultiHandler(manejadores...)}))
 
 	return func(ctx context.Context) error {
 		var errs []error

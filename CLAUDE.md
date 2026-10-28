@@ -22,7 +22,7 @@ El sistema a construir es **Rumbo**: su dominio está en `contexto/proyecto/domi
 | --- | --- |
 | `contexto/materia.md` | Cursada, docentes, cronograma, stack, caso EventOS, repo de la cátedra |
 | `contexto/teoria/*.md` | Resumen de cada apunte teórico (conceptos, reglas, trade-offs, anti-patrones) |
-| `contexto/practica/` | Un resumen por clase práctica (1–7) + TP integrador 1-4; `README.md` = índice + comandos Docker |
+| `contexto/practica/` | Un resumen por clase práctica (1–8) + TP integrador 1-4; `README.md` = índice + comandos Docker |
 | `contexto/convenciones-codigo.md` | Estructura de proyecto Go, capas, DI, interfaces/mocks, librerías y versiones |
 | `contexto/checklist-arquitectura.md` | Preguntas que la cátedra exige responder antes de agregar cada pieza |
 | `contexto/proyecto/dominio.md` | **Dominio y alcance de Rumbo** (el sistema a construir): actores, conceptos, reglas, estados, fuera de alcance |
@@ -30,7 +30,7 @@ El sistema a construir es **Rumbo**: su dominio está en `contexto/proyecto/domi
 | `contexto/Transcripcion - Universidad Catolica de Cordoba.txt` | Transcripción automática del audio de la clase de presentación del proyecto (baja confianza en los tramos `[revisar]`). **Solo local** (en `.gitignore`) |
 | `contexto/proyecto/` | Consigna, dominio, insumos, equipo y estado del proyecto final |
 
-**Código:** `servicios/<servicio>/` (un módulo Go cada uno, agrupados con `go.work`; Operaciones en hexagonal, el resto en capas). **`servicios/comun/`** tiene lo compartido (observabilidad, mensajería con reintentos y DLQ, identidad del gateway, Problem Details): usarlo, no reimplementarlo. **El contrato interno entre servicios está en `docs/interfaces-internas.md`**, `frontend/` (React + Vite + TS), `infra/` (init de MySQL y MongoDB), `compose.yaml` en la raíz. Puertos: gateway 8080, identidad 8081, operaciones 8082, recursos 8083, notificaciones 8084, integracion 8085.
+**Código:** `servicios/<servicio>/` (un módulo Go cada uno, agrupados con `go.work`; Operaciones en hexagonal, el resto en capas). **`servicios/comun/`** tiene lo compartido (observabilidad, mensajería con reintentos y DLQ, identidad del gateway, Problem Details): usarlo, no reimplementarlo. **El contrato interno entre servicios está en `docs/interfaces-internas.md`**. `infra/` (init de MySQL, MongoDB y el MySQL de logs; NGINX; Grafana) y `compose.yaml` en la raíz. La consola web de la Entrega 2 se eliminó (ADR-021): la nueva web (React + Vite + TS) se arma para la Presentación y no expone la capacidad publicada. Puertos: gateway 8080, identidad 8081, operaciones 8082, recursos 8083, notificaciones 8084, integracion 8085.
 
 ## Material fuente
 

@@ -40,7 +40,6 @@ Consumo de memoria: el sistema completo usa unos **2,5–3,5 GB** de RAM; convie
 | Grafana: logs (MySQL), métricas, trazas y tablero (`admin`/`admin`; solo con el perfil `observabilidad`) | http://localhost:3000 |
 | Mock del clima que consume Rumbo | http://localhost:4020 |
 | MySQL (por ejemplo, desde SQL Workbench) | `localhost:13306` |
-| Aplicación web: consola del operador (desarrollo; ingreso con `ADMIN_EMAIL` / `ADMIN_PASSWORD` de `.env`) | `cd frontend && npm install && npm run dev` → http://localhost:5173 |
 
 ## Estructura del repositorio
 ```
@@ -52,7 +51,6 @@ servicios/        un módulo Go por microservicio + el gateway (go.work los agru
   recursos/       Recursos y preliquidación (capas)      → MySQL
   notificaciones/ Notificaciones (capas)                 → MongoDB
   integracion/    Integración de carga (capas)           → MongoDB
-frontend/         aplicación web (React + Vite + TypeScript)
 infra/            inicialización de MySQL y MongoDB, NGINX (balanceador) y Grafana (tablero y alertas)
 pruebas/carga/    pruebas de carga con k6 (ADR-015)
 docs/             arquitectura, ADR, contrato publicado, capacidad, evidencias y postmortem
@@ -60,7 +58,7 @@ compose.yaml      levanta todo el sistema
 ```
 
 ## Parte desplegada
-La aplicación web se publica en **Vercel** y el backend en **Railway**; solo el API Gateway queda expuesto ([ADR-018](docs/adr/ADR-018-despliegue-en-la-nube.md)).
+La aplicación web (para los usuarios de Rumbo; se construye para la Presentación Grupal) se publica en **Vercel** y el backend en **Railway**; solo el API Gateway queda expuesto ([ADR-018](docs/adr/ADR-018-despliegue-en-la-nube.md)).
 > _Pendiente: la URL pública se agrega acá y en [`docs/contracts/README.md`](docs/contracts/README.md) cuando se despliegue (requerida para la Presentación Grupal)._
 
 ## Forma de trabajo
@@ -73,7 +71,7 @@ El proyecto sigue un enfoque guiado por especificación: primero el dominio y la
 | Ramas | Una por tarea, corta y creada desde `main`: `feat/…`, `fix/…`, `docs/…`, `adr/…` (ej. `feat/asignacion-recorridos`, `adr/d6-busqueda`). |
 | Commits | En español, con prefijo de tipo: `feat: asignar chofer a recorrido`, `docs: ADR-005 búsqueda`. |
 | Pull requests | Cada PR describe qué cambia y qué ADR o funcionalidad (`F-xx` de `SPEC.md`) toca. Se integra a `main` cuando pasa la **verificación automática**. La revisión de otro integrante se suma cuando es posible. |
-| Integración continua | GitHub Actions (`.github/workflows/ci.yml`) verifica cada PR: formato, compilación, `go vet` y tests de los siete módulos Go (los seis servicios y `comun`), más lint y build del frontend. |
+| Integración continua | GitHub Actions (`.github/workflows/ci.yml`) verifica cada PR: formato, compilación, `go vet` y tests de los siete módulos Go (los seis servicios y `comun`), . |
 | Entregas | Cada entrega se marca con un tag en `main`: `entrega-1`, `entrega-2`, `presentacion`. |
 | Decisiones | Un ADR ya integrado no se edita: un cambio de decisión se registra con un ADR nuevo que reemplaza al anterior. |
 

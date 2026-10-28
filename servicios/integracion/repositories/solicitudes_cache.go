@@ -114,16 +114,8 @@ func (c *SolicitudesCache) Listar(ctx context.Context, f FiltroListado) ([]model
 	return c.siguiente.Listar(ctx, f)
 }
 
-func (c *SolicitudesCache) ReclamarPendiente(ctx context.Context, instancia string, ahora time.Time) (models.SolicitudExterna, error) {
-	return c.siguiente.ReclamarPendiente(ctx, instancia, ahora)
-}
-
-func (c *SolicitudesCache) MarcarEnviada(ctx context.Context, id string) error {
-	return c.siguiente.MarcarEnviada(ctx, id)
-}
-
-func (c *SolicitudesCache) ContarPendientes(ctx context.Context) (int64, error) {
-	return c.siguiente.ContarPendientes(ctx)
+func (c *SolicitudesCache) BuscarPorClave(ctx context.Context, organizacionID, clave string) (models.SolicitudExterna, error) {
+	return c.siguiente.BuscarPorClave(ctx, organizacionID, clave)
 }
 
 // degradar registra un fallo de la caché sin cortar la operación (degradación elegante).

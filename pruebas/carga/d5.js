@@ -1,3 +1,7 @@
+// HISTÓRICO: es la medición de ADR-016 (contrato 3.0.0) y ya no corre contra el sistema actual. Las
+// solicitudes externas ya no se aceptan a mano (ADR-021) y el clima ya no está en /v1 (ADR-020).
+// ejecutar.sh no lo lanza salvo con MEDIR_D5=1. Se conserva como evidencia de cómo se midió.
+//
 // Genera llamadas salientes para validar los timeouts de D5 (ADR-016). Se corre en paralelo con el
 // escalón de 10 req/s del escenario C (ejecutar.sh lo lanza a tiempo) durante 30 s:
 //   - Integración → Operaciones: cancelaciones de solicitudes RECIBIDAS creadas en setup (2/s).

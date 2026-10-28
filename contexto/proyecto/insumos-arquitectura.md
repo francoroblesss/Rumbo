@@ -25,7 +25,7 @@ La elección tiene que explicar responsabilidades, relaciones y propiedad de los
 | Mensajería / evento de dominio (§2.5) | Cambios de estado de solicitudes, traslados y recorridos. Los avisos al cliente, al chofer y al operador. |
 | Búsqueda (§2.6, D6) | Miles de traslados, filtrables por cliente, fecha, estado, chofer, tipo de servicio y origen/destino. |
 | Caché (§2.7, D7) | Información muy consultada y relativamente estable, por ejemplo disponibilidad/calendario o los recorridos del día. **No se elige todavía**: la consigna exige una necesidad observable y medir el impacto. |
-| Integración: capacidad propia (§4, D8) | "Solicitar traslado" genérico, v2 (`dominio.md` §15, ADR-006). |
+| Integración: capacidad propia (§4, D8) | "Reservar traslado" de autoservicio, 4.0.0 (`dominio.md` §15, ADR-021; antes "Solicitar traslado" genérico, ADR-006). |
 | Integración: consumo (§4, D9) | Clima del sistema de aeropuerto; el flujo se define al conocer su contrato. |
 | Resiliencia (§2.9, D10) | ¿Qué hace Rumbo si el sistema del aeropuerto está caído o lento? Se demuestra con una caída provocada. |
 | Bonus (§7) | Seguimiento en tiempo real (GPS) quedó fuera de alcance y es candidato a desafío adicional. |

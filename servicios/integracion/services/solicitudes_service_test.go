@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/francoroblesss/Rumbo/servicios/comun/mensajeria"
+	"github.com/francoroblesss/Rumbo/servicios/comun/problema"
 	"github.com/francoroblesss/Rumbo/servicios/integracion/clients"
 	"github.com/francoroblesss/Rumbo/servicios/integracion/models"
 	"github.com/francoroblesss/Rumbo/servicios/integracion/repositories"
@@ -25,7 +26,8 @@ func nuevoServicio() (*SolicitudesService, *repositories.SolicitudesMock, *clien
 	return NewSolicitudesService(repo, cliente, func() time.Time { return ahoraFija }), repo, cliente
 }
 
-const cuerpoMinimo = `{"cosa":{"descripcion":"Cajas","cantidad":3},"origen":{"nombre":"A","direccion":"x"},"destino":{"nombre":"B","direccion":"y"}}`
+const cuerpoMinimo = `{"cosa":{"descripcion":"Cajas","cantidad":3},"origen":{"nombre":"A","direccion":"x"},` +
+	`"destino":{"nombre":"B","direccion":"y"},"franja_inicio":"2026-10-16T10:00:00-03:00"}`
 
 func errorDe(t *testing.T, err error) *ErrorServicio {
 	t.Helper()
@@ -44,27 +46,29 @@ func camposConError(e *ErrorServicio) map[string]bool {
 	return campos
 }
 
-func TestCrearValidoQuedaRecibidaYPendiente(t *testing.T) {
-	s, repo, _ := nuevoServicio()
+func TestCrearValidoReservaYGuardaLaCopia(t *testing.T) {
+	s, repo, cliente := nuevoServicio()
 	vista, estado, err := s.Crear(context.Background(), org, "clave-0001", []byte(cuerpoMinimo))
 	if err != nil {
 		t.Fatalf("no se esperaba error: %v", err)
 	}
-	if estado != http.StatusAccepted || vista.Estado != models.EstadoRecibida || !strings.HasPrefix(vista.ID, "sol-") {
+	if estado != http.StatusCreated || vista.Traslado == nil || vista.Traslado.Estado != models.EstadoProgramado {
 		t.Fatalf("respuesta inesperada: %d %+v", estado, vista)
 	}
-	if vista.ToleranciaMinutos != 0 || vista.Version != 0 || !vista.CreadoEn.Equal(ahoraFija) || !vista.ActualizadoEn.Equal(ahoraFija) {
-		t.Fatalf("vista inicial incorrecta: %+v", vista)
+	l := cliente.Llamadas[0]
+	if l.Operacion != "reserva" || l.Org != org || l.ClaveIdem != "clave-0001" ||
+		!l.Pedido.FranjaInicio.Equal(time.Date(2026, 10, 16, 13, 0, 0, 0, time.UTC)) {
+		t.Fatalf("llamada a Operaciones incorrecta: %+v", l)
 	}
 	guardada, err := repo.BuscarPorID(context.Background(), org, vista.ID)
-	if err != nil || !guardada.PendienteEnvio || guardada.Version != 0 || guardada.Idempotencia.HashCuerpo == "" {
-		t.Fatalf("solicitud mal guardada: %+v %v", guardada, err)
+	if err != nil || guardada.Version != 1 || guardada.Idempotencia.HashCuerpo == "" || guardada.Idempotencia.Clave != "clave-0001" {
+		t.Fatalf("copia mal guardada: %+v %v", guardada, err)
 	}
 }
 
 func TestCrearJSONMalFormado(t *testing.T) {
 	s, _, _ := nuevoServicio()
-	for _, cuerpo := range []string{`{`, ``, `{"cosa":{"cantidad":"tres"}}`} {
+	for _, cuerpo := range []string{`{`, ``, `{"cosa":{"cantidad":"tres"}}`, `{"franja_inicio":"mañana"}`} {
 		_, _, err := s.Crear(context.Background(), org, "clave-0001", []byte(cuerpo))
 		if e := errorDe(t, err); e.Estado != http.StatusBadRequest || e.Codigo != "JSON_MAL_FORMADO" {
 			t.Fatalf("cuerpo %q: se esperaba 400 JSON_MAL_FORMADO, se obtuvo %+v", cuerpo, e)
@@ -73,14 +77,13 @@ func TestCrearJSONMalFormado(t *testing.T) {
 }
 
 func TestCrearJuntaTodosLosErroresPorCampo(t *testing.T) {
-	s, repo, _ := nuevoServicio()
+	s, _, cliente := nuevoServicio()
 	largo := func(n int) string { return strings.Repeat("a", n) }
 	cuerpo, _ := json.Marshal(map[string]any{
 		"referencia_externa": largo(65),
 		"cosa":               map[string]any{"descripcion": largo(251), "cantidad": 0, "peso_kg": 0, "volumen_m3": -1},
 		"origen":             map[string]any{"nombre": largo(121), "direccion": largo(251), "contacto": largo(121)},
 		"destino":            map[string]any{"nombre": " ", "direccion": ""},
-		"tolerancia_minutos": 721,
 		"observaciones":      largo(501),
 	})
 	_, _, err := s.Crear(context.Background(), org, "clave-0001", cuerpo)
@@ -91,24 +94,13 @@ func TestCrearJuntaTodosLosErroresPorCampo(t *testing.T) {
 	campos := camposConError(e)
 	for _, campo := range []string{"referencia_externa", "cosa.descripcion", "cosa.cantidad", "cosa.peso_kg", "cosa.volumen_m3",
 		"origen.nombre", "origen.direccion", "origen.contacto", "destino.nombre", "destino.direccion",
-		"tolerancia_minutos", "observaciones"} {
+		"franja_inicio", "observaciones"} {
 		if !campos[campo] {
 			t.Errorf("falta el error del campo %s (errores: %+v)", campo, e.Errores)
 		}
 	}
-	if n, _ := repo.ContarPendientes(context.Background()); n != 0 {
-		t.Fatal("un pedido inválido no se tiene que registrar")
-	}
-}
-
-func TestCrearSinCosaNiUbicaciones(t *testing.T) {
-	s, _, _ := nuevoServicio()
-	_, _, err := s.Crear(context.Background(), org, "clave-0001", []byte(`{}`))
-	campos := camposConError(errorDe(t, err))
-	for _, campo := range []string{"cosa.descripcion", "cosa.cantidad", "origen.nombre", "origen.direccion", "destino.nombre", "destino.direccion"} {
-		if !campos[campo] {
-			t.Errorf("falta el error del campo obligatorio %s", campo)
-		}
+	if len(cliente.Llamadas) != 0 {
+		t.Fatal("un pedido inválido no se tiene que mandar a Operaciones")
 	}
 }
 
@@ -119,7 +111,7 @@ func TestCrearAceptaLosLimitesExactos(t *testing.T) {
 		"cosa":               map[string]any{"descripcion": strings.Repeat("ñ", 250), "cantidad": 1, "peso_kg": 0.1, "volumen_m3": 0.1},
 		"origen":             map[string]any{"nombre": strings.Repeat("n", 120), "direccion": strings.Repeat("d", 250), "contacto": strings.Repeat("c", 120)},
 		"destino":            map[string]any{"nombre": "B", "direccion": "y"},
-		"tolerancia_minutos": 720,
+		"franja_inicio":      "2026-10-16T10:00:00-03:00",
 		"observaciones":      strings.Repeat("o", 500),
 	})
 	if _, _, err := s.Crear(context.Background(), org, "clave-0001", cuerpo); err != nil {
@@ -127,38 +119,50 @@ func TestCrearAceptaLosLimitesExactos(t *testing.T) {
 	}
 }
 
-func TestCrearHorarioEnElPasado(t *testing.T) {
-	s, _, _ := nuevoServicio()
-	cuerpo := strings.Replace(cuerpoMinimo, `{"cosa"`, `{"hora_llegada_solicitada":"2026-10-15T08:00:00-03:00","cosa"`, 1)
-	_, _, err := s.Crear(context.Background(), org, "clave-0001", []byte(cuerpo))
-	if e := errorDe(t, err); e.Estado != http.StatusUnprocessableEntity || e.Codigo != "HORARIO_EN_EL_PASADO" {
-		t.Fatalf("se esperaba 422 HORARIO_EN_EL_PASADO, se obtuvo %+v", e)
+func TestCrearReenviaElRechazoDeOperaciones(t *testing.T) {
+	casos := []struct {
+		err       error
+		estado    int
+		codigo    string
+		reintento int
+	}{
+		{clients.ErrRechazo{Estado: 409, Codigo: "SIN_DISPONIBILIDAD", Titulo: "Sin disponibilidad", Detalle: "La franja ya no tiene lugar."},
+			http.StatusConflict, "SIN_DISPONIBILIDAD", 0},
+		{clients.ErrRechazo{Estado: 422, Codigo: "DATOS_INVALIDOS", Errores: []problema.ErrorCampo{{Campo: "franja_inicio", Mensaje: "no"}}},
+			http.StatusUnprocessableEntity, "DATOS_INVALIDOS", 0},
+		{clients.ErrNoDisponible, http.StatusServiceUnavailable, "SERVICIO_NO_DISPONIBLE", ReintentarNoDisponible},
 	}
-	futuro := strings.Replace(cuerpoMinimo, `{"cosa"`, `{"hora_llegada_solicitada":"2026-10-16T14:00:00-03:00","tolerancia_minutos":120,"cosa"`, 1)
-	vista, _, err := s.Crear(context.Background(), org, "clave-0002", []byte(futuro))
-	if err != nil || vista.ToleranciaMinutos != 120 || vista.HoraLlegadaSolicitada == nil ||
-		!vista.HoraLlegadaSolicitada.Equal(time.Date(2026, 10, 16, 17, 0, 0, 0, time.UTC)) {
-		t.Fatalf("una hora futura es válida: %+v %v", vista, err)
+	for _, c := range casos {
+		s, repo, cliente := nuevoServicio()
+		cliente.Error = c.err
+		_, _, err := s.Crear(context.Background(), org, "clave-0001", []byte(cuerpoMinimo))
+		e := errorDe(t, err)
+		if e.Estado != c.estado || e.Codigo != c.codigo || e.ReintentoS != c.reintento || e.Titulo == "" {
+			t.Fatalf("%v: se esperaba %d %s, se obtuvo %+v", c.err, c.estado, c.codigo, e)
+		}
+		if _, err := repo.BuscarPorClave(context.Background(), org, "clave-0001"); !errors.Is(err, repositories.ErrNoEncontrada) {
+			t.Fatal("un rechazo no se tiene que guardar")
+		}
 	}
 }
 
 func TestCrearReintentoIdempotenteDevuelveLaMismaRespuesta(t *testing.T) {
-	s, repo, _ := nuevoServicio()
+	s, _, cliente := nuevoServicio()
 	primera, _, err := s.Crear(context.Background(), org, "clave-0001", []byte(cuerpoMinimo))
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Mismo pedido con otro orden de campos y espacios: el cuerpo normalizado es el mismo.
-	reordenado := `{ "destino":{"direccion":"y","nombre":"B"}, "origen":{"nombre":"A","direccion":"x"}, "cosa":{"cantidad":3,"descripcion":"Cajas"} }`
+	// Mismo pedido con otro orden de campos y espacios: el cuerpo normalizado es el mismo. Y
+	// aunque Operaciones esté caída, el reintento se responde con la copia guardada.
+	cliente.Error = clients.ErrNoDisponible
+	reordenado := `{ "franja_inicio":"2026-10-16T10:00:00-03:00", "destino":{"direccion":"y","nombre":"B"},
+		"origen":{"nombre":"A","direccion":"x"}, "cosa":{"cantidad":3,"descripcion":"Cajas"} }`
 	segunda, estado, err := s.Crear(context.Background(), org, "clave-0001", []byte(reordenado))
-	if err != nil || estado != http.StatusAccepted {
-		t.Fatalf("el reintento idempotente tiene que dar 202: %d %v", estado, err)
+	if err != nil || estado != http.StatusCreated {
+		t.Fatalf("el reintento idempotente tiene que dar 201: %d %v", estado, err)
 	}
-	if segunda.ID != primera.ID || !segunda.CreadoEn.Equal(primera.CreadoEn) {
-		t.Fatalf("el reintento tiene que devolver la misma solicitud: %s vs %s", segunda.ID, primera.ID)
-	}
-	if n, _ := repo.ContarPendientes(context.Background()); n != 1 {
-		t.Fatalf("se tiene que registrar una sola solicitud, hay %d", n)
+	if segunda.ID != primera.ID || len(cliente.Llamadas) != 1 {
+		t.Fatalf("el reintento tiene que devolver la misma reserva sin llamar a Operaciones: %s vs %s", segunda.ID, primera.ID)
 	}
 }
 
@@ -187,16 +191,29 @@ func TestCrearConMongoCaidoEs503(t *testing.T) {
 	}
 }
 
+func TestDisponibilidad(t *testing.T) {
+	s, _, cliente := nuevoServicio()
+	cliente.Disponible = models.Disponibilidad{Fecha: "2026-10-16", Franjas: []models.FranjaDisponible{{Disponible: true}}}
+	d, err := s.Disponibilidad(context.Background(), "2026-10-16", nil)
+	if err != nil || len(d.Franjas) != 1 || cliente.Llamadas[0].Fecha != "2026-10-16" {
+		t.Fatalf("d = %+v, err = %v", d, err)
+	}
+	cliente.Error = clients.ErrNoDisponible
+	if _, err := s.Disponibilidad(context.Background(), "2026-10-16", nil); errorDe(t, err).Estado != http.StatusServiceUnavailable {
+		t.Fatalf("con Operaciones caída: %v", err)
+	}
+}
+
 func TestObtenerYNoEncontrada(t *testing.T) {
 	s, _, _ := nuevoServicio()
 	creada, _, _ := s.Crear(context.Background(), org, "clave-0001", []byte(cuerpoMinimo))
 	vista, err := s.Obtener(context.Background(), org, creada.ID)
 	if err != nil || vista.ID != creada.ID {
-		t.Fatalf("no se obtuvo la solicitud: %v", err)
+		t.Fatalf("no se obtuvo el traslado: %v", err)
 	}
 	_, err = s.Obtener(context.Background(), "org-otra", creada.ID)
 	if e := errorDe(t, err); e.Estado != http.StatusNotFound || e.Codigo != "NO_ENCONTRADA" {
-		t.Fatalf("otra organización no tiene que ver la solicitud: %+v", e)
+		t.Fatalf("otra organización no tiene que ver el traslado: %+v", e)
 	}
 }
 
@@ -211,13 +228,17 @@ func TestListarDevuelvePagina(t *testing.T) {
 	if err != nil || pagina.Total != 3 || len(pagina.Resultados) != 1 || pagina.Pagina != 2 || pagina.Tamanio != 2 {
 		t.Fatalf("página incorrecta: %+v %v", pagina, err)
 	}
+	filtrada, _ := s.Listar(context.Background(), repositories.FiltroListado{OrganizacionID: org, Estado: models.EstadoCompletado, Pagina: 1, Tamanio: 20})
+	if filtrada.Total != 0 {
+		t.Fatalf("el filtro es por el estado del traslado: %+v", filtrada)
+	}
 	vacia, _ := s.Listar(context.Background(), repositories.FiltroListado{OrganizacionID: "org-otra", Pagina: 1, Tamanio: 20})
 	if vacia.Resultados == nil || len(vacia.Resultados) != 0 {
 		t.Fatal("una página vacía tiene que traer una lista vacía, no null")
 	}
 }
 
-func crearSolicitud(t *testing.T, s *SolicitudesService) models.VistaSolicitud {
+func crearReserva(t *testing.T, s *SolicitudesService) models.VistaSolicitud {
 	t.Helper()
 	v, _, err := s.Crear(context.Background(), org, "clave-0001", []byte(cuerpoMinimo))
 	if err != nil {
@@ -226,19 +247,20 @@ func crearSolicitud(t *testing.T, s *SolicitudesService) models.VistaSolicitud {
 	return v
 }
 
-func TestResponderContrapropuestaExitosaAplicaLaVista(t *testing.T) {
+func TestCancelarAplicaLaVista(t *testing.T) {
 	s, repo, cliente := nuevoServicio()
-	creada := crearSolicitud(t, s)
-	cliente.Vista = models.VistaSolicitud{ID: creada.ID, Estado: models.EstadoAceptada, Version: 4}
-	vista, err := s.ResponderContrapropuesta(context.Background(), org, "clave-resp-1", creada.ID, true)
-	if err != nil || vista.Estado != models.EstadoAceptada {
+	creada := crearReserva(t, s)
+	cliente.Vista = models.VistaSolicitud{ID: creada.ID, Estado: "ACEPTADA", Version: 2,
+		Traslado: &models.Traslado{Estado: models.EstadoCancelado}, Cancelacion: &models.Cancelacion{Estado: "APROBADA", Tardia: true}}
+	vista, err := s.Cancelar(context.Background(), org, "clave-canc-1", creada.ID, "ya no hace falta")
+	if err != nil || vista.Traslado.Estado != models.EstadoCancelado || !vista.Cancelacion.Tardia {
 		t.Fatalf("respuesta inesperada: %+v %v", vista, err)
 	}
-	if l := cliente.Llamadas[0]; l.Org != org || l.ClaveIdem != "clave-resp-1" || l.ID != creada.ID || !l.Acepta {
+	if l := cliente.Llamadas[1]; l.Org != org || l.ClaveIdem != "clave-canc-1" || l.ID != creada.ID || l.Motivo != "ya no hace falta" {
 		t.Fatalf("llamada a Operaciones incorrecta: %+v", l)
 	}
 	guardada, _ := repo.BuscarPorID(context.Background(), org, creada.ID)
-	if guardada.Version != 4 || guardada.Vista.Estado != models.EstadoAceptada {
+	if guardada.Version != 2 || guardada.Vista.Traslado.Estado != models.EstadoCancelado {
 		t.Fatalf("no se aplicó la vista devuelta: %+v", guardada)
 	}
 }
@@ -251,41 +273,26 @@ func TestCancelarMapeaLosErroresDeOperaciones(t *testing.T) {
 		codigo     string
 		reintento  int
 	}{
-		{"no recibida todavía", clients.ErrNoEncontrada, http.StatusServiceUnavailable, "SERVICIO_NO_DISPONIBLE", ReintentarSinRecibir},
-		{"conflicto", clients.ErrConflicto{Codigo: "ESTADO_NO_PERMITE_OPERACION"}, http.StatusConflict, "ESTADO_NO_PERMITE_OPERACION", 0},
-		{"contrapropuesta vencida", clients.ErrConflicto{Codigo: "CONTRAPROPUESTA_VENCIDA"}, http.StatusConflict, "CONTRAPROPUESTA_VENCIDA", 0},
-		{"datos inválidos", clients.ErrDatosInvalidos, http.StatusUnprocessableEntity, "DATOS_INVALIDOS", 0},
+		{"ya empezó", clients.ErrRechazo{Estado: 409, Codigo: "ESTADO_NO_PERMITE_OPERACION"}, http.StatusConflict, "ESTADO_NO_PERMITE_OPERACION", 0},
+		{"datos inválidos", clients.ErrRechazo{Estado: 422, Codigo: "DATOS_INVALIDOS"}, http.StatusUnprocessableEntity, "DATOS_INVALIDOS", 0},
+		{"no la encuentra", clients.ErrNoEncontrada, http.StatusNotFound, "NO_ENCONTRADA", 0},
 		{"no disponible", clients.ErrNoDisponible, http.StatusServiceUnavailable, "SERVICIO_NO_DISPONIBLE", ReintentarNoDisponible},
 	}
 	for _, c := range casos {
 		t.Run(c.nombre, func(t *testing.T) {
 			s, _, cliente := nuevoServicio()
-			creada := crearSolicitud(t, s)
+			creada := crearReserva(t, s)
 			cliente.Error = c.err
 			_, err := s.Cancelar(context.Background(), org, "clave-canc-1", creada.ID, "ya no hace falta")
 			e := errorDe(t, err)
 			if e.Estado != c.estadoHTTP || e.Codigo != c.codigo || e.ReintentoS != c.reintento {
 				t.Fatalf("se esperaba %d %s (Retry-After %d), se obtuvo %+v", c.estadoHTTP, c.codigo, c.reintento, e)
 			}
-			if cliente.Llamadas[0].Motivo != "ya no hace falta" {
-				t.Fatalf("no se envió el motivo: %+v", cliente.Llamadas[0])
-			}
 		})
 	}
 }
 
-func TestOperacionesNoEncuentraUnaSolicitudYaProcesadaEs404(t *testing.T) {
-	s, repo, cliente := nuevoServicio()
-	creada := crearSolicitud(t, s)
-	_, _, _ = repo.AplicarVista(context.Background(), creada.ID, 2, models.VistaSolicitud{ID: creada.ID, Estado: models.EstadoAceptada, Version: 2}, ahoraFija)
-	cliente.Error = clients.ErrNoEncontrada
-	_, err := s.ResponderContrapropuesta(context.Background(), org, "clave-resp-1", creada.ID, false)
-	if e := errorDe(t, err); e.Estado != http.StatusNotFound {
-		t.Fatalf("si la solicitud ya no está RECIBIDA, un 404 de Operaciones es 404: %+v", e)
-	}
-}
-
-func TestAccionSobreSolicitudInexistenteNoLlamaAOperaciones(t *testing.T) {
+func TestAccionSobreTrasladoInexistenteNoLlamaAOperaciones(t *testing.T) {
 	s, _, cliente := nuevoServicio()
 	_, err := s.Cancelar(context.Background(), org, "clave-canc-1", "sol-no-existe", "motivo")
 	if e := errorDe(t, err); e.Estado != http.StatusNotFound || len(cliente.Llamadas) != 0 {
@@ -295,10 +302,10 @@ func TestAccionSobreSolicitudInexistenteNoLlamaAOperaciones(t *testing.T) {
 
 func sobre(t *testing.T, id string, version int64, origen string, estado string) mensajeria.Sobre {
 	t.Helper()
-	s, err := mensajeria.NuevoSobre(context.Background(), "operaciones.solicitud.aceptada", id, version, map[string]any{
+	s, err := mensajeria.NuevoSobre(context.Background(), "operaciones.traslado.estado_cambiado", id, version, map[string]any{
 		"organizacion_id": org,
 		"origen":          origen,
-		"solicitud":       models.VistaSolicitud{ID: id, Estado: estado, Version: version},
+		"solicitud":       models.VistaSolicitud{ID: id, Estado: "ACEPTADA", Version: version, Traslado: &models.Traslado{Estado: estado}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -308,28 +315,28 @@ func sobre(t *testing.T, id string, version int64, origen string, estado string)
 
 func TestAplicarEventoExternoActualizaLaCopia(t *testing.T) {
 	s, repo, _ := nuevoServicio()
-	creada := crearSolicitud(t, s)
-	if err := s.AplicarEvento(context.Background(), sobre(t, creada.ID, 3, "externo", models.EstadoAceptada)); err != nil {
+	creada := crearReserva(t, s)
+	if err := s.AplicarEvento(context.Background(), sobre(t, creada.ID, 3, "externo", models.EstadoAsignado)); err != nil {
 		t.Fatal(err)
 	}
-	// Un evento viejo que llega tarde no pisa el estado nuevo.
-	if err := s.AplicarEvento(context.Background(), sobre(t, creada.ID, 1, "externo", models.EstadoRecibida)); err != nil {
+	// Un evento viejo que llega tarde (o el de la creación, que ya se guardó) no pisa el estado nuevo.
+	if err := s.AplicarEvento(context.Background(), sobre(t, creada.ID, 1, "externo", models.EstadoProgramado)); err != nil {
 		t.Fatal(err)
 	}
 	guardada, _ := repo.BuscarPorID(context.Background(), org, creada.ID)
-	if guardada.Version != 3 || guardada.Vista.Estado != models.EstadoAceptada {
-		t.Fatalf("copia incorrecta: versión %d estado %s", guardada.Version, guardada.Vista.Estado)
+	if guardada.Version != 3 || guardada.Vista.Traslado.Estado != models.EstadoAsignado {
+		t.Fatalf("copia incorrecta: versión %d estado %s", guardada.Version, guardada.Vista.Traslado.Estado)
 	}
 }
 
 func TestAplicarEventoInternoSeIgnora(t *testing.T) {
 	s, repo, _ := nuevoServicio()
-	creada := crearSolicitud(t, s)
-	if err := s.AplicarEvento(context.Background(), sobre(t, creada.ID, 3, "interno", models.EstadoAceptada)); err != nil {
+	creada := crearReserva(t, s)
+	if err := s.AplicarEvento(context.Background(), sobre(t, creada.ID, 3, "interno", models.EstadoAsignado)); err != nil {
 		t.Fatal(err)
 	}
 	guardada, _ := repo.BuscarPorID(context.Background(), org, creada.ID)
-	if guardada.Version != 0 {
+	if guardada.Version != 1 {
 		t.Fatal("un evento de una solicitud interna no tiene que aplicarse")
 	}
 }
@@ -345,7 +352,7 @@ func TestAplicarEventoConDatosInvalidosEsPermanente(t *testing.T) {
 func TestAplicarEventoConMongoCaidoSeReintenta(t *testing.T) {
 	s, repo, _ := nuevoServicio()
 	repo.Error = errors.New("mongo caído")
-	err := s.AplicarEvento(context.Background(), sobre(t, "sol-1", 3, "externo", models.EstadoAceptada))
+	err := s.AplicarEvento(context.Background(), sobre(t, "sol-1", 3, "externo", models.EstadoAsignado))
 	if err == nil || mensajeria.EsPermanente(err) {
 		t.Fatalf("un error de MongoDB es transitorio: %v", err)
 	}

@@ -2,15 +2,15 @@
 
 > Contrato **interno** entre los servicios de Rumbo: mensajes, endpoints internos, identidad, errores, logs, métricas y trazas.
 > El contrato **público** (para otros grupos) está en [`contracts/`](contracts/README.md).
-> Implementa las decisiones de [ADR-004](adr/ADR-004-comunicacion-entre-servicios.md) (comunicación), [ADR-002](adr/ADR-002-contrato-propio.md)/[ADR-006](adr/ADR-006-contrato-generico-v2.md)/[ADR-019](adr/ADR-019-contrato-sin-version-en-la-ruta.md) (contrato público, rutas sin versión) y el teórico 6 (identidad en el borde).
+> Implementa las decisiones de [ADR-004](adr/ADR-004-comunicacion-entre-servicios.md) (comunicación), [ADR-002](adr/ADR-002-contrato-propio.md)/[ADR-006](adr/ADR-006-contrato-generico-v2.md)/[ADR-019](adr/ADR-019-contrato-sin-version-en-la-ruta.md)/[ADR-021](adr/ADR-021-capacidad-de-autoservicio.md) (contrato público de autoservicio, rutas sin versión), [ADR-022](adr/ADR-022-consistencia-y-concurrencia.md) (consistencia y concurrencia) y el teórico 6 (identidad en el borde).
 > Las piezas reutilizables (sobre, publicador, consumidor con reintentos y DLQ, observabilidad, identidad y errores) están en el módulo Go [`servicios/comun`](../servicios/comun). **Usarlo en lugar de reimplementarlas.**
 > Si un servicio necesita algo que no está acá, **no se inventa**: se agrega primero a este documento.
 
 ## 1. Identificadores
 | Entidad | Formato | Quién lo genera |
 | --- | --- | --- |
-| Solicitud | `sol-<uuid>` (ej. `sol-0b7e…`) | Quien la crea: **Integración de carga** para las externas (y Operaciones la guarda con **el mismo id**); Operaciones para las internas |
-| Traslado | `tra-<uuid>` | Operaciones, al aceptar la solicitud |
+| Solicitud | `sol-<uuid>` (ej. `sol-0b7e…`) | **Operaciones**, también para las reservas externas (Integración guarda su copia con el id que le devuelve Operaciones, ADR-021) |
+| Traslado | `tra-<uuid>` | Operaciones, al aceptar la solicitud o al reservar una franja |
 | Mensaje | `<uuid>` | Quien publica |
 | Correlation id | `<uuid>` | El gateway (o el que llega en `X-Correlation-ID`) |
 
@@ -65,16 +65,29 @@ Los `codigo` del contrato público son los de [`contracts/README.md`](contracts/
 
 ## 4. Endpoints internos (no pasan por el gateway público)
 
-### 4.1 Operaciones — usados por Integración de carga
-Base: `OPERACIONES_URL` (en Docker, `http://operaciones:8082`). Headers obligatorios: `X-Rumbo-Organizacion`, `X-Correlation-ID`, `Idempotency-Key` (la misma que mandó el consumidor externo) y `traceparent` (lo agrega `comun/observabilidad`). Timeout del cliente: **2 s** y circuit breaker (ADR-004, D10).
+### 4.1 Operaciones — usados por Integración de carga (capacidad publicada, ADR-021)
+Base: `OPERACIONES_URL` (en Docker, `http://operaciones:8082`). Headers: `X-Correlation-ID` y `traceparent` (los agrega `comun/observabilidad`); en los `POST`, además, `X-Rumbo-Organizacion` e `Idempotency-Key` (**la misma que mandó el consumidor externo**). Timeout del cliente: **2 s**, circuit breaker y sin reintento propio (ADR-004, ADR-008).
 
 | Método y ruta | Cuerpo | Respuesta |
 | --- | --- | --- |
-| `POST /internas/solicitudes/{id}/respuesta-contrapropuesta` | `{"acepta": true}` | `200` con la **vista de solicitud** (§6) · `404 NO_ENCONTRADA` · `409 ESTADO_NO_PERMITE_OPERACION` / `CONTRAPROPUESTA_VENCIDA` · `422 DATOS_INVALIDOS` |
-| `POST /internas/solicitudes/{id}/cancelacion` | `{"motivo": "texto"}` | `200` con la vista · `404` · `409 ESTADO_NO_PERMITE_OPERACION` · `422` |
+| `GET /internas/disponibilidad?fecha=AAAA-MM-DD&peso_kg=` | — | `200 {"fecha", "franjas": [{"inicio", "fin", "disponible", "traslados_disponibles", "kg_disponibles"}]}` · `422 DATOS_INVALIDOS` (fecha mal formada o fuera del período reservable) |
+| `POST /internas/reservas` | El cuerpo de `POST /traslados` del contrato público (`cosa`, `origen`, `destino`, `franja_inicio`, opcionales) | `201` con la **vista de solicitud** (§6), ya `ACEPTADA` con su traslado `PROGRAMADO` y `traslado.franja` · `409 SIN_DISPONIBILIDAD` / `CLAVE_IDEMPOTENCIA_REUTILIZADA` · `422 DATOS_INVALIDOS` / `ANTICIPACION_INSUFICIENTE` / `HORARIO_EN_EL_PASADO` / `EXCEDE_CAPACIDAD` |
+| `POST /internas/solicitudes/{id}/cancelacion` | `{"motivo": "texto"}` | `200` con la vista (traslado `CANCELADO`, `cancelacion.tardia`) · `404` · `409 ESTADO_NO_PERMITE_OPERACION` · `422` |
 
+- La reserva corre en **una transacción** (ADR-022): clave de idempotencia → validar la franja → bloquear la franja (`FOR UPDATE`) → descontar el lugar → crear la solicitud y el traslado → outbox (`operaciones.solicitud.aceptada`, versión 1) → guardar la respuesta de la clave.
+- Operaciones guarda la `Idempotency-Key` por organización y endpoint (`reserva`, `cancelacion`) **en la misma transacción**: un reintento devuelve la respuesta original (también el `201`) aunque la franja se haya llenado.
+- Cancelar una reserva externa nunca queda pendiente de aprobación: devuelve el lugar a la franja en la misma transacción.
 - Operaciones verifica que la solicitud sea de `X-Rumbo-Organizacion` (si no, `404`).
-- Si Operaciones todavía no recibió la solicitud (`404` para una solicitud que Integración tiene como `RECIBIDA`), Integración responde **`503 SERVICIO_NO_DISPONIBLE`** con `Retry-After: 5`: es un estado transitorio, no un error del consumidor.
+- Los errores 4xx traen el `codigo` del contrato público: Integración los reenvía tal cual. Un 5xx, un timeout o el breaker abierto son `503 SERVICIO_NO_DISPONIBLE` con `Retry-After: 30`.
+
+### Calendario de franjas (variables de entorno de Operaciones)
+| Variable | Por defecto | Qué es |
+| --- | --- | --- |
+| `FRANJA_APERTURA_HORA` / `FRANJA_CIERRE_HORA` | `8` / `20` | Horario de las franjas (hora de Argentina) |
+| `FRANJA_DURACION_HORAS` | `2` | Duración de cada franja |
+| `FRANJA_CUPO_TRASLADOS` / `FRANJA_CUPO_KG` | `4` / `2000` | Cupo de cada franja |
+| `FRANJA_ANTICIPACION_HORAS` | `2` | Anticipación mínima para reservar |
+| `FRANJA_HORIZONTE_DIAS` | `30` | Hasta cuántos días adelante se reserva |
 
 ### 4.2 Operaciones — API del operador (a través del gateway, `/api/operaciones/...`)
 Requiere rol `operador` o `administrador`.
@@ -119,30 +132,14 @@ Requiere rol `operador` o `administrador`.
 | --- | --- | --- |
 | Exchange de eventos de Operaciones | `rumbo.operaciones` | `topic`, durable. Routing key = `tipo` |
 | Exchange de eventos de Recursos | `rumbo.recursos` | `topic`, durable |
-| Cola de comandos de solicitudes externas | `operaciones.solicitudes-externas` | Se publica en el exchange por defecto (`""`) con routing key = nombre de la cola. Consume Operaciones |
 | Cola de estados para Integración | `integracion.estados` | Bindings: `operaciones.solicitud.*`, `operaciones.traslado.*` y `operaciones.cancelacion.*`. Consumen todas las réplicas de Integración (compiten) |
 | Reintento | `<cola>.reintento` | La crea `comun/mensajeria`: TTL por mensaje y vuelta a `<cola>` |
 | Mensajes fallidos | `<cola>.dlq` | La crea `comun/mensajeria`. Dueño: el equipo del servicio consumidor |
 
 Política de fallos (ADR-004, en `comun/mensajeria`): error transitorio → hasta **3 reintentos** con backoff exponencial y jitter (~1 s, ~4 s, ~16 s); error permanente (`mensajeria.Permanente(err)`) o reintentos agotados → `<cola>.dlq`. **ACK solo después del efecto.** Prefetch: **10**.
 
-### 5.3 Comando `integracion.solicitud_carga.recibida`
-Lo publica Integración de carga; lo consume Operaciones. `agregado_id` = id de la solicitud y `agregado_version` = 1.
-```json
-"datos": {
-  "solicitud_id": "sol-…",
-  "organizacion_id": "org-…",
-  "referencia_externa": "TRF-2026-00123",
-  "cosa": { "descripcion": "Cajas", "cantidad": 20, "peso_kg": 350, "volumen_m3": null },
-  "origen":  { "nombre": "Sucursal Centro", "direccion": "Av. Colón 1234", "contacto": null },
-  "destino": { "nombre": "Sucursal Cerro",  "direccion": "Av. R. Núñez 4500", "contacto": null },
-  "hora_llegada_solicitada": "2026-10-16T14:00:00-03:00",
-  "tolerancia_minutos": 120,
-  "observaciones": null,
-  "recibida_en": "2026-10-15T08:30:00-03:00"
-}
-```
-Los campos opcionales del contrato público viajan como `null` si no se enviaron. Operaciones crea la solicitud con **el mismo `solicitud_id`**, estado `RECIBIDA` y **versión 1** (y publica `operaciones.solicitud.recibida`). Si el id ya existe, **no hace nada** (idempotencia). Integración guarda su copia inicial con **versión 0**, así cualquier evento de Operaciones (versión ≥ 1) la reemplaza.
+### 5.3 (Eliminado) Comando `integracion.solicitud_carga.recibida`
+Desde [ADR-021](adr/ADR-021-capacidad-de-autoservicio.md) la reserva va por HTTP (`POST /internas/reservas`, §4.1) y no existe el comando ni la cola `operaciones.solicitudes-externas`. Integración ya no publica mensajes.
 
 ### 5.4 Eventos de solicitudes y traslados (`rumbo.operaciones`)
 Todos llevan en `datos` la **vista completa de la solicitud** (§6) más `organizacion_id` y `origen` (`"externo"` o `"interno"`). Así, un consumidor solo guarda la vista si `agregado_version` es mayor que la que tiene.
@@ -150,7 +147,7 @@ Todos llevan en `datos` la **vista completa de la solicitud** (§6) más `organi
 | `tipo` | Cuándo |
 | --- | --- |
 | `operaciones.solicitud.recibida` | Se registró una solicitud (externa o interna) |
-| `operaciones.solicitud.aceptada` | El operador la aceptó o el cliente aceptó la contrapropuesta. Se crea el traslado |
+| `operaciones.solicitud.aceptada` | El operador la aceptó, el cliente aceptó la contrapropuesta o **un sistema externo reservó una franja** (versión 1, ya con el traslado). Se crea el traslado |
 | `operaciones.solicitud.contrapropuesta` | El operador propuso un horario |
 | `operaciones.solicitud.rechazada` | El operador la rechazó |
 | `operaciones.solicitud.rechazada_por_cliente` | El cliente rechazó la contrapropuesta |
@@ -186,9 +183,10 @@ Es la misma forma que `SolicitudTraslado` del contrato público (`docs/contracts
   "traslado": {
     "id": "tra-…", "estado": "PROGRAMADO", "hora_llegada_comprometida": "…",
     "demora_minutos": null, "finalizado_en": null, "detalle_resultado": null,
+    "franja": { "inicio": "2026-11-20T10:00:00-03:00", "fin": "2026-11-20T12:00:00-03:00" },
     "alerta_climatica": { "estado": "NO_OPERABLE", "motivos": ["HIGH_WIND"], "observado_en": "…" }
   },
-  "cancelacion": { "estado": "PENDIENTE_APROBACION", "motivo": "…", "solicitada_en": "…" },
+  "cancelacion": { "estado": "PENDIENTE_APROBACION", "motivo": "…", "solicitada_en": "…", "tardia": true },
   "version": 4,
   "creado_en": "…",
   "actualizado_en": "…"
@@ -197,6 +195,8 @@ Es la misma forma que `SolicitudTraslado` del contrato público (`docs/contracts
 - Los campos ausentes van como `null` u omitidos.
 - `traslado.alerta_climatica.estado` puede ser `NO_OPERABLE` (con `motivos`) o `NO_VERIFICADO` (el servicio de clima no respondió).
 - Al aceptar, el traslado se crea en estado **`PROGRAMADO`** con la hora comprometida (la asignación a un recorrido es posterior).
+- `traslado.franja` existe solo en las reservas externas; ahí `hora_llegada_comprometida` es el fin de la franja.
+- `cancelacion.tardia` es `true` si se pidió con menos de 24 h. En una reserva externa la cancelación siempre queda `APROBADA`; `PENDIENTE_APROBACION` solo existe para las solicitudes de la web.
 
 ## 7. Logs (todos los servicios)
 `log/slog` en **JSON** a stdout, configurado por `observabilidad.Iniciar`. Los mismos registros viajan a Grafana (Loki) por OpenTelemetry.
@@ -219,7 +219,7 @@ Todos los servicios Gin registran automáticamente, con `observabilidad.Instrume
 | --- | --- | --- | --- |
 | `rumbo_mensajes_procesados_total` | contador | `cola`, `resultado` (`ok`, `reintento`, `dlq`) | `comun/mensajeria` |
 | `rumbo_mensajes_publicados_total` | contador | `exchange`, `tipo`, `resultado` | `comun/mensajeria` |
-| `rumbo_outbox_pendientes` | gauge | `servicio` | Operaciones e Integración |
+| `rumbo_outbox_pendientes` | gauge | `servicio` | Operaciones (Integración ya no tiene pendientes de envío, ADR-021) |
 | `rumbo_cache_operaciones_total` | contador | `cache`, `resultado` (`hit`, `miss`, `error`) | Integración (Memcached), Operaciones (clima) |
 | `rumbo_circuito_estado` | gauge (0 cerrado, 1 semiabierto, 2 abierto) | `dependencia` | Integración, Operaciones |
 | `rumbo_clima_consultas_total` | contador | `resultado` (`operable`, `no_operable`, `no_verificado`) | Operaciones |
@@ -229,10 +229,10 @@ Todos los servicios Gin registran automáticamente, con `observabilidad.Instrume
 OpenTelemetry (`go.opentelemetry.io/otel`), exportadas por OTLP a `OTEL_EXPORTER_OTLP_ENDPOINT` (en Docker, `http://lgtm:4318`). Propagación **W3C Trace Context**:
 - **HTTP:** automática con `observabilidad.MiddlewareGin` (entrada) y `observabilidad.ClienteHTTP` (salida).
 - **RabbitMQ:** automática con `comun/mensajeria`: inyecta en los headers del mensaje al publicar y extrae al consumir.
-- **Outbox y pendientes de envío:** como el relay publica después, en otro contexto, la traza se cortaría. Por eso, al guardar una fila de outbox (Operaciones) o una solicitud pendiente de envío (Integración), **se guarda también el contexto de la traza** (`propagation.MapCarrier` de OpenTelemetry: `traceparent` y `tracestate`). El relay lo extrae antes de `Publicar`, y así la publicación queda dentro de la misma traza.
+- **Outbox:** como el relay publica después, en otro contexto, la traza se cortaría. Por eso, al guardar una fila de outbox, **se guarda también el contexto de la traza** (`propagation.MapCarrier` de OpenTelemetry: `traceparent` y `tracestate`). El relay lo extrae antes de `Publicar`, y así la publicación queda dentro de la misma traza.
 
 Nombres de spans: los HTTP los pone la instrumentación (`POST /traslados`). Los de mensajería: `publicar <tipo>` y `consumir <tipo>`. El **flujo principal** que tiene que verse en una sola traza es:
-**gateway → Integración (`POST /traslados`) → `publicar integracion.solicitud_carga.recibida` → `consumir …` en Operaciones → `publicar operaciones.solicitud.recibida` → `consumir …` en Integración.**
+**gateway → Integración (`POST /traslados`) → Operaciones (`POST /internas/reservas`) → `publicar operaciones.solicitud.aceptada` (relay del outbox) → `consumir …` en Integración** (ADR-021).
 
 ## 10. Variables de entorno comunes
 | Variable | Uso |

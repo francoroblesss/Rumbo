@@ -14,7 +14,7 @@ Scripts de [k6](https://grafana.com/docs/k6/) que miden la capacidad publicada "
 Requisitos: Docker y Node.js (solo para `resumir.mjs` y `latencias-d5.mjs`). La observabilidad tiene que estar activa (`COMPOSE_PROFILES=observabilidad` y `OTEL_EXPORTER_OTLP_ENDPOINT=http://lgtm:4318` en `.env`) para medir D5.
 
 ```bash
-docker compose up --build -d          # esperar a que todo esté sano (docker compose ps)
+FRANJA_CUPO_TRASLADOS=100000 docker compose up --build -d   # cupo alto: si no, las reservas se cortan con 409; esperar a que todo esté sano (docker compose ps)
 bash pruebas/carga/ejecutar.sh        # ~12 min: A, B y C (y d5.js durante C)
 node pruebas/carga/resumir.mjs        # tablas por escenario y uso por contenedor para el costo
 node pruebas/carga/latencias-d5.mjs   # p50 y p99 de las llamadas salientes (ADR-016)

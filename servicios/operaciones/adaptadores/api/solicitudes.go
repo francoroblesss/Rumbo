@@ -49,10 +49,12 @@ func (h *Handler) Registrar(r gin.IRouter) {
 	operador.POST("/:id/rechazo", h.rechazar)
 	operador.POST("/:id/cancelacion-tardia", h.resolverCancelacionTardia)
 
-	// Endpoints internos para Integración de carga: el gateway no expone /internas/.
-	internas := r.Group("/internas/solicitudes")
-	internas.POST("/:id/respuesta-contrapropuesta", h.responderContrapropuesta)
-	internas.POST("/:id/cancelacion", h.cancelar)
+	// Endpoints internos para Integración de carga (capacidad publicada, ADR-021): el gateway no
+	// expone /internas/.
+	internas := r.Group("/internas")
+	internas.GET("/disponibilidad", h.disponibilidad)
+	internas.POST("/reservas", h.reservar)
+	internas.POST("/solicitudes/:id/cancelacion", h.cancelar)
 }
 
 func (h *Handler) listar(c *gin.Context) {
@@ -133,27 +135,95 @@ func (h *Handler) resolverCancelacionTardia(c *gin.Context) {
 	h.responder(c)(h.casos.ResolverCancelacionTardia(c.Request.Context(), c.Param("id"), *cuerpo.Aprobar))
 }
 
-func (h *Handler) responderContrapropuesta(c *gin.Context) {
+func (h *Handler) disponibilidad(c *gin.Context) {
+	fecha := c.Query("fecha")
+	if fecha == "" {
+		datosInvalidos(c, "fecha", "es obligatorio (AAAA-MM-DD)")
+		return
+	}
+	peso := 0.0
+	if v := c.Query("peso_kg"); v != "" {
+		var err error
+		if peso, err = strconv.ParseFloat(v, 64); err != nil || peso <= 0 {
+			datosInvalidos(c, "peso_kg", "debe ser un número mayor que 0")
+			return
+		}
+	}
+	d, err := h.casos.Disponibilidad(c.Request.Context(), fecha, peso)
+	if errors.Is(err, dominio.ErrFranjaInvalida) || errors.Is(err, dominio.ErrDatosInvalidos) {
+		datosInvalidos(c, "fecha", "debe ser AAAA-MM-DD, desde hoy y dentro del período reservable")
+		return
+	}
+	if err != nil {
+		h.error(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, d)
+}
+
+// pedidoReserva es el cuerpo de POST /internas/reservas: lo que mandó el consumidor externo, tal
+// como lo reenvía Integración.
+type pedidoReserva struct {
+	ReferenciaExterna *string `json:"referencia_externa"`
+	Cosa              struct {
+		Descripcion string   `json:"descripcion"`
+		Cantidad    int      `json:"cantidad"`
+		PesoKg      *float64 `json:"peso_kg"`
+		VolumenM3   *float64 `json:"volumen_m3"`
+	} `json:"cosa"`
+	Origen        ubicacion `json:"origen"`
+	Destino       ubicacion `json:"destino"`
+	FranjaInicio  *string   `json:"franja_inicio"`
+	Observaciones *string   `json:"observaciones"`
+}
+
+type ubicacion struct {
+	Nombre    string  `json:"nombre"`
+	Direccion string  `json:"direccion"`
+	Contacto  *string `json:"contacto"`
+}
+
+func (u ubicacion) dominio() dominio.Ubicacion {
+	return dominio.Ubicacion{Nombre: u.Nombre, Direccion: u.Direccion, Contacto: u.Contacto}
+}
+
+func (h *Handler) reservar(c *gin.Context) {
 	org, ok := organizacion(c)
 	if !ok {
 		return
 	}
-	var cuerpo struct {
-		Acepta *bool `json:"acepta"`
-	}
-	crudo, ok := leerCuerpo(c, &cuerpo)
+	var p pedidoReserva
+	crudo, ok := leerCuerpo(c, &p)
 	if !ok {
 		return
 	}
-	if cuerpo.Acepta == nil {
-		datosInvalidos(c, "acepta", "es obligatorio")
+	if p.FranjaInicio == nil {
+		datosInvalidos(c, "franja_inicio", "es obligatorio")
 		return
 	}
-	idem, ok := idempotencia(c, "respuesta-contrapropuesta", crudo)
+	inicio, err := time.Parse(time.RFC3339, *p.FranjaInicio)
+	if err != nil {
+		datosInvalidos(c, "franja_inicio", "debe ser una fecha y hora RFC 3339 con zona")
+		return
+	}
+	idem, ok := idempotencia(c, "reserva", crudo)
 	if !ok {
 		return
 	}
-	h.responder(c)(h.casos.ResponderContrapropuesta(c.Request.Context(), org, c.Param("id"), *cuerpo.Acepta, idem))
+	datos := dominio.DatosSolicitud{
+		ReferenciaExterna: p.ReferenciaExterna,
+		Cosa: dominio.Cosa{Descripcion: p.Cosa.Descripcion, Cantidad: p.Cosa.Cantidad,
+			PesoKg: p.Cosa.PesoKg, VolumenM3: p.Cosa.VolumenM3},
+		Desde:         p.Origen.dominio(),
+		Hasta:         p.Destino.dominio(),
+		Observaciones: p.Observaciones,
+	}
+	v, err := h.casos.Reservar(c.Request.Context(), org, datos, inicio.UTC(), idem)
+	if err != nil {
+		h.error(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, v)
 }
 
 func (h *Handler) cancelar(c *gin.Context) {
@@ -212,6 +282,19 @@ func (h *Handler) error(c *gin.Context, err error) {
 	case errors.Is(err, dominio.ErrHorarioEnElPasado):
 		problema.Escribir(c, http.StatusUnprocessableEntity, "HORARIO_EN_EL_PASADO", "Horario en el pasado",
 			"La hora indicada ya pasó.")
+	case errors.Is(err, dominio.ErrSinDisponibilidad):
+		problema.Escribir(c, http.StatusConflict, "SIN_DISPONIBILIDAD", "Sin disponibilidad",
+			"La franja ya no tiene lugar para esta carga. Consultar la disponibilidad y elegir otra.")
+	case errors.Is(err, dominio.ErrExcedeCapacidad):
+		problema.Escribir(c, http.StatusUnprocessableEntity, "EXCEDE_CAPACIDAD", "Excede la capacidad",
+			"El peso supera el cupo total de una franja: dividir la carga en varios traslados.")
+	case errors.Is(err, dominio.ErrAnticipacionInsuficiente):
+		problema.Escribir(c, http.StatusUnprocessableEntity, "ANTICIPACION_INSUFICIENTE", "Anticipación insuficiente",
+			"La franja empieza demasiado pronto para reservarla. Elegir una franja posterior.")
+	case errors.Is(err, dominio.ErrFranjaInvalida):
+		problema.Escribir(c, http.StatusUnprocessableEntity, "DATOS_INVALIDOS", "Datos inválidos",
+			"No es una franja que se pueda reservar: consultar la disponibilidad.",
+			problema.ErrorCampo{Campo: "franja_inicio", Mensaje: "no es el inicio de una franja reservable"})
 	case errors.Is(err, dominio.ErrDatosInvalidos):
 		problema.Escribir(c, http.StatusUnprocessableEntity, "DATOS_INVALIDOS", "Datos inválidos",
 			"Falta un dato obligatorio o un valor no es válido.")

@@ -13,27 +13,16 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/google/uuid"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/propagation"
-
 	"github.com/francoroblesss/Rumbo/servicios/comun/mensajeria"
-	"github.com/francoroblesss/Rumbo/servicios/comun/observabilidad"
 	"github.com/francoroblesss/Rumbo/servicios/comun/problema"
 	"github.com/francoroblesss/Rumbo/servicios/integracion/clients"
 	"github.com/francoroblesss/Rumbo/servicios/integracion/models"
 	"github.com/francoroblesss/Rumbo/servicios/integracion/repositories"
 )
 
-// ClaveCorrelacionTraza es la clave con la que se guarda el correlation id junto al contexto de
-// la traza, para que el relay publique el comando con el mismo correlation id (interfaces-internas §5.1).
-const ClaveCorrelacionTraza = mensajeria.HeaderCorrelacion
-
-// Segundos de Retry-After para cada 503 (interfaces-internas §4.1 y ADR-008).
-const (
-	ReintentarSinRecibir   = 5  // Operaciones todavía no recibió la solicitud
-	ReintentarNoDisponible = 30 // Operaciones caída o breaker abierto
-)
+// ReintentarNoDisponible son los segundos de Retry-After cuando Operaciones está caída o el
+// breaker está abierto (ADR-008).
+const ReintentarNoDisponible = 30
 
 const (
 	origenExterno        = "externo"
@@ -42,7 +31,7 @@ const (
 	codigoDatosInvalidos = "DATOS_INVALIDOS"
 	tituloDatosInvalidos = "Datos inválidos"
 	codigoNoEncontrada   = "NO_ENCONTRADA"
-	tituloNoEncontrada   = "Solicitud no encontrada"
+	tituloNoEncontrada   = "Traslado no encontrado"
 )
 
 // ErrorServicio es un error con su traducción al contrato público: el controlador lo escribe
@@ -76,7 +65,8 @@ func errorInterno(ctx context.Context, operacion string, err error) *ErrorServic
 }
 
 // SolicitudesService traduce el contrato público al modelo interno. No decide nada de negocio:
-// recibe, guarda, avisa a Operaciones y responde la copia del estado (ADR-001).
+// valida la forma del pedido, le pregunta a Operaciones (que decide si hay lugar) y guarda la
+// copia del resultado para las consultas (ADR-001, ADR-021).
 type SolicitudesService struct {
 	repo    repositories.SolicitudesRepository
 	cliente clients.OperacionesClient
@@ -88,14 +78,14 @@ func NewSolicitudesService(repo repositories.SolicitudesRepository, cliente clie
 	return &SolicitudesService{repo: repo, cliente: cliente, reloj: reloj}
 }
 
-// ahora devuelve la hora en UTC, truncada a milisegundos (la precisión que guarda MongoDB), así la
-// primera respuesta y las siguientes muestran exactamente las mismas horas.
+// ahora devuelve la hora en UTC, truncada a milisegundos (la precisión que guarda MongoDB).
 func (s *SolicitudesService) ahora() time.Time {
 	return s.reloj().UTC().Truncate(time.Millisecond)
 }
 
-// Crear registra una solicitud nueva con estado RECIBIDA y la deja pendiente de envío a
-// Operaciones. Devuelve la vista y el código HTTP (202: recibir no es confirmar, teórico 4).
+// Crear reserva un traslado en una franja. La respuesta es definitiva en el momento: 201 con el
+// traslado PROGRAMADO, o el rechazo de Operaciones (409 SIN_DISPONIBILIDAD, 422…). No hay
+// estado intermedio ni decisión manual (ADR-021).
 func (s *SolicitudesService) Crear(ctx context.Context, org, claveIdem string, cuerpoCrudo []byte) (models.VistaSolicitud, int, error) {
 	var pedido models.PedidoTraslado
 	if err := json.Unmarshal(cuerpoCrudo, &pedido); err != nil {
@@ -107,14 +97,10 @@ func (s *SolicitudesService) Crear(ctx context.Context, org, claveIdem string, c
 		e.Errores = errores
 		return models.VistaSolicitud{}, 0, e
 	}
-	ahora := s.ahora()
-	if pedido.HoraLlegadaSolicitada != nil && pedido.HoraLlegadaSolicitada.Before(ahora) {
-		return models.VistaSolicitud{}, 0, nuevoError(http.StatusUnprocessableEntity, "HORARIO_EN_EL_PASADO",
-			"Horario en el pasado", "La hora_llegada_solicitada es anterior al momento actual.")
-	}
 
 	// Hash del cuerpo normalizado (decodificado y vuelto a codificar): el mismo pedido con otro
-	// orden de campos o espacios es el mismo pedido.
+	// orden de campos o espacios es el mismo pedido. Operaciones recibe ese mismo cuerpo, así que
+	// calcula el mismo hash para la misma clave.
 	normalizado, err := json.Marshal(pedido)
 	if err != nil {
 		return models.VistaSolicitud{}, 0, errorInterno(ctx, "normalizar el pedido", err)
@@ -122,67 +108,61 @@ func (s *SolicitudesService) Crear(ctx context.Context, org, claveIdem string, c
 	suma := sha256.Sum256(normalizado)
 	hash := hex.EncodeToString(suma[:])
 
-	if pedido.HoraLlegadaSolicitada != nil {
-		utc := pedido.HoraLlegadaSolicitada.UTC()
-		pedido.HoraLlegadaSolicitada = &utc
+	// 1. Reintento: si la clave ya tiene una reserva guardada, se responde lo mismo sin llamar a
+	// Operaciones (sirve aunque Operaciones esté caída).
+	existente, err := s.repo.BuscarPorClave(ctx, org, claveIdem)
+	switch {
+	case err == nil:
+		return s.repetida(ctx, existente, hash)
+	case !errors.Is(err, repositories.ErrNoEncontrada):
+		return models.VistaSolicitud{}, 0, errorInterno(ctx, "buscar la clave de idempotencia", err)
 	}
-	tolerancia := 0
-	if pedido.ToleranciaMinutos != nil {
-		tolerancia = *pedido.ToleranciaMinutos
+
+	// 2. Operaciones decide: bloquea la franja, verifica el lugar y crea la reserva en una sola
+	// transacción (D4). Si se corta la respuesta, el consumidor reintenta con la misma clave y
+	// Operaciones devuelve la misma reserva (también guarda la clave).
+	vista, err := s.cliente.Reservar(ctx, org, claveIdem, pedido)
+	if err != nil {
+		return models.VistaSolicitud{}, 0, s.traducir(ctx, err)
 	}
-	id := "sol-" + uuid.NewString()
-	vista := models.VistaSolicitud{
-		ID:                    id,
-		ReferenciaExterna:     pedido.ReferenciaExterna,
-		Estado:                models.EstadoRecibida,
-		Cosa:                  pedido.Cosa,
-		Origen:                pedido.Origen,
-		Destino:               pedido.Destino,
-		HoraLlegadaSolicitada: pedido.HoraLlegadaSolicitada,
-		ToleranciaMinutos:     tolerancia,
-		Observaciones:         pedido.Observaciones,
-		Version:               0,
-		CreadoEn:              ahora,
-		ActualizadoEn:         ahora,
-	}
-	// Se guarda el contexto de la traza para que el relay publique dentro de la misma traza
-	// (interfaces-internas §9), y el correlation id para el sobre del comando.
-	contexto := propagation.MapCarrier{}
-	otel.GetTextMapPropagator().Inject(ctx, contexto)
-	if correlacion := observabilidad.Correlacion(ctx); correlacion != "" {
-		contexto[ClaveCorrelacionTraza] = correlacion
-	}
-	solicitud := models.SolicitudExterna{
-		ID:             id,
+
+	// 3. Copia local para las consultas y para los reintentos.
+	ahora := s.ahora()
+	guardada, err := s.repo.Crear(ctx, models.SolicitudExterna{
+		ID:             vista.ID,
 		OrganizacionID: org,
 		Pedido:         pedido,
 		Idempotencia:   models.ClaveIdempotencia{Clave: claveIdem, HashCuerpo: hash, Respuesta: vista},
 		Vista:          vista,
-		Version:        0,
-		PendienteEnvio: true,
-		ContextoTraza:  contexto,
+		Version:        vista.Version,
 		CreadoEn:       ahora,
 		ActualizadoEn:  ahora,
+	})
+	switch {
+	case errors.Is(err, repositories.ErrClaveExistente):
+		// Otra réplica guardó la misma clave a la vez (el mismo pedido repetido).
+		return s.repetida(ctx, guardada, hash)
+	case err != nil:
+		// La reserva ya está hecha en Operaciones: el consumidor reintenta con la misma clave,
+		// recibe la misma reserva y esta vez se guarda la copia.
+		return models.VistaSolicitud{}, 0, errorInterno(ctx, "guardar la copia de la reserva", err)
 	}
+	slog.InfoContext(ctx, "traslado reservado", slog.String("solicitud_id", vista.ID))
+	return vista, http.StatusCreated, nil
+}
 
-	guardada, err := s.repo.Crear(ctx, solicitud)
-	if errors.Is(err, repositories.ErrClaveExistente) {
-		if guardada.Idempotencia.HashCuerpo == hash {
-			// Reintento idempotente: la misma respuesta original, sin duplicar (CA-27).
-			slog.InfoContext(ctx, "reintento idempotente", slog.String("solicitud_id", guardada.ID))
-			return guardada.Idempotencia.Respuesta, http.StatusAccepted, nil
-		}
+// repetida responde un reintento: la misma reserva si el cuerpo es el mismo, 409 si no.
+func (s *SolicitudesService) repetida(ctx context.Context, existente models.SolicitudExterna, hash string) (models.VistaSolicitud, int, error) {
+	if existente.Idempotencia.HashCuerpo != hash {
 		return models.VistaSolicitud{}, 0, nuevoError(http.StatusConflict, "CLAVE_IDEMPOTENCIA_REUTILIZADA",
 			"Clave de idempotencia reutilizada", "La Idempotency-Key ya se usó con un cuerpo distinto.")
 	}
-	if err != nil {
-		return models.VistaSolicitud{}, 0, errorInterno(ctx, "guardar la solicitud", err)
-	}
-	slog.InfoContext(ctx, "solicitud recibida", slog.String("solicitud_id", id))
-	return vista, http.StatusAccepted, nil
+	slog.InfoContext(ctx, "reintento idempotente", slog.String("solicitud_id", existente.ID))
+	return existente.Idempotencia.Respuesta, http.StatusCreated, nil
 }
 
-// validarPedido junta todos los errores por campo del cuerpo (DATOS_INVALIDOS).
+// validarPedido junta todos los errores por campo del cuerpo (DATOS_INVALIDOS). Solo la forma:
+// si la franja existe y tiene lugar lo decide Operaciones.
 func validarPedido(p models.PedidoTraslado) []problema.ErrorCampo {
 	var errores []problema.ErrorCampo
 	agregar := func(campo, mensaje string) {
@@ -219,15 +199,25 @@ func validarPedido(p models.PedidoTraslado) []problema.ErrorCampo {
 		textoObligatorio(u.nombre+".direccion", u.ubicacion.Direccion, 250)
 		textoOpcional(u.nombre+".contacto", u.ubicacion.Contacto, 120)
 	}
-	if p.ToleranciaMinutos != nil && (*p.ToleranciaMinutos < 0 || *p.ToleranciaMinutos > 720) {
-		agregar("tolerancia_minutos", "debe estar entre 0 y 720")
+	if p.FranjaInicio == nil {
+		agregar("franja_inicio", "es obligatorio (el inicio de una franja de GET /disponibilidad)")
 	}
 	textoOpcional("referencia_externa", p.ReferenciaExterna, 64)
 	textoOpcional("observaciones", p.Observaciones, 500)
 	return errores
 }
 
-// Obtener devuelve la copia del estado de una solicitud de la organización.
+// Disponibilidad consulta a Operaciones las franjas de la fecha. Es una lectura sin efecto: si
+// Operaciones no responde, 503 y el consumidor vuelve a consultar.
+func (s *SolicitudesService) Disponibilidad(ctx context.Context, fecha string, pesoKg *float64) (models.Disponibilidad, error) {
+	d, err := s.cliente.Disponibilidad(ctx, fecha, pesoKg)
+	if err != nil {
+		return models.Disponibilidad{}, s.traducir(ctx, err)
+	}
+	return d, nil
+}
+
+// Obtener devuelve la copia del estado de una reserva de la organización.
 func (s *SolicitudesService) Obtener(ctx context.Context, org, id string) (models.VistaSolicitud, error) {
 	solicitud, err := s.buscar(ctx, org, id)
 	if err != nil {
@@ -240,19 +230,19 @@ func (s *SolicitudesService) buscar(ctx context.Context, org, id string) (models
 	solicitud, err := s.repo.BuscarPorID(ctx, org, id)
 	if errors.Is(err, repositories.ErrNoEncontrada) {
 		return models.SolicitudExterna{}, nuevoError(http.StatusNotFound, codigoNoEncontrada, tituloNoEncontrada,
-			"La solicitud no existe o pertenece a otra organización.")
+			"El traslado no existe o pertenece a otra organización.")
 	}
 	if err != nil {
-		return models.SolicitudExterna{}, errorInterno(ctx, "buscar la solicitud", err)
+		return models.SolicitudExterna{}, errorInterno(ctx, "buscar el traslado", err)
 	}
 	return solicitud, nil
 }
 
-// Listar devuelve una página de solicitudes de la organización, por actualizado_en ascendente.
+// Listar devuelve una página de reservas de la organización, por actualizado_en ascendente.
 func (s *SolicitudesService) Listar(ctx context.Context, filtro repositories.FiltroListado) (models.PaginaSolicitudes, error) {
 	solicitudes, total, err := s.repo.Listar(ctx, filtro)
 	if err != nil {
-		return models.PaginaSolicitudes{}, errorInterno(ctx, "listar solicitudes", err)
+		return models.PaginaSolicitudes{}, errorInterno(ctx, "listar traslados", err)
 	}
 	pagina := models.PaginaSolicitudes{Resultados: make([]models.VistaSolicitud, 0, len(solicitudes)),
 		Pagina: filtro.Pagina, Tamanio: filtro.Tamanio, Total: total}
@@ -262,52 +252,43 @@ func (s *SolicitudesService) Listar(ctx context.Context, filtro repositories.Fil
 	return pagina, nil
 }
 
-// ResponderContrapropuesta reenvía la respuesta del consumidor a Operaciones, que es quien decide.
-func (s *SolicitudesService) ResponderContrapropuesta(ctx context.Context, org, claveIdem, id string, acepta bool) (models.VistaSolicitud, error) {
-	return s.reenviar(ctx, org, id, func() (models.VistaSolicitud, error) {
-		return s.cliente.ResponderContrapropuesta(ctx, org, claveIdem, id, acepta)
-	})
-}
-
-// Cancelar reenvía el pedido de cancelación a Operaciones (las reglas de 24 h son de Operaciones).
+// Cancelar reenvía la cancelación a Operaciones, que la aplica en el momento y devuelve el lugar
+// de la franja (las reglas de 24 h son de Operaciones).
 func (s *SolicitudesService) Cancelar(ctx context.Context, org, claveIdem, id, motivo string) (models.VistaSolicitud, error) {
-	return s.reenviar(ctx, org, id, func() (models.VistaSolicitud, error) {
-		return s.cliente.Cancelar(ctx, org, claveIdem, id, motivo)
-	})
-}
-
-func (s *SolicitudesService) reenviar(ctx context.Context, org, id string, llamar func() (models.VistaSolicitud, error)) (models.VistaSolicitud, error) {
-	local, err := s.buscar(ctx, org, id)
-	if err != nil {
+	if _, err := s.buscar(ctx, org, id); err != nil {
 		return models.VistaSolicitud{}, err
 	}
-	vista, err := llamar()
-	var conflicto clients.ErrConflicto
+	vista, err := s.cliente.Cancelar(ctx, org, claveIdem, id, motivo)
+	if err != nil {
+		return models.VistaSolicitud{}, s.traducir(ctx, err)
+	}
+	// Se aplica la vista que devolvió Operaciones (pasa por el decorador e invalida la caché).
+	// Si falla, la operación igual ocurrió: se responde la verdad y el evento corregirá la copia.
+	if _, _, errVista := s.repo.AplicarVista(ctx, id, vista.Version, vista, s.ahora()); errVista != nil {
+		slog.WarnContext(ctx, "no se pudo actualizar la copia local", slog.String("solicitud_id", id),
+			slog.String("error", errVista.Error()))
+	}
+	return vista, nil
+}
+
+// traducir pasa un error del cliente de Operaciones al contrato público. Los rechazos de negocio
+// ya traen un código del contrato y se reenvían tal cual.
+func (s *SolicitudesService) traducir(ctx context.Context, err error) *ErrorServicio {
+	var rechazo clients.ErrRechazo
 	switch {
-	case err == nil:
-		// Se aplica la vista que devolvió Operaciones (pasa por el decorador e invalida la caché).
-		// Si falla, la operación igual ocurrió: se responde la verdad y el evento corregirá la copia.
-		if _, _, errVista := s.repo.AplicarVista(ctx, id, vista.Version, vista, s.ahora()); errVista != nil {
-			slog.WarnContext(ctx, "no se pudo actualizar la copia local", slog.String("solicitud_id", id),
-				slog.String("error", errVista.Error()))
+	case errors.As(err, &rechazo):
+		titulo := rechazo.Titulo
+		if titulo == "" {
+			titulo = "Pedido rechazado"
 		}
-		return vista, nil
-	case errors.Is(err, clients.ErrNoEncontrada) && local.Vista.Estado == models.EstadoRecibida:
-		// Operaciones todavía no procesó el comando: es transitorio (interfaces-internas §4.1).
-		return models.VistaSolicitud{}, noDisponible("La solicitud todavía se está registrando. Reintentar con la misma Idempotency-Key.", ReintentarSinRecibir)
+		return &ErrorServicio{Estado: rechazo.Estado, Codigo: rechazo.Codigo, Titulo: titulo, Detalle: rechazo.Detalle, Errores: rechazo.Errores}
 	case errors.Is(err, clients.ErrNoEncontrada):
-		return models.VistaSolicitud{}, nuevoError(http.StatusNotFound, codigoNoEncontrada, tituloNoEncontrada,
-			"La solicitud no existe o pertenece a otra organización.")
-	case errors.As(err, &conflicto):
-		return models.VistaSolicitud{}, nuevoError(http.StatusConflict, conflicto.Codigo,
-			"El estado actual no permite la operación", "Consultar la solicitud para conocer su estado.")
-	case errors.Is(err, clients.ErrDatosInvalidos):
-		return models.VistaSolicitud{}, nuevoError(http.StatusUnprocessableEntity, codigoDatosInvalidos, tituloDatosInvalidos,
-			"Operaciones rechazó los datos del pedido.")
+		return nuevoError(http.StatusNotFound, codigoNoEncontrada, tituloNoEncontrada,
+			"El traslado no existe o pertenece a otra organización.")
 	case errors.Is(err, clients.ErrNoDisponible):
-		return models.VistaSolicitud{}, noDisponible("Rumbo no puede procesar el pedido en este momento.", ReintentarNoDisponible)
+		return noDisponible("Rumbo no puede procesar el pedido en este momento. Reintentar con la misma Idempotency-Key.", ReintentarNoDisponible)
 	default:
-		return models.VistaSolicitud{}, errorInterno(ctx, "la llamada a Operaciones", err)
+		return errorInterno(ctx, "la llamada a Operaciones", err)
 	}
 }
 

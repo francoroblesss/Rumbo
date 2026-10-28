@@ -18,7 +18,7 @@ Rumbo presta servicios de traslado a organizaciones (clínicas, colegios, empres
 4. El **chofer** ejecuta el recorrido: inicia, marca paradas, abordajes y ausencias, reporta incidentes y cierra informando los km.
 5. El cliente consulta el estado de sus traslados. La actividad registrada alimenta la **preliquidación** de los choferes.
 
-Además, otros sistemas pueden **solicitar el traslado de una cosa desde un origen hasta un destino** a través del contrato publicado en [`docs/contracts/`](docs/contracts/README.md) (versión vigente del contrato: 3.0.0; las rutas no llevan versión, ADR-019).
+Además, otros sistemas pueden **reservar el traslado de una cosa desde un origen hasta un destino** en una franja horaria, por API y con respuesta inmediata (sin revisión del operador), a través del contrato publicado en [`docs/contracts/`](docs/contracts/README.md) (versión vigente del contrato: 4.0.0, ADR-021; las rutas no llevan versión, ADR-019).
 
 ## Ejecución local
 Requisitos: Docker Desktop (con Docker Compose v2). Para desarrollar sin Docker: Go 1.26+ (o cualquier Go ≥ 1.21, que descarga la 1.26 solo) y Node.js 20+.
@@ -35,7 +35,7 @@ Consumo de memoria: el sistema completo usa unos **2,5–3,5 GB** de RAM; convie
 
 | Componente | Dirección |
 | --- | --- |
-| API Gateway (único punto de entrada) | http://localhost:8080 — contrato público en `/auth/token` y `/traslados`, API interna en `/api/<servicio>/...` |
+| API Gateway (único punto de entrada) | http://localhost:8080 — contrato público en `/auth/token`, `/disponibilidad` y `/traslados`, API interna en `/api/<servicio>/...` |
 | Panel de RabbitMQ | http://localhost:15672 |
 | Grafana: logs, métricas, trazas y tablero (`admin`/`admin`; solo con el perfil `observabilidad`) | http://localhost:3000 |
 | Mock del clima que consume Rumbo | http://localhost:4020 |

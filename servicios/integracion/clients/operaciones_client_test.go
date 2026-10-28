@@ -36,24 +36,46 @@ func TestClienteMapeaLasRespuestas(t *testing.T) {
 		cuerpo   any
 		esperado func(error) bool
 	}{
-		{http.StatusOK, models.VistaSolicitud{ID: "sol-1", Estado: "ACEPTADA", Version: 4}, func(err error) bool { return err == nil }},
+		{http.StatusCreated, models.VistaSolicitud{ID: "sol-1", Estado: "ACEPTADA", Version: 1}, func(err error) bool { return err == nil }},
 		{http.StatusNotFound, map[string]string{"codigo": "NO_ENCONTRADA"}, func(err error) bool { return errors.Is(err, ErrNoEncontrada) }},
-		{http.StatusConflict, map[string]string{"codigo": "CONTRAPROPUESTA_VENCIDA"}, func(err error) bool {
-			var c ErrConflicto
-			return errors.As(err, &c) && c.Codigo == "CONTRAPROPUESTA_VENCIDA"
+		{http.StatusConflict, map[string]string{"codigo": "SIN_DISPONIBILIDAD", "detail": "La franja ya no tiene lugar."}, func(err error) bool {
+			var r ErrRechazo
+			return errors.As(err, &r) && r.Estado == 409 && r.Codigo == "SIN_DISPONIBILIDAD" && r.Detalle == "La franja ya no tiene lugar."
 		}},
-		{http.StatusUnprocessableEntity, map[string]string{"codigo": "DATOS_INVALIDOS"}, func(err error) bool { return errors.Is(err, ErrDatosInvalidos) }},
+		{http.StatusUnprocessableEntity, map[string]any{"codigo": "DATOS_INVALIDOS", "errores": []map[string]string{{"campo": "franja_inicio", "mensaje": "no"}}},
+			func(err error) bool {
+				var r ErrRechazo
+				return errors.As(err, &r) && r.Estado == 422 && len(r.Errores) == 1 && r.Errores[0].Campo == "franja_inicio"
+			}},
 		{http.StatusInternalServerError, map[string]string{}, func(err error) bool { return errors.Is(err, ErrNoDisponible) }},
 	}
 	for _, c := range casos {
 		srv, _ := servidorQueResponde(t, c.estado, c.cuerpo)
-		vista, err := NewOperacionesClient(srv.URL).ResponderContrapropuesta(context.Background(), "org-1", "clave-0001", "sol-1", true)
+		vista, err := NewOperacionesClient(srv.URL).Reservar(context.Background(), "org-1", "clave-0001", models.PedidoTraslado{})
 		if !c.esperado(err) {
 			t.Fatalf("estado %d: error inesperado %v", c.estado, err)
 		}
-		if c.estado == http.StatusOK && (vista.Version != 4 || vista.Estado != "ACEPTADA") {
+		if c.estado == http.StatusCreated && (vista.Version != 1 || vista.Estado != "ACEPTADA") {
 			t.Fatalf("vista mal decodificada: %+v", vista)
 		}
+	}
+}
+
+func TestClienteDisponibilidad(t *testing.T) {
+	var recibida *http.Request
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		recibida = r.Clone(context.Background())
+		_ = json.NewEncoder(w).Encode(models.Disponibilidad{Fecha: "2026-11-20", Franjas: []models.FranjaDisponible{{Disponible: true}}})
+	}))
+	defer srv.Close()
+	peso := 350.5
+	d, err := NewOperacionesClient(srv.URL).Disponibilidad(context.Background(), "2026-11-20", &peso)
+	if err != nil || len(d.Franjas) != 1 || !d.Franjas[0].Disponible {
+		t.Fatalf("d = %+v, err = %v", d, err)
+	}
+	if recibida.Method != http.MethodGet || recibida.URL.Path != "/internas/disponibilidad" ||
+		recibida.URL.Query().Get("fecha") != "2026-11-20" || recibida.URL.Query().Get("peso_kg") != "350.5" {
+		t.Fatalf("pedido incorrecto: %s %s", recibida.Method, recibida.URL)
 	}
 }
 
@@ -110,7 +132,7 @@ func TestUnConflictoNoCuentaComoFalla(t *testing.T) {
 	srv, llamadas := servidorQueResponde(t, http.StatusConflict, map[string]string{"codigo": "ESTADO_NO_PERMITE_OPERACION"})
 	cliente := NewOperacionesClient(srv.URL)
 	for i := 0; i < 8; i++ {
-		var c ErrConflicto
+		var c ErrRechazo
 		if _, err := cliente.Cancelar(context.Background(), "org-1", "clave-0001", "sol-1", "m"); !errors.As(err, &c) {
 			t.Fatalf("llamada %d: se esperaba el conflicto, se obtuvo %v", i+1, err)
 		}

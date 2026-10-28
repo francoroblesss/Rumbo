@@ -1,7 +1,7 @@
 # ADR-019 — Rutas sin versión (reemplaza parcialmente a ADR-002 y ADR-006)
 
 - **Fecha:** 2026-10-16
-- **Estado:** aceptada
+- **Estado:** aceptada — las operaciones del contrato 3.0.0 quedan **reemplazadas por [ADR-021](ADR-021-capacidad-de-autoservicio.md)** (4.0.0). Las rutas sin versión siguen vigentes.
 - **Reemplaza a:**
   - el punto 8 "Versionado" de [ADR-002](ADR-002-contrato-propio.md), en lo que dice de la **versión mayor en la URL** y de la convivencia de rutas `/vN`;
   - las rutas `/v2/...` de [ADR-006](ADR-006-contrato-generico-v2.md);

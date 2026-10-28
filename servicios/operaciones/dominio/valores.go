@@ -85,6 +85,14 @@ type Cosa struct {
 	VolumenM3   *float64
 }
 
+// peso es el peso informado, o 0 si no se informó (ocupa un lugar de la franja igual).
+func (c Cosa) peso() float64 {
+	if c.PesoKg == nil {
+		return 0
+	}
+	return *c.PesoKg
+}
+
 // Ubicacion es el origen o el destino de un traslado.
 type Ubicacion struct {
 	Nombre    string
@@ -98,11 +106,13 @@ type Contrapropuesta struct {
 	VenceEn time.Time
 }
 
-// Cancelacion es el pedido de cancelación de un traslado ya aceptado.
+// Cancelacion es el pedido de cancelación de un traslado ya aceptado. Tardia indica que se
+// pidió con menos de 24 h de anticipación.
 type Cancelacion struct {
 	Estado       EstadoCancelacion
 	Motivo       string
 	SolicitadaEn time.Time
+	Tardia       bool
 }
 
 // AlertaClimatica es la marca que deja la regla de clima en un traslado al aeropuerto.

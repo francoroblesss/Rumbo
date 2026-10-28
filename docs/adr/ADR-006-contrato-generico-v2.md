@@ -1,7 +1,7 @@
 # ADR-006 — Contrato genérico "Solicitar traslado" v2 (reemplaza parcialmente a ADR-002)
 
 - **Fecha:** 2026-10-11
-- **Estado:** aceptada — **reemplazada parcialmente por [ADR-019](ADR-019-contrato-sin-version-en-la-ruta.md)**: las rutas `/v2/...` pasan a `/traslados` y `/auth/token` (contrato 3.0.0). La capacidad genérica sigue vigente.
+- **Estado:** aceptada — **reemplazada parcialmente por [ADR-019](ADR-019-contrato-sin-version-en-la-ruta.md)**: las rutas `/v2/...` pasan a `/traslados` y `/auth/token` (contrato 3.0.0). El flujo (`202`, `RECIBIDA`, contrapropuesta también sin hora pedida) queda **reemplazado por [ADR-021](ADR-021-capacidad-de-autoservicio.md)** (4.0.0, reserva de franja). La capacidad genérica (cosa, origen, destino) sigue vigente.
 - **Reemplaza a:** la **definición de la capacidad y del contrato** de [ADR-002](ADR-002-contrato-propio.md) (versión 1.0.0, específica de carga). El resto de ADR-002 sigue vigente: REST con OpenAPI, `202` con procesamiento asíncrono, seguimiento por consulta, token firmado, idempotencia, Problem Details, política de versionado y mock con Prism.
 
 ## Contexto

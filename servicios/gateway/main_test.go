@@ -117,6 +117,20 @@ func TestTokenValidoLlegaConLaIdentidadDelToken(t *testing.T) {
 	}
 }
 
+func TestDisponibilidadVaAIntegracion(t *testing.T) {
+	e := nuevoEntorno(t)
+	w := e.pedir(http.MethodGet, "/disponibilidad?fecha=2026-11-20", token(t, "org-1", "sistema_externo"), nil)
+	if w.Code != http.StatusNoContent || e.integra.llamadas != 1 {
+		t.Fatalf("estado = %d, llamadas = %d", w.Code, e.integra.llamadas)
+	}
+	if r := e.integra.recibida; r.URL.Path != "/disponibilidad" || r.URL.Query().Get("fecha") != "2026-11-20" {
+		t.Errorf("reenviado = %q", r.URL)
+	}
+	if w := e.pedir(http.MethodGet, "/disponibilidad", "", nil); w.Code != http.StatusUnauthorized {
+		t.Errorf("sin token: %d", w.Code)
+	}
+}
+
 func TestLaIdentidadDelClienteNoLlegaAlServicio(t *testing.T) {
 	e := nuevoEntorno(t)
 	falsos := map[string]string{

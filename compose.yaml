@@ -138,6 +138,10 @@ services:
       CLIMA_URL: ${CLIMA_URL:-http://clima-mock:4010}
       CLIMA_API_KEY: ${CLIMA_API_KEY}
       CLIMA_ICAO: SACO
+      # Calendario de franjas de la capacidad publicada (ADR-021). Valores por defecto en el código;
+      # el cupo se puede subir para los tests de carga.
+      FRANJA_CUPO_TRASLADOS: ${FRANJA_CUPO_TRASLADOS:-4}
+      FRANJA_CUPO_KG: ${FRANJA_CUPO_KG:-2000}
     depends_on:
       mysql: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }

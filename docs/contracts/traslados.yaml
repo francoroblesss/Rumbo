@@ -1,27 +1,32 @@
 openapi: 3.1.0
 info:
-  title: Rumbo — Solicitar traslado
-  version: 3.0.0
+  title: Rumbo — Reservar traslado
+  version: 4.0.0
   description: |
-    Capacidad publicada por Rumbo para que un sistema externo solicite **trasladar una cosa
-    desde un origen hasta un destino** y siga su resultado. Solo tres datos son obligatorios:
-    `cosa`, `origen` y `destino`; el resto (hora, tolerancia, referencia) es opcional.
+    Capacidad publicada por Rumbo para que un sistema externo **reserve el traslado de una cosa
+    desde un origen hasta un destino** en una franja horaria, y siga su resultado.
 
-    **Las rutas no llevan versión** (`/traslados`, `/auth/token`): la versión del contrato es la
-    de este documento (`info.version`) y cada cambio queda en el historial de
-    `docs/contracts/README.md` (ADR-019). Reemplaza a la versión 2.1.0 (`traslados-v2.yaml`),
-    que tenía las mismas operaciones bajo el prefijo de versión y no llegó a tener consumidores.
-    Cuerpos, estados y errores no cambian.
+    **Autoservicio, sin negociación:** cada operación tiene una respuesta definitiva en el
+    momento, sin que nadie de Rumbo ni del consumidor tenga que intervenir:
+    1. `GET /disponibilidad` dice qué franjas de un día tienen lugar para la carga;
+    2. `POST /traslados` reserva una franja: `201` con el traslado `PROGRAMADO` (es un
+       compromiso de Rumbo) o `409 SIN_DISPONIBILIDAD` si la franja ya no tiene lugar;
+    3. `GET /traslados/{id}` y `GET /traslados?actualizado_desde=` informan el avance;
+    4. `POST /traslados/{id}/cancelacion` cancela en el momento si el traslado no empezó.
 
-    El procesamiento es asíncrono: crear una solicitud devuelve `202 Accepted` con estado
-    `RECIBIDA`. Un operador de Rumbo la revisa y la acepta, propone otro horario
-    (`CONTRAPROPUESTA`) o la rechaza. El consumidor conoce cada cambio consultando la
-    solicitud (polling). Documentación completa: `docs/contracts/README.md`.
+    Rumbo nunca devuelve un pedido "pendiente de revisión" ni propone otro horario: si no hay
+    lugar, lo dice al instante y el consumidor elige otra franja.
+
+    **Las rutas no llevan versión**: la versión del contrato es la de este documento
+    (`info.version`) y cada cambio queda en el historial de `docs/contracts/README.md`
+    (ADR-019). Reemplaza a la versión 3.0.0 (`traslados-v3.yaml`, ADR-021).
+    Documentación completa: `docs/contracts/README.md`.
 servers:
   - url: http://localhost:4010
     description: Mock generado desde este contrato (Prism)
 tags:
   - name: Autenticación
+  - name: Disponibilidad
   - name: Traslados
 security:
   - bearerAuth: []
@@ -67,22 +72,96 @@ paths:
         '504':
           $ref: '#/components/responses/TiempoAgotado'
 
+  /disponibilidad:
+    get:
+      tags: [Disponibilidad]
+      operationId: consultarDisponibilidad
+      summary: Franjas de un día que todavía se pueden reservar
+      description: |
+        Devuelve las franjas de la fecha (hora de Argentina) que todavía se pueden reservar, con
+        el lugar que les queda. Con `peso_kg`, `disponible` indica si esa carga entra.
+
+        - Las franjas son de 2 h entre las 08:00 y las 20:00.
+        - Se reserva con al menos **2 h** de anticipación y hasta **30 días** adelante; las franjas
+          que ya no cumplen eso no aparecen.
+        - Es una consulta, no una reserva: otro consumidor puede tomar el último lugar entre la
+          consulta y el `POST /traslados`. Quien decide es la reserva.
+      parameters:
+        - name: fecha
+          in: query
+          required: true
+          description: Día a consultar (AAAA-MM-DD, hora de Argentina). Desde hoy y hasta 30 días adelante.
+          schema:
+            type: string
+            format: date
+          example: '2026-11-20'
+        - name: peso_kg
+          in: query
+          description: Opcional. Peso total de la carga a reservar.
+          schema:
+            type: number
+            exclusiveMinimum: 0
+          example: 350
+      responses:
+        '200':
+          description: Franjas reservables de la fecha (lista vacía si ya no queda ninguna).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Disponibilidad'
+              example:
+                fecha: '2026-11-20'
+                franjas:
+                  - inicio: '2026-11-20T08:00:00-03:00'
+                    fin: '2026-11-20T10:00:00-03:00'
+                    disponible: true
+                    traslados_disponibles: 4
+                    kg_disponibles: 2000
+                  - inicio: '2026-11-20T10:00:00-03:00'
+                    fin: '2026-11-20T12:00:00-03:00'
+                    disponible: false
+                    traslados_disponibles: 1
+                    kg_disponibles: 150
+                  - inicio: '2026-11-20T12:00:00-03:00'
+                    fin: '2026-11-20T14:00:00-03:00'
+                    disponible: false
+                    traslados_disponibles: 0
+                    kg_disponibles: 600
+        '400':
+          $ref: '#/components/responses/PedidoInvalido'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/SinPermiso'
+        '422':
+          $ref: '#/components/responses/ReglaDeNegocio'
+        '429':
+          $ref: '#/components/responses/DemasiadosPedidos'
+        '503':
+          $ref: '#/components/responses/NoDisponible'
+        '502':
+          $ref: '#/components/responses/ErrorDePuerta'
+        '504':
+          $ref: '#/components/responses/TiempoAgotado'
+
   /traslados:
     post:
       tags: [Traslados]
-      operationId: solicitarTraslado
-      summary: Solicitar un traslado
+      operationId: reservarTraslado
+      summary: Reservar un traslado en una franja
       description: |
-        Registra la necesidad de trasladar una cosa desde `origen` hasta `destino`.
-        **Recibir no es confirmar**: la respuesta `202` indica que la solicitud quedó registrada
-        como `RECIBIDA`; el horario recién es un compromiso cuando la solicitud pasa a `ACEPTADA`.
+        Reserva el traslado de `cosa` desde `origen` hasta `destino`, para que llegue dentro de la
+        franja que empieza en `franja_inicio` (uno de los `inicio` de `GET /disponibilidad`).
 
-        **Sin `hora_llegada_solicitada`**, Rumbo elige un horario según su disponibilidad y lo
-        propone: la solicitud pasa a `CONTRAPROPUESTA` y el consumidor la acepta o la rechaza
-        como cualquier contrapropuesta.
+        La respuesta es definitiva:
+        - `201`: reservado. El traslado queda `PROGRAMADO` y Rumbo se compromete a que la cosa
+          llegue antes de `franja.fin`.
+        - `409 SIN_DISPONIBILIDAD`: la franja ya no tiene lugar para esta carga. Consultar la
+          disponibilidad y elegir otra franja (con otra `Idempotency-Key`).
+        - `422`: datos inválidos o una regla de negocio (ver `codigo`).
 
         Requiere `Idempotency-Key`: reintentar con la misma clave y el mismo cuerpo devuelve la
-        misma solicitud, sin duplicarla.
+        misma reserva, sin tomar otro lugar, aunque mientras tanto la franja se haya llenado.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -93,9 +172,14 @@ paths:
               $ref: '#/components/schemas/NuevoTraslado'
             examples:
               completo:
-                summary: Con hora, tolerancia y referencia
+                summary: Con peso, referencia y observaciones
                 value:
                   referencia_externa: TRF-2026-00123
+                  cosa:
+                    descripcion: Cajas de mercadería seca
+                    cantidad: 20
+                    peso_kg: 350
+                    volumen_m3: 2.5
                   origen:
                     nombre: Sucursal Centro
                     direccion: Av. Colón 1234, Córdoba
@@ -104,16 +188,10 @@ paths:
                     nombre: Sucursal Cerro
                     direccion: Av. Rafael Núñez 4500, Córdoba
                     contacto: Recepción — 351 555-0202
-                  hora_llegada_solicitada: '2026-10-16T14:00:00-03:00'
-                  tolerancia_minutos: 120
-                  cosa:
-                    descripcion: Cajas de mercadería seca
-                    cantidad: 20
-                    peso_kg: 350
-                    volumen_m3: 2.5
+                  franja_inicio: '2026-11-20T10:00:00-03:00'
                   observaciones: Entrar por el portón de carga.
               minimo:
-                summary: Solo lo obligatorio (cosa, origen y destino)
+                summary: Solo lo obligatorio (cosa, origen, destino y franja)
                 value:
                   cosa:
                     descripcion: Cajas de mercadería seca
@@ -124,22 +202,23 @@ paths:
                   destino:
                     nombre: Sucursal Cerro
                     direccion: Av. Rafael Núñez 4500, Córdoba
+                  franja_inicio: '2026-11-20T10:00:00-03:00'
       responses:
-        '202':
-          description: Solicitud registrada con estado `RECIBIDA` (o la misma solicitud, si es un reintento idempotente).
+        '201':
+          description: Traslado reservado (o la misma reserva, si es un reintento idempotente).
           headers:
             Location:
-              description: URL de la solicitud creada.
+              description: URL del traslado reservado.
               schema:
                 type: string
                 example: /traslados/sol-7f3a9c
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SolicitudTraslado'
+                $ref: '#/components/schemas/TrasladoReservado'
               examples:
-                recibida:
-                  $ref: '#/components/examples/SolicitudRecibida'
+                programado:
+                  $ref: '#/components/examples/TrasladoProgramado'
         '400':
           $ref: '#/components/responses/PedidoInvalido'
         '401':
@@ -147,7 +226,7 @@ paths:
         '403':
           $ref: '#/components/responses/SinPermiso'
         '409':
-          $ref: '#/components/responses/ClaveIdempotenciaReutilizada'
+          $ref: '#/components/responses/ConflictoReserva'
         '422':
           $ref: '#/components/responses/ReglaDeNegocio'
         '429':
@@ -161,24 +240,24 @@ paths:
     get:
       tags: [Traslados]
       operationId: listarTraslados
-      summary: Listar las solicitudes de la organización
+      summary: Listar los traslados de la organización
       description: |
-        Devuelve solo las solicitudes de la organización autenticada, ordenadas por
+        Devuelve solo los traslados de la organización autenticada, ordenados por
         `actualizado_en` ascendente. Para seguir los cambios por polling, enviar
         `actualizado_desde` con el mayor `actualizado_en` ya procesado.
       parameters:
         - name: actualizado_desde
           in: query
-          description: Devuelve solo las solicitudes modificadas después de este instante (exclusivo).
+          description: Devuelve solo los traslados modificados después de este instante (exclusivo).
           schema:
             type: string
             format: date-time
-          example: '2026-10-15T09:00:00-03:00'
+          example: '2026-11-19T09:00:00-03:00'
         - name: estado
           in: query
-          description: Filtra por estado de la solicitud.
+          description: Filtra por estado del traslado.
           schema:
-            $ref: '#/components/schemas/EstadoSolicitud'
+            $ref: '#/components/schemas/EstadoTraslado'
         - name: pagina
           in: query
           schema:
@@ -194,34 +273,31 @@ paths:
             default: 20
       responses:
         '200':
-          description: Página de solicitudes.
+          description: Página de traslados.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PaginaSolicitudes'
+                $ref: '#/components/schemas/PaginaTraslados'
               example:
                 resultados:
                   - id: sol-7f3a9c
                     referencia_externa: TRF-2026-00123
-                    estado: ACEPTADA
+                    estado: ASIGNADO
+                    cosa:
+                      descripcion: Cajas de mercadería seca
+                      cantidad: 20
+                      peso_kg: 350
                     origen:
                       nombre: Sucursal Centro
                       direccion: Av. Colón 1234, Córdoba
                     destino:
                       nombre: Sucursal Cerro
                       direccion: Av. Rafael Núñez 4500, Córdoba
-                    hora_llegada_solicitada: '2026-10-16T14:00:00-03:00'
-                    tolerancia_minutos: 120
-                    cosa:
-                      descripcion: Cajas de mercadería seca
-                      cantidad: 20
-                      peso_kg: 350
-                    traslado:
-                      id: tra-51c2e0
-                      estado: PROGRAMADO
-                      hora_llegada_comprometida: '2026-10-16T14:00:00-03:00'
-                    creado_en: '2026-10-15T08:30:00-03:00'
-                    actualizado_en: '2026-10-15T10:05:00-03:00'
+                    franja:
+                      inicio: '2026-11-20T10:00:00-03:00'
+                      fin: '2026-11-20T12:00:00-03:00'
+                    creado_en: '2026-11-19T08:30:00-03:00'
+                    actualizado_en: '2026-11-19T17:05:00-03:00'
                 pagina: 1
                 tamanio: 20
                 total: 1
@@ -229,6 +305,8 @@ paths:
           $ref: '#/components/responses/PedidoInvalido'
         '401':
           $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/SinPermiso'
         '429':
           $ref: '#/components/responses/DemasiadosPedidos'
         '503':
@@ -242,80 +320,30 @@ paths:
     get:
       tags: [Traslados]
       operationId: obtenerTraslado
-      summary: Consultar una solicitud
-      description: Estado actual de la solicitud y, si fue aceptada, de su traslado.
+      summary: Consultar un traslado
+      description: Estado actual del traslado reservado.
       parameters:
-        - $ref: '#/components/parameters/IdSolicitud'
+        - $ref: '#/components/parameters/IdTraslado'
       responses:
         '200':
-          description: Solicitud encontrada.
+          description: Traslado encontrado.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SolicitudTraslado'
+                $ref: '#/components/schemas/TrasladoReservado'
               examples:
-                recibida:
-                  $ref: '#/components/examples/SolicitudRecibida'
-                contrapropuesta:
-                  $ref: '#/components/examples/SolicitudContrapropuesta'
-                completada:
-                  $ref: '#/components/examples/SolicitudCompletada'
-                rechazada:
-                  $ref: '#/components/examples/SolicitudRechazada'
+                programado:
+                  $ref: '#/components/examples/TrasladoProgramado'
+                completado:
+                  $ref: '#/components/examples/TrasladoCompletado'
+                noRealizado:
+                  $ref: '#/components/examples/TrasladoNoRealizado'
         '401':
           $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/SinPermiso'
         '404':
           $ref: '#/components/responses/NoEncontrada'
-        '429':
-          $ref: '#/components/responses/DemasiadosPedidos'
-        '503':
-          $ref: '#/components/responses/NoDisponible'
-        '502':
-          $ref: '#/components/responses/ErrorDePuerta'
-        '504':
-          $ref: '#/components/responses/TiempoAgotado'
-
-  /traslados/{id}/respuesta-contrapropuesta:
-    post:
-      tags: [Traslados]
-      operationId: responderContrapropuesta
-      summary: Aceptar o rechazar el horario propuesto por Rumbo
-      description: |
-        Solo es válido mientras la solicitud está en `CONTRAPROPUESTA` y antes de
-        `contrapropuesta.vence_en` (24 h desde que se propuso). Aceptar → `ACEPTADA` con el horario
-        propuesto como compromiso. Rechazar → `RECHAZADA_POR_CLIENTE`. Repetir la misma respuesta
-        no tiene efecto adicional.
-      parameters:
-        - $ref: '#/components/parameters/IdSolicitud'
-        - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RespuestaContrapropuesta'
-            example:
-              acepta: true
-      responses:
-        '200':
-          description: Respuesta registrada; devuelve la solicitud actualizada.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SolicitudTraslado'
-              examples:
-                aceptada:
-                  $ref: '#/components/examples/SolicitudAceptadaTrasContrapropuesta'
-        '400':
-          $ref: '#/components/responses/PedidoInvalido'
-        '401':
-          $ref: '#/components/responses/NoAutenticado'
-        '404':
-          $ref: '#/components/responses/NoEncontrada'
-        '409':
-          $ref: '#/components/responses/EstadoNoPermite'
-        '422':
-          $ref: '#/components/responses/ReglaDeNegocio'
         '429':
           $ref: '#/components/responses/DemasiadosPedidos'
         '503':
@@ -329,15 +357,16 @@ paths:
     post:
       tags: [Traslados]
       operationId: cancelarTraslado
-      summary: Cancelar una solicitud o su traslado
+      summary: Cancelar un traslado
       description: |
-        - Antes de ser aceptada: la solicitud pasa a `CANCELADA`.
-        - Aceptada, con **24 h o más** antes de la hora comprometida: el traslado pasa a `CANCELADO`.
-        - Aceptada, con **menos de 24 h**: queda `cancelacion.estado = PENDIENTE_APROBACION` y un
-          operador la aprueba o no. La cancelación queda registrada en ambos casos.
-        - Con el traslado `EN_CURSO` o finalizado: no se puede cancelar (`409`).
+        Cancela en el momento un traslado que todavía no empezó (`PROGRAMADO` o `ASIGNADO`): pasa
+        a `CANCELADO` y el lugar de la franja queda libre. No requiere aprobación de nadie.
+
+        - Con **menos de 24 h** antes del fin de la franja, la cancelación se aplica igual y queda
+          marcada como `cancelacion.tardia = true` (Rumbo la registra para su operación).
+        - Con el traslado `EN_CURSO` o terminado: no se puede cancelar (`409`).
       parameters:
-        - $ref: '#/components/parameters/IdSolicitud'
+        - $ref: '#/components/parameters/IdTraslado'
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
@@ -349,22 +378,24 @@ paths:
               motivo: La mercadería se despachó por otro medio.
       responses:
         '200':
-          description: Cancelación registrada; devuelve la solicitud actualizada.
+          description: Traslado cancelado.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SolicitudTraslado'
+                $ref: '#/components/schemas/TrasladoReservado'
               examples:
-                tardia:
-                  $ref: '#/components/examples/SolicitudCancelacionPendiente'
+                cancelado:
+                  $ref: '#/components/examples/TrasladoCancelado'
         '400':
           $ref: '#/components/responses/PedidoInvalido'
         '401':
           $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/SinPermiso'
         '404':
           $ref: '#/components/responses/NoEncontrada'
         '409':
-          $ref: '#/components/responses/EstadoNoPermite'
+          $ref: '#/components/responses/ConflictoCancelacion'
         '422':
           $ref: '#/components/responses/ReglaDeNegocio'
         '429':
@@ -385,11 +416,11 @@ components:
       description: Token obtenido en `POST /auth/token`.
 
   parameters:
-    IdSolicitud:
+    IdTraslado:
       name: id
       in: path
       required: true
-      description: Identificador de la solicitud asignado por Rumbo.
+      description: Identificador del traslado asignado por Rumbo (el de la respuesta de la reserva).
       schema:
         type: string
       example: sol-7f3a9c
@@ -398,9 +429,9 @@ components:
       in: header
       required: true
       description: |
-        Clave única por intención (se recomienda un UUID). Rumbo la conserva 24 h junto con el
-        cuerpo y el resultado: el mismo par clave + cuerpo devuelve el mismo resultado; la misma
-        clave con otro cuerpo devuelve `409 CLAVE_IDEMPOTENCIA_REUTILIZADA`.
+        Clave única por intención (se recomienda un UUID). Rumbo la conserva junto con el cuerpo
+        y el resultado: el mismo par clave + cuerpo devuelve el mismo resultado; la misma clave
+        con otro cuerpo devuelve `409 CLAVE_IDEMPOTENCIA_REUTILIZADA`.
       schema:
         type: string
         minLength: 8
@@ -460,88 +491,126 @@ components:
         peso_kg:
           type: number
           exclusiveMinimum: 0
-          description: Opcional. Peso total; si se informa, Rumbo lo usa para elegir un vehículo con capacidad suficiente.
+          description: Opcional. Peso total; descuenta del cupo de kg de la franja. Sin peso, ocupa igual un lugar.
         volumen_m3:
           type: number
           exclusiveMinimum: 0
           description: Opcional. Volumen total.
 
+    Franja:
+      type: object
+      description: Ventana en la que la cosa llega al destino. Rumbo se compromete a que llegue antes de `fin`.
+      required: [inicio, fin]
+      properties:
+        inicio:
+          type: string
+          format: date-time
+        fin:
+          type: string
+          format: date-time
+
+    FranjaDisponible:
+      type: object
+      required: [inicio, fin, disponible, traslados_disponibles, kg_disponibles]
+      properties:
+        inicio:
+          type: string
+          format: date-time
+          description: Valor a enviar como `franja_inicio` para reservar.
+        fin:
+          type: string
+          format: date-time
+        disponible:
+          type: boolean
+          description: Si una carga del `peso_kg` consultado (o sin peso) entra hoy en la franja.
+        traslados_disponibles:
+          type: integer
+          minimum: 0
+          description: Reservas que todavía entran en la franja.
+        kg_disponibles:
+          type: number
+          minimum: 0
+          description: Peso que todavía entra en la franja.
+
+    Disponibilidad:
+      type: object
+      required: [fecha, franjas]
+      properties:
+        fecha:
+          type: string
+          format: date
+        franjas:
+          type: array
+          items:
+            $ref: '#/components/schemas/FranjaDisponible'
+
     NuevoTraslado:
       type: object
-      required: [cosa, origen, destino]
+      required: [cosa, origen, destino, franja_inicio]
       properties:
         referencia_externa:
           type: string
           maxLength: 64
           description: Opcional. Identificador de la operación en el sistema del consumidor (Rumbo lo devuelve tal cual).
+        cosa:
+          $ref: '#/components/schemas/Cosa'
         origen:
           $ref: '#/components/schemas/Ubicacion'
         destino:
           $ref: '#/components/schemas/Ubicacion'
-        hora_llegada_solicitada:
+        franja_inicio:
           type: string
           format: date-time
-          description: |
-            Opcional. Hora a la que la cosa debe llegar al destino (ISO 8601 con zona horaria).
-            Si no se envía, Rumbo propone un horario (`CONTRAPROPUESTA`).
-        tolerancia_minutos:
-          type: integer
-          minimum: 0
-          maximum: 720
-          default: 0
-          description: Opcional. Flexibilidad aceptada alrededor de la hora pedida. 0 = hora estricta.
-        cosa:
-          $ref: '#/components/schemas/Cosa'
+          description: Inicio de la franja a reservar, tal como lo devuelve `GET /disponibilidad` (ISO 8601 con zona horaria).
         observaciones:
           type: string
           maxLength: 500
-
-    EstadoSolicitud:
-      type: string
-      enum: [RECIBIDA, CONTRAPROPUESTA, ACEPTADA, RECHAZADA, RECHAZADA_POR_CLIENTE, CANCELADA]
-      description: |
-        - `RECIBIDA`: registrada, pendiente de revisión por un operador.
-        - `CONTRAPROPUESTA`: Rumbo propone un horario (otro distinto del pedido, o uno nuevo si no se pidió hora); el consumidor debe responder antes de `contrapropuesta.vence_en`.
-        - `ACEPTADA`: el horario es un compromiso; existe `traslado`.
-        - `RECHAZADA`: Rumbo no puede atenderla (ver `motivo_rechazo`). Final.
-        - `RECHAZADA_POR_CLIENTE`: el consumidor rechazó la contrapropuesta o no respondió en 24 h. Final.
-        - `CANCELADA`: el consumidor la canceló antes de ser aceptada. Final.
 
     EstadoTraslado:
       type: string
       enum: [PROGRAMADO, ASIGNADO, EN_CURSO, COMPLETADO, CANCELADO, NO_REALIZADO, INTERRUMPIDO]
       description: |
-        - `PROGRAMADO`: incluido en un recorrido planificado.
-        - `ASIGNADO`: el recorrido tiene chofer y vehículo.
+        - `PROGRAMADO`: reservado; Rumbo se comprometió a la franja.
+        - `ASIGNADO`: ya tiene chofer y vehículo.
         - `EN_CURSO`: el chofer inició el traslado.
         - `COMPLETADO`: la cosa llegó al destino. Final.
         - `CANCELADO`: cancelado antes de iniciar. Final.
         - `NO_REALIZADO`: no se pudo retirar la cosa en el origen. Final.
         - `INTERRUMPIDO`: empezó y no terminó (por ejemplo, avería). Final.
 
-    Contrapropuesta:
+    Cancelacion:
       type: object
-      required: [hora_llegada_propuesta, vence_en]
+      required: [tardia, cancelada_en]
       properties:
-        hora_llegada_propuesta:
+        motivo:
+          type: string
+        tardia:
+          type: boolean
+          description: Se canceló con menos de 24 h de anticipación.
+        cancelada_en:
           type: string
           format: date-time
-        vence_en:
-          type: string
-          format: date-time
-          description: Sin respuesta hasta este instante, la solicitud pasa a `RECHAZADA_POR_CLIENTE`.
 
-    Traslado:
+    TrasladoReservado:
       type: object
-      required: [id, estado, hora_llegada_comprometida]
+      required: [id, estado, cosa, origen, destino, franja, creado_en, actualizado_en]
       properties:
         id:
           type: string
+        referencia_externa:
+          type: string
         estado:
           $ref: '#/components/schemas/EstadoTraslado'
-        hora_llegada_comprometida:
+        cosa:
+          $ref: '#/components/schemas/Cosa'
+        origen:
+          $ref: '#/components/schemas/Ubicacion'
+        destino:
+          $ref: '#/components/schemas/Ubicacion'
+        observaciones:
           type: string
-          format: date-time
+        franja:
+          $ref: '#/components/schemas/Franja'
         demora_minutos:
           type: integer
           minimum: 0
@@ -552,49 +621,6 @@ components:
         detalle_resultado:
           type: string
           description: Explicación cuando el traslado es `NO_REALIZADO` o `INTERRUMPIDO`.
-
-    Cancelacion:
-      type: object
-      required: [estado, solicitada_en]
-      properties:
-        estado:
-          type: string
-          enum: [PENDIENTE_APROBACION, APROBADA, RECHAZADA]
-        motivo:
-          type: string
-        solicitada_en:
-          type: string
-          format: date-time
-
-    SolicitudTraslado:
-      type: object
-      required: [id, estado, cosa, origen, destino, tolerancia_minutos, creado_en, actualizado_en]
-      properties:
-        id:
-          type: string
-        referencia_externa:
-          type: string
-        estado:
-          $ref: '#/components/schemas/EstadoSolicitud'
-        origen:
-          $ref: '#/components/schemas/Ubicacion'
-        destino:
-          $ref: '#/components/schemas/Ubicacion'
-        hora_llegada_solicitada:
-          type: string
-          format: date-time
-        tolerancia_minutos:
-          type: integer
-        cosa:
-          $ref: '#/components/schemas/Cosa'
-        observaciones:
-          type: string
-        contrapropuesta:
-          $ref: '#/components/schemas/Contrapropuesta'
-        motivo_rechazo:
-          type: string
-        traslado:
-          $ref: '#/components/schemas/Traslado'
         cancelacion:
           $ref: '#/components/schemas/Cancelacion'
         creado_en:
@@ -604,27 +630,20 @@ components:
           type: string
           format: date-time
 
-    PaginaSolicitudes:
+    PaginaTraslados:
       type: object
       required: [resultados, pagina, tamanio, total]
       properties:
         resultados:
           type: array
           items:
-            $ref: '#/components/schemas/SolicitudTraslado'
+            $ref: '#/components/schemas/TrasladoReservado'
         pagina:
           type: integer
         tamanio:
           type: integer
         total:
           type: integer
-
-    RespuestaContrapropuesta:
-      type: object
-      required: [acepta]
-      properties:
-        acepta:
-          type: boolean
 
     PedidoCancelacion:
       type: object
@@ -656,8 +675,8 @@ components:
             - SIN_PERMISO
             - NO_ENCONTRADA
             - CLAVE_IDEMPOTENCIA_REUTILIZADA
+            - SIN_DISPONIBILIDAD
             - ESTADO_NO_PERMITE_OPERACION
-            - CONTRAPROPUESTA_VENCIDA
             - HORARIO_EN_EL_PASADO
             - ANTICIPACION_INSUFICIENTE
             - EXCEDE_CAPACIDAD
@@ -699,7 +718,7 @@ components:
             status: 401
             codigo: NO_AUTENTICADO
     SinPermiso:
-      description: La organización autenticada no está habilitada para solicitar traslados.
+      description: La organización autenticada no está habilitada para reservar traslados.
       content:
         application/problem+json:
           schema:
@@ -710,29 +729,44 @@ components:
             status: 403
             codigo: SIN_PERMISO
     NoEncontrada:
-      description: La solicitud no existe o pertenece a otra organización.
+      description: El traslado no existe o pertenece a otra organización.
       content:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problema'
           example:
             type: https://rumbo.example/errores/no-encontrada
-            title: Solicitud no encontrada
+            title: Traslado no encontrado
             status: 404
             codigo: NO_ENCONTRADA
-    ClaveIdempotenciaReutilizada:
-      description: La `Idempotency-Key` ya se usó con un cuerpo distinto. Usar una clave nueva para una intención nueva.
+    ConflictoReserva:
+      description: |
+        - `SIN_DISPONIBILIDAD`: la franja ya no tiene lugar para esta carga. Consultar
+          `GET /disponibilidad` y reservar otra franja con una clave nueva.
+        - `CLAVE_IDEMPOTENCIA_REUTILIZADA`: la `Idempotency-Key` ya se usó con un cuerpo distinto.
+          Usar una clave nueva para una intención nueva.
       content:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problema'
-          example:
-            type: https://rumbo.example/errores/clave-idempotencia-reutilizada
-            title: Clave de idempotencia reutilizada
-            status: 409
-            codigo: CLAVE_IDEMPOTENCIA_REUTILIZADA
-    EstadoNoPermite:
-      description: El estado actual no admite la operación (por ejemplo, responder una contrapropuesta vencida o cancelar un traslado en curso). No reintentar; consultar la solicitud.
+          examples:
+            sinDisponibilidad:
+              value:
+                type: https://rumbo.example/errores/sin-disponibilidad
+                title: Sin disponibilidad
+                status: 409
+                codigo: SIN_DISPONIBILIDAD
+                detail: La franja ya no tiene lugar para esta carga. Consultar la disponibilidad y elegir otra.
+            claveReutilizada:
+              value:
+                type: https://rumbo.example/errores/clave-idempotencia-reutilizada
+                title: Clave de idempotencia reutilizada
+                status: 409
+                codigo: CLAVE_IDEMPOTENCIA_REUTILIZADA
+    ConflictoCancelacion:
+      description: |
+        - `ESTADO_NO_PERMITE_OPERACION`: el traslado ya empezó o terminó. No reintentar; consultar el traslado.
+        - `CLAVE_IDEMPOTENCIA_REUTILIZADA`: la `Idempotency-Key` ya se usó con un cuerpo distinto.
       content:
         application/problem+json:
           schema:
@@ -745,9 +779,13 @@ components:
             detail: El traslado ya está EN_CURSO.
     ReglaDeNegocio:
       description: |
-        Los datos no cumplen el contrato (`DATOS_INVALIDOS`, con detalle por campo en `errores`) o no
-        cumplen una regla de negocio (`HORARIO_EN_EL_PASADO`, `ANTICIPACION_INSUFICIENTE`,
-        `EXCEDE_CAPACIDAD`). No reintentar sin cambiar el pedido.
+        Los datos no cumplen el contrato (`DATOS_INVALIDOS`, con detalle por campo en `errores`; por
+        ejemplo, una `franja_inicio` que no es el inicio de una franja o una fecha fuera del período
+        reservable) o no cumplen una regla de negocio:
+        - `ANTICIPACION_INSUFICIENTE`: la franja empieza en menos de 2 h.
+        - `HORARIO_EN_EL_PASADO`: la franja ya empezó.
+        - `EXCEDE_CAPACIDAD`: el peso supera el cupo total de una franja; dividir la carga.
+        No reintentar sin cambiar el pedido.
       content:
         application/problem+json:
           schema:
@@ -760,15 +798,22 @@ components:
                 status: 422
                 codigo: DATOS_INVALIDOS
                 errores:
-                  - campo: cosa.cantidad
-                    mensaje: es obligatorio y debe ser mayor que 0
+                  - campo: franja_inicio
+                    mensaje: no es el inicio de una franja reservable
+            anticipacionInsuficiente:
+              value:
+                type: https://rumbo.example/errores/anticipacion-insuficiente
+                title: Anticipación insuficiente
+                status: 422
+                codigo: ANTICIPACION_INSUFICIENTE
+                detail: La franja empieza demasiado pronto para reservarla. Elegir una franja posterior.
             excedeCapacidad:
               value:
                 type: https://rumbo.example/errores/excede-capacidad
-                title: Lo solicitado excede la capacidad de la flota
+                title: Excede la capacidad
                 status: 422
                 codigo: EXCEDE_CAPACIDAD
-                detail: Ningún vehículo de Rumbo admite 5000 kg.
+                detail: El peso supera el cupo total de una franja; dividir la carga en varios traslados.
     DemasiadosPedidos:
       description: Se superó el límite de pedidos de la organización. Reintentar después de `Retry-After` segundos.
       headers:
@@ -791,7 +836,7 @@ components:
         Retry-After:
           schema:
             type: integer
-          example: 10
+          example: 30
       content:
         application/problem+json:
           schema:
@@ -825,12 +870,17 @@ components:
             codigo: TIEMPO_AGOTADO
 
   examples:
-    SolicitudRecibida:
-      summary: Recién creada
+    TrasladoProgramado:
+      summary: Recién reservado
       value:
         id: sol-7f3a9c
         referencia_externa: TRF-2026-00123
-        estado: RECIBIDA
+        estado: PROGRAMADO
+        cosa:
+          descripcion: Cajas de mercadería seca
+          cantidad: 20
+          peso_kg: 350
+          volumen_m3: 2.5
         origen:
           nombre: Sucursal Centro
           direccion: Av. Colón 1234, Córdoba
@@ -839,135 +889,80 @@ components:
           nombre: Sucursal Cerro
           direccion: Av. Rafael Núñez 4500, Córdoba
           contacto: Recepción — 351 555-0202
-        hora_llegada_solicitada: '2026-10-16T14:00:00-03:00'
-        tolerancia_minutos: 120
-        cosa:
-          descripcion: Cajas de mercadería seca
-          cantidad: 20
-          peso_kg: 350
-          volumen_m3: 2.5
         observaciones: Entrar por el portón de carga.
-        creado_en: '2026-10-15T08:30:00-03:00'
-        actualizado_en: '2026-10-15T08:30:00-03:00'
-    SolicitudContrapropuesta:
-      summary: Rumbo propone otro horario
+        franja:
+          inicio: '2026-11-20T10:00:00-03:00'
+          fin: '2026-11-20T12:00:00-03:00'
+        creado_en: '2026-11-19T08:30:00-03:00'
+        actualizado_en: '2026-11-19T08:30:00-03:00'
+    TrasladoCompletado:
+      summary: Completado con demora
       value:
         id: sol-7f3a9c
         referencia_externa: TRF-2026-00123
-        estado: CONTRAPROPUESTA
+        estado: COMPLETADO
+        cosa:
+          descripcion: Cajas de mercadería seca
+          cantidad: 20
+          peso_kg: 350
         origen:
           nombre: Sucursal Centro
           direccion: Av. Colón 1234, Córdoba
         destino:
           nombre: Sucursal Cerro
           direccion: Av. Rafael Núñez 4500, Córdoba
-        hora_llegada_solicitada: '2026-10-16T14:00:00-03:00'
-        tolerancia_minutos: 0
-        cosa:
-          descripcion: Cajas de mercadería seca
-          cantidad: 20
-          peso_kg: 350
-        contrapropuesta:
-          hora_llegada_propuesta: '2026-10-16T17:00:00-03:00'
-          vence_en: '2026-10-16T09:10:00-03:00'
-        creado_en: '2026-10-15T08:30:00-03:00'
-        actualizado_en: '2026-10-15T09:10:00-03:00'
-    SolicitudAceptadaTrasContrapropuesta:
-      summary: El consumidor aceptó el horario propuesto
-      value:
-        id: sol-7f3a9c
-        referencia_externa: TRF-2026-00123
-        estado: ACEPTADA
-        origen:
-          nombre: Sucursal Centro
-          direccion: Av. Colón 1234, Córdoba
-        destino:
-          nombre: Sucursal Cerro
-          direccion: Av. Rafael Núñez 4500, Córdoba
-        hora_llegada_solicitada: '2026-10-16T14:00:00-03:00'
-        tolerancia_minutos: 0
-        cosa:
-          descripcion: Cajas de mercadería seca
-          cantidad: 20
-          peso_kg: 350
-        traslado:
-          id: tra-51c2e0
-          estado: PROGRAMADO
-          hora_llegada_comprometida: '2026-10-16T17:00:00-03:00'
-        creado_en: '2026-10-15T08:30:00-03:00'
-        actualizado_en: '2026-10-15T09:40:00-03:00'
-    SolicitudCompletada:
-      summary: Traslado completado con demora
-      value:
-        id: sol-7f3a9c
-        referencia_externa: TRF-2026-00123
-        estado: ACEPTADA
-        origen:
-          nombre: Sucursal Centro
-          direccion: Av. Colón 1234, Córdoba
-        destino:
-          nombre: Sucursal Cerro
-          direccion: Av. Rafael Núñez 4500, Córdoba
-        hora_llegada_solicitada: '2026-10-16T14:00:00-03:00'
-        tolerancia_minutos: 120
-        cosa:
-          descripcion: Cajas de mercadería seca
-          cantidad: 20
-          peso_kg: 350
-        traslado:
-          id: tra-51c2e0
-          estado: COMPLETADO
-          hora_llegada_comprometida: '2026-10-16T14:00:00-03:00'
-          demora_minutos: 15
-          finalizado_en: '2026-10-16T14:15:00-03:00'
-        creado_en: '2026-10-15T08:30:00-03:00'
-        actualizado_en: '2026-10-16T14:15:00-03:00'
-    SolicitudRechazada:
-      summary: Rumbo no puede atenderla
+        franja:
+          inicio: '2026-11-20T10:00:00-03:00'
+          fin: '2026-11-20T12:00:00-03:00'
+        demora_minutos: 15
+        finalizado_en: '2026-11-20T11:40:00-03:00'
+        creado_en: '2026-11-19T08:30:00-03:00'
+        actualizado_en: '2026-11-20T11:40:00-03:00'
+    TrasladoNoRealizado:
+      summary: No se pudo retirar la cosa
       value:
         id: sol-9b11d4
         referencia_externa: TRF-2026-00124
-        estado: RECHAZADA
+        estado: NO_REALIZADO
+        cosa:
+          descripcion: Heladeras exhibidoras
+          cantidad: 2
+          peso_kg: 600
         origen:
           nombre: Sucursal Centro
           direccion: Av. Colón 1234, Córdoba
         destino:
           nombre: Sucursal Villa Allende
           direccion: Av. Goycoechea 900, Villa Allende
-        hora_llegada_solicitada: '2026-10-17T08:00:00-03:00'
-        tolerancia_minutos: 0
-        cosa:
-          descripcion: Heladeras exhibidoras
-          cantidad: 2
-          peso_kg: 600
-        motivo_rechazo: No hay vehículos con capacidad disponible para esa fecha.
-        creado_en: '2026-10-15T11:00:00-03:00'
-        actualizado_en: '2026-10-15T12:20:00-03:00'
-    SolicitudCancelacionPendiente:
-      summary: Cancelación con menos de 24 h, a la espera del operador
+        franja:
+          inicio: '2026-11-21T08:00:00-03:00'
+          fin: '2026-11-21T10:00:00-03:00'
+        finalizado_en: '2026-11-21T08:25:00-03:00'
+        detalle_resultado: La sucursal de origen estaba cerrada.
+        creado_en: '2026-11-19T11:00:00-03:00'
+        actualizado_en: '2026-11-21T08:25:00-03:00'
+    TrasladoCancelado:
+      summary: Cancelado con menos de 24 h (tardía)
       value:
         id: sol-7f3a9c
         referencia_externa: TRF-2026-00123
-        estado: ACEPTADA
+        estado: CANCELADO
+        cosa:
+          descripcion: Cajas de mercadería seca
+          cantidad: 20
+          peso_kg: 350
         origen:
           nombre: Sucursal Centro
           direccion: Av. Colón 1234, Córdoba
         destino:
           nombre: Sucursal Cerro
           direccion: Av. Rafael Núñez 4500, Córdoba
-        hora_llegada_solicitada: '2026-10-16T14:00:00-03:00'
-        tolerancia_minutos: 120
-        cosa:
-          descripcion: Cajas de mercadería seca
-          cantidad: 20
-          peso_kg: 350
-        traslado:
-          id: tra-51c2e0
-          estado: ASIGNADO
-          hora_llegada_comprometida: '2026-10-16T14:00:00-03:00'
+        franja:
+          inicio: '2026-11-20T10:00:00-03:00'
+          fin: '2026-11-20T12:00:00-03:00'
         cancelacion:
-          estado: PENDIENTE_APROBACION
           motivo: La mercadería se despachó por otro medio.
-          solicitada_en: '2026-10-16T07:30:00-03:00'
-        creado_en: '2026-10-15T08:30:00-03:00'
-        actualizado_en: '2026-10-16T07:30:00-03:00'
+          tardia: true
+          cancelada_en: '2026-11-20T07:30:00-03:00'
+        creado_en: '2026-11-19T08:30:00-03:00'
+        actualizado_en: '2026-11-20T07:30:00-03:00'

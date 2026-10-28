@@ -18,6 +18,7 @@ import (
 	"github.com/getkin/kin-openapi/routers/legacy"
 	"github.com/gin-gonic/gin"
 
+	"github.com/francoroblesss/Rumbo/servicios/comun/problema"
 	"github.com/francoroblesss/Rumbo/servicios/integracion/clients"
 	"github.com/francoroblesss/Rumbo/servicios/integracion/models"
 	"github.com/francoroblesss/Rumbo/servicios/integracion/repositories"
@@ -37,15 +38,15 @@ var ahoraContrato = time.Date(2026, 10, 15, 11, 30, 0, 0, time.UTC)
 
 const cuerpoCompleto = `{
   "referencia_externa": "TRF-2026-00123",
+  "cosa": {"descripcion": "Cajas de mercadería seca", "cantidad": 20, "peso_kg": 350, "volumen_m3": 2.5},
   "origen": {"nombre": "Sucursal Centro", "direccion": "Av. Colón 1234, Córdoba", "contacto": "Depósito — 351 555-0101"},
   "destino": {"nombre": "Sucursal Cerro", "direccion": "Av. Rafael Núñez 4500, Córdoba"},
-  "hora_llegada_solicitada": "2026-10-16T14:00:00-03:00",
-  "tolerancia_minutos": 120,
-  "cosa": {"descripcion": "Cajas de mercadería seca", "cantidad": 20, "peso_kg": 350, "volumen_m3": 2.5},
+  "franja_inicio": "2026-10-16T10:00:00-03:00",
   "observaciones": "Entrar por el portón de carga."
 }`
 
-const cuerpoMinimoContrato = `{"cosa":{"descripcion":"Cajas","cantidad":3},"origen":{"nombre":"A","direccion":"x"},"destino":{"nombre":"B","direccion":"y"}}`
+const cuerpoMinimoContrato = `{"cosa":{"descripcion":"Cajas","cantidad":3},"origen":{"nombre":"A","direccion":"x"},` +
+	`"destino":{"nombre":"B","direccion":"y"},"franja_inicio":"2026-10-16T10:00:00-03:00"}`
 
 type entorno struct {
 	t       *testing.T
@@ -162,75 +163,145 @@ func (e *entorno) esperar(r respuesta, estado int, codigo string) {
 func (e *entorno) crear(clave string) string {
 	e.t.Helper()
 	r := e.ejecutar(pedido{metodo: http.MethodPost, ruta: "/traslados", cuerpo: cuerpoMinimoContrato, clave: clave, valido: true})
-	e.esperar(r, http.StatusAccepted, "")
+	e.esperar(r, http.StatusCreated, "")
 	var v struct{ ID string }
 	_ = json.Unmarshal(r.cuerpo, &v)
 	return v.ID
 }
 
+func hora(s string) time.Time {
+	v, _ := time.Parse(time.RFC3339, s)
+	return v
+}
+
 // vistaCompleta es una vista como la que manda Operaciones, con campos internos incluidos.
 func vistaCompleta(id string, version int64) models.VistaSolicitud {
-	t := func(s string) time.Time { v, _ := time.Parse(time.RFC3339, s); return v }
-	observado := t("2026-10-15T12:00:00Z")
+	observado := hora("2026-10-15T12:00:00Z")
 	demora := 15
 	motivo := "La mercadería se despachó por otro medio."
 	return models.VistaSolicitud{
-		ID: id, Estado: models.EstadoAceptada, Version: version,
-		Cosa:              models.Cosa{Descripcion: "Cajas", Cantidad: 3},
-		Origen:            models.Ubicacion{Nombre: "A", Direccion: "x"},
-		Destino:           models.Ubicacion{Nombre: "B", Direccion: "y"},
-		ToleranciaMinutos: 0,
-		Contrapropuesta:   &models.Contrapropuesta{HoraLlegadaPropuesta: t("2026-10-16T20:00:00Z"), VenceEn: t("2026-10-16T12:10:00Z")},
-		Traslado: &models.Traslado{ID: "tra-1", Estado: "ASIGNADO", HoraLlegadaComprometida: t("2026-10-16T20:00:00Z"), DemoraMinutos: &demora,
+		ID: id, Estado: "ACEPTADA", Version: version,
+		Cosa:    models.Cosa{Descripcion: "Cajas", Cantidad: 3},
+		Origen:  models.Ubicacion{Nombre: "A", Direccion: "x"},
+		Destino: models.Ubicacion{Nombre: "B", Direccion: "y"},
+		Traslado: &models.Traslado{ID: "tra-1", Estado: models.EstadoCancelado, HoraLlegadaComprometida: hora("2026-10-16T15:00:00Z"),
+			Franja:          &models.Franja{Inicio: hora("2026-10-16T13:00:00Z"), Fin: hora("2026-10-16T15:00:00Z")},
+			DemoraMinutos:   &demora,
 			AlertaClimatica: &models.AlertaClimatica{Estado: "NO_OPERABLE", Motivos: []string{"HIGH_WIND"}, ObservadoEn: &observado}},
-		Cancelacion: &models.Cancelacion{Estado: "PENDIENTE_APROBACION", Motivo: &motivo, SolicitadaEn: t("2026-10-16T10:30:00Z")},
+		Cancelacion: &models.Cancelacion{Estado: "APROBADA", Motivo: &motivo, SolicitadaEn: hora("2026-10-16T10:30:00Z"), Tardia: true},
 		CreadoEn:    ahoraContrato, ActualizadoEn: ahoraContrato.Add(time.Hour),
 	}
 }
 
-func TestContratoSolicitarTraslado(t *testing.T) {
+func TestContratoDisponibilidad(t *testing.T) {
+	e := nuevoEntorno(t)
+	e.cliente.Disponible = models.Disponibilidad{Fecha: "2026-10-16", Franjas: []models.FranjaDisponible{
+		{Inicio: hora("2026-10-16T11:00:00Z"), Fin: hora("2026-10-16T13:00:00Z"), Disponible: true, TrasladosDisponibles: 4, KgDisponibles: 2000},
+		{Inicio: hora("2026-10-16T13:00:00Z"), Fin: hora("2026-10-16T15:00:00Z"), Disponible: false, TrasladosDisponibles: 0, KgDisponibles: 600},
+	}}
+	r := e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/disponibilidad?fecha=2026-10-16&peso_kg=350", valido: true})
+	e.esperar(r, http.StatusOK, "")
+	if !strings.Contains(string(r.cuerpo), `"inicio":"2026-10-16T08:00:00-03:00"`) {
+		t.Fatalf("las franjas se responden en hora de Argentina: %s", r.cuerpo)
+	}
+
+	e.cliente.Disponible = models.Disponibilidad{Fecha: "2026-10-16"}
+	r = e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/disponibilidad?fecha=2026-10-16", valido: true})
+	e.esperar(r, http.StatusOK, "")
+	if !strings.Contains(string(r.cuerpo), `"franjas":[]`) {
+		t.Fatalf("sin franjas: lista vacía, no null: %s", r.cuerpo)
+	}
+
+	for _, consulta := range []string{"", "?fecha=16/10/2026", "?fecha=2026-10-16&peso_kg=0", "?fecha=2026-10-16&peso_kg=mucho"} {
+		t.Run("consulta "+consulta, func(t *testing.T) {
+			e.t = t
+			e.esperar(e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/disponibilidad" + consulta}), http.StatusBadRequest, "JSON_MAL_FORMADO")
+		})
+	}
+	t.Run("fecha fuera del período", func(t *testing.T) {
+		e.t = t
+		e.cliente.Error = clients.ErrRechazo{Estado: 422, Codigo: "DATOS_INVALIDOS", Titulo: "Datos inválidos"}
+		defer func() { e.cliente.Error = nil }()
+		e.esperar(e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/disponibilidad?fecha=2030-01-01", valido: true}),
+			http.StatusUnprocessableEntity, "DATOS_INVALIDOS")
+	})
+	t.Run("Operaciones caída", func(t *testing.T) {
+		e.t = t
+		e.cliente.Error = clients.ErrNoDisponible
+		defer func() { e.cliente.Error = nil }()
+		r := e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/disponibilidad?fecha=2026-10-16", valido: true})
+		e.esperar(r, http.StatusServiceUnavailable, "SERVICIO_NO_DISPONIBLE")
+		if r.header.Get("Retry-After") != "30" {
+			t.Fatalf("Retry-After = %q", r.header.Get("Retry-After"))
+		}
+	})
+	t.Run("sin organización", func(t *testing.T) {
+		e.t = t
+		e.esperar(e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/disponibilidad?fecha=2026-10-16", sinOrganizacion: true}),
+			http.StatusForbidden, "SIN_PERMISO")
+	})
+}
+
+func TestContratoReservarTraslado(t *testing.T) {
 	e := nuevoEntorno(t)
 	r := e.ejecutar(pedido{metodo: http.MethodPost, ruta: "/traslados", cuerpo: cuerpoCompleto, clave: "clave-completa-1", valido: true})
-	e.esperar(r, http.StatusAccepted, "")
+	e.esperar(r, http.StatusCreated, "")
 	var creada map[string]any
 	_ = json.Unmarshal(r.cuerpo, &creada)
-	if creada["estado"] != "RECIBIDA" || r.header.Get("Location") != "/traslados/"+creada["id"].(string) {
-		t.Fatalf("respuesta 202 incorrecta: %s (Location %s)", r.cuerpo, r.header.Get("Location"))
+	if creada["estado"] != "PROGRAMADO" || r.header.Get("Location") != "/traslados/"+creada["id"].(string) {
+		t.Fatalf("respuesta 201 incorrecta: %s (Location %s)", r.cuerpo, r.header.Get("Location"))
 	}
-	if creada["hora_llegada_solicitada"] != "2026-10-16T14:00:00-03:00" || !strings.HasSuffix(creada["creado_en"].(string), "-03:00") {
+	franja, _ := creada["franja"].(map[string]any)
+	if franja["inicio"] != "2026-10-16T10:00:00-03:00" || franja["fin"] != "2026-10-16T12:00:00-03:00" ||
+		!strings.HasSuffix(creada["creado_en"].(string), "-03:00") {
 		t.Fatalf("las horas se responden con zona -03:00: %s", r.cuerpo)
 	}
 	if _, ok := creada["version"]; ok {
 		t.Fatal("version es interno: no se responde")
 	}
 
-	// Reintento idempotente: 202 y la misma solicitud.
+	// Reintento idempotente: 201 y la misma reserva.
 	r = e.ejecutar(pedido{metodo: http.MethodPost, ruta: "/traslados", cuerpo: cuerpoCompleto, clave: "clave-completa-1", valido: true})
-	e.esperar(r, http.StatusAccepted, "")
+	e.esperar(r, http.StatusCreated, "")
 	var repetida map[string]any
 	_ = json.Unmarshal(r.cuerpo, &repetida)
 	if repetida["id"] != creada["id"] {
-		t.Fatalf("el reintento tiene que devolver la misma solicitud: %v vs %v", repetida["id"], creada["id"])
+		t.Fatalf("el reintento tiene que devolver la misma reserva: %v vs %v", repetida["id"], creada["id"])
 	}
 
+	franjaInvalida := clients.ErrRechazo{Estado: 422, Codigo: "DATOS_INVALIDOS", Titulo: "Datos inválidos",
+		Errores: []problema.ErrorCampo{{Campo: "franja_inicio", Mensaje: "no es el inicio de una franja reservable"}}}
 	casos := []struct {
-		nombre string
-		p      pedido
-		estado int
-		codigo string
+		nombre     string
+		p          pedido
+		errCliente error
+		estado     int
+		codigo     string
 	}{
-		{"mínimo", pedido{cuerpo: cuerpoMinimoContrato, clave: "clave-minima-1", valido: true}, http.StatusAccepted, ""},
-		{"misma clave, otro cuerpo", pedido{cuerpo: cuerpoMinimoContrato, clave: "clave-completa-1"}, http.StatusConflict, "CLAVE_IDEMPOTENCIA_REUTILIZADA"},
-		{"datos inválidos", pedido{cuerpo: `{"cosa":{"descripcion":"","cantidad":0},"origen":{"nombre":"A","direccion":"x"},"destino":{"nombre":"B","direccion":"y"}}`, clave: "clave-invalida"}, http.StatusUnprocessableEntity, "DATOS_INVALIDOS"},
-		{"JSON mal formado", pedido{cuerpo: `{"cosa":`, clave: "clave-mal-formado"}, http.StatusBadRequest, "JSON_MAL_FORMADO"},
-		{"sin Idempotency-Key", pedido{cuerpo: cuerpoMinimoContrato}, http.StatusUnprocessableEntity, "DATOS_INVALIDOS"},
-		{"Idempotency-Key corta", pedido{cuerpo: cuerpoMinimoContrato, clave: "corta"}, http.StatusUnprocessableEntity, "DATOS_INVALIDOS"},
-		{"horario en el pasado", pedido{cuerpo: strings.Replace(cuerpoMinimoContrato, `{"cosa"`, `{"hora_llegada_solicitada":"2026-10-14T10:00:00-03:00","cosa"`, 1), clave: "clave-pasado-1"}, http.StatusUnprocessableEntity, "HORARIO_EN_EL_PASADO"},
-		{"sin organización", pedido{cuerpo: cuerpoMinimoContrato, clave: "clave-sin-org-1", sinOrganizacion: true}, http.StatusForbidden, "SIN_PERMISO"},
+		{"mínimo", pedido{cuerpo: cuerpoMinimoContrato, clave: "clave-minima-1", valido: true}, nil, http.StatusCreated, ""},
+		{"misma clave, otro cuerpo", pedido{cuerpo: cuerpoMinimoContrato, clave: "clave-completa-1"}, nil, http.StatusConflict, "CLAVE_IDEMPOTENCIA_REUTILIZADA"},
+		{"sin disponibilidad", pedido{cuerpo: cuerpoMinimoContrato, clave: "clave-llena-1", valido: true},
+			clients.ErrRechazo{Estado: 409, Codigo: "SIN_DISPONIBILIDAD", Titulo: "Sin disponibilidad", Detalle: "La franja ya no tiene lugar."},
+			http.StatusConflict, "SIN_DISPONIBILIDAD"},
+		{"anticipación insuficiente", pedido{cuerpo: cuerpoMinimoContrato, clave: "clave-pronto-1", valido: true},
+			clients.ErrRechazo{Estado: 422, Codigo: "ANTICIPACION_INSUFICIENTE", Titulo: "Anticipación insuficiente"},
+			http.StatusUnprocessableEntity, "ANTICIPACION_INSUFICIENTE"},
+		{"franja inexistente", pedido{cuerpo: cuerpoMinimoContrato, clave: "clave-franja-1", valido: true}, franjaInvalida,
+			http.StatusUnprocessableEntity, "DATOS_INVALIDOS"},
+		{"Operaciones caída", pedido{cuerpo: cuerpoMinimoContrato, clave: "clave-caida-1", valido: true}, clients.ErrNoDisponible,
+			http.StatusServiceUnavailable, "SERVICIO_NO_DISPONIBLE"},
+		{"datos inválidos", pedido{cuerpo: `{"cosa":{"descripcion":"","cantidad":0},"origen":{"nombre":"A","direccion":"x"},"destino":{"nombre":"B","direccion":"y"}}`,
+			clave: "clave-invalida"}, nil, http.StatusUnprocessableEntity, "DATOS_INVALIDOS"},
+		{"JSON mal formado", pedido{cuerpo: `{"cosa":`, clave: "clave-mal-formado"}, nil, http.StatusBadRequest, "JSON_MAL_FORMADO"},
+		{"sin Idempotency-Key", pedido{cuerpo: cuerpoMinimoContrato}, nil, http.StatusUnprocessableEntity, "DATOS_INVALIDOS"},
+		{"Idempotency-Key corta", pedido{cuerpo: cuerpoMinimoContrato, clave: "corta"}, nil, http.StatusUnprocessableEntity, "DATOS_INVALIDOS"},
+		{"sin organización", pedido{cuerpo: cuerpoMinimoContrato, clave: "clave-sin-org-1", sinOrganizacion: true}, nil, http.StatusForbidden, "SIN_PERMISO"},
 	}
 	for _, c := range casos {
 		t.Run(c.nombre, func(t *testing.T) {
 			e.t = t
+			e.cliente.Error = c.errCliente
+			defer func() { e.cliente.Error = nil }()
 			c.p.metodo, c.p.ruta = http.MethodPost, "/traslados"
 			e.esperar(e.ejecutar(c.p), c.estado, c.codigo)
 		})
@@ -251,7 +322,7 @@ func TestContratoSolicitarTraslado(t *testing.T) {
 		Errores []struct{ Campo string } `json:"errores"`
 	}
 	_ = json.Unmarshal(r.cuerpo, &p)
-	if len(p.Errores) < 6 {
+	if len(p.Errores) < 7 {
 		t.Fatalf("se esperaba el detalle de cada campo obligatorio: %s", r.cuerpo)
 	}
 }
@@ -261,7 +332,7 @@ func TestContratoListarTraslados(t *testing.T) {
 	e.crear("clave-lista-1")
 	e.crear("clave-lista-2")
 
-	r := e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/traslados?tamanio=1&pagina=2&estado=RECIBIDA&actualizado_desde=2026-10-15T00:00:00-03:00", valido: true})
+	r := e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/traslados?tamanio=1&pagina=2&estado=PROGRAMADO&actualizado_desde=2026-10-15T00:00:00-03:00", valido: true})
 	e.esperar(r, http.StatusOK, "")
 	var pagina struct {
 		Resultados []map[string]any
@@ -282,13 +353,13 @@ func TestContratoListarTraslados(t *testing.T) {
 	}
 
 	// Sin resultados: lista vacía, no null.
-	r = e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/traslados?estado=CANCELADA", valido: true})
+	r = e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/traslados?estado=CANCELADO", valido: true})
 	e.esperar(r, http.StatusOK, "")
 	if !strings.Contains(string(r.cuerpo), `"resultados":[]`) {
 		t.Fatalf("se esperaba una lista vacía: %s", r.cuerpo)
 	}
 
-	for _, consulta := range []string{"tamanio=0", "tamanio=101", "pagina=0", "pagina=uno", "estado=PERDIDA", "actualizado_desde=ayer"} {
+	for _, consulta := range []string{"tamanio=0", "tamanio=101", "pagina=0", "pagina=uno", "estado=RECIBIDA", "actualizado_desde=ayer"} {
 		t.Run(consulta, func(t *testing.T) {
 			e.t = t
 			e.esperar(e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/traslados?" + consulta}), http.StatusBadRequest, "JSON_MAL_FORMADO")
@@ -314,11 +385,11 @@ func TestContratoObtenerTraslado(t *testing.T) {
 	r := e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/traslados/" + id, valido: true})
 	e.esperar(r, http.StatusOK, "")
 	cuerpo := string(r.cuerpo)
-	if strings.Contains(cuerpo, "alerta_climatica") || strings.Contains(cuerpo, `"version"`) {
+	if strings.Contains(cuerpo, "alerta_climatica") || strings.Contains(cuerpo, `"version"`) || strings.Contains(cuerpo, "ACEPTADA") {
 		t.Fatalf("los campos internos no se responden: %s", cuerpo)
 	}
-	if !strings.Contains(cuerpo, `"hora_llegada_comprometida":"2026-10-16T17:00:00-03:00"`) {
-		t.Fatalf("hora del traslado sin zona -03:00: %s", cuerpo)
+	if !strings.Contains(cuerpo, `"fin":"2026-10-16T12:00:00-03:00"`) || !strings.Contains(cuerpo, `"tardia":true`) {
+		t.Fatalf("franja sin zona -03:00 o cancelación incompleta: %s", cuerpo)
 	}
 
 	e.esperar(e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/traslados/sol-no-existe", valido: true}), http.StatusNotFound, "NO_ENCONTRADA")
@@ -328,47 +399,6 @@ func TestContratoObtenerTraslado(t *testing.T) {
 		defer func() { e.repo.Error = nil }()
 		e.esperar(e.ejecutar(pedido{metodo: http.MethodGet, ruta: "/traslados/" + id, valido: true}), http.StatusServiceUnavailable, "SERVICIO_NO_DISPONIBLE")
 	})
-}
-
-func TestContratoResponderContrapropuesta(t *testing.T) {
-	e := nuevoEntorno(t)
-	id := e.crear("clave-contra-1")
-	ruta := "/traslados/" + id + "/respuesta-contrapropuesta"
-
-	casos := []struct {
-		nombre     string
-		cuerpo     string
-		clave      string
-		errCliente error
-		valido     bool
-		estado     int
-		codigo     string
-		retryAfter string
-	}{
-		{"Operaciones todavía no la recibió", `{"acepta":true}`, "clave-resp-0001", clients.ErrNoEncontrada, true, http.StatusServiceUnavailable, "SERVICIO_NO_DISPONIBLE", "5"},
-		{"Operaciones caída", `{"acepta":true}`, "clave-resp-0002", clients.ErrNoDisponible, true, http.StatusServiceUnavailable, "SERVICIO_NO_DISPONIBLE", "30"},
-		{"contrapropuesta vencida", `{"acepta":true}`, "clave-resp-0003", clients.ErrConflicto{Codigo: "CONTRAPROPUESTA_VENCIDA"}, true, http.StatusConflict, "CONTRAPROPUESTA_VENCIDA", ""},
-		{"Operaciones rechaza los datos", `{"acepta":true}`, "clave-resp-0004", clients.ErrDatosInvalidos, true, http.StatusUnprocessableEntity, "DATOS_INVALIDOS", ""},
-		{"sin acepta", `{}`, "clave-resp-0005", nil, false, http.StatusUnprocessableEntity, "DATOS_INVALIDOS", ""},
-		{"JSON mal formado", `{"acepta":`, "clave-resp-0006", nil, false, http.StatusBadRequest, "JSON_MAL_FORMADO", ""},
-		{"sin Idempotency-Key", `{"acepta":true}`, "", nil, false, http.StatusUnprocessableEntity, "DATOS_INVALIDOS", ""},
-		{"aceptada", `{"acepta":true}`, "clave-resp-0007", nil, true, http.StatusOK, "", ""},
-	}
-	for _, c := range casos {
-		t.Run(c.nombre, func(t *testing.T) {
-			e.t = t
-			e.cliente.Error, e.cliente.Vista = c.errCliente, vistaCompleta(id, 5)
-			r := e.ejecutar(pedido{metodo: http.MethodPost, ruta: ruta, cuerpo: c.cuerpo, clave: c.clave, valido: c.valido})
-			e.esperar(r, c.estado, c.codigo)
-			if got := r.header.Get("Retry-After"); got != c.retryAfter {
-				t.Fatalf("Retry-After: se esperaba %q, se obtuvo %q", c.retryAfter, got)
-			}
-		})
-	}
-	e.t = t
-	e.cliente.Error = nil
-	e.esperar(e.ejecutar(pedido{metodo: http.MethodPost, ruta: "/traslados/sol-no-existe/respuesta-contrapropuesta", cuerpo: `{"acepta":false}`, clave: "clave-resp-0008", valido: true}),
-		http.StatusNotFound, "NO_ENCONTRADA")
 }
 
 func TestContratoCancelarTraslado(t *testing.T) {
@@ -385,12 +415,13 @@ func TestContratoCancelarTraslado(t *testing.T) {
 		estado     int
 		codigo     string
 	}{
-		{"traslado en curso", motivo, clients.ErrConflicto{Codigo: "ESTADO_NO_PERMITE_OPERACION"}, true, http.StatusConflict, "ESTADO_NO_PERMITE_OPERACION"},
+		{"traslado en curso", motivo, clients.ErrRechazo{Estado: 409, Codigo: "ESTADO_NO_PERMITE_OPERACION", Titulo: "El estado actual no permite la operación"},
+			true, http.StatusConflict, "ESTADO_NO_PERMITE_OPERACION"},
 		{"Operaciones caída", motivo, clients.ErrNoDisponible, true, http.StatusServiceUnavailable, "SERVICIO_NO_DISPONIBLE"},
 		{"motivo vacío", `{"motivo":"  "}`, nil, false, http.StatusUnprocessableEntity, "DATOS_INVALIDOS"},
 		{"motivo largo", `{"motivo":"` + strings.Repeat("m", 501) + `"}`, nil, false, http.StatusUnprocessableEntity, "DATOS_INVALIDOS"},
 		{"JSON mal formado", `motivo`, nil, false, http.StatusBadRequest, "JSON_MAL_FORMADO"},
-		{"cancelación registrada", motivo, nil, true, http.StatusOK, ""},
+		{"cancelado", motivo, nil, true, http.StatusOK, ""},
 	}
 	for i, c := range casos {
 		t.Run(c.nombre, func(t *testing.T) {
@@ -401,6 +432,7 @@ func TestContratoCancelarTraslado(t *testing.T) {
 		})
 	}
 	e.t = t
+	e.cliente.Error = nil
 	e.esperar(e.ejecutar(pedido{metodo: http.MethodPost, ruta: "/traslados/sol-no-existe/cancelacion", cuerpo: motivo, clave: "clave-canc-0100", valido: true}),
 		http.StatusNotFound, "NO_ENCONTRADA")
 }

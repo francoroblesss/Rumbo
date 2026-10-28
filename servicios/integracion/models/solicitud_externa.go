@@ -2,21 +2,17 @@ package models
 
 import "time"
 
-// SolicitudExterna es el documento de la colección solicitudes_externas. Guarda en un solo
-// documento la solicitud, su clave de idempotencia, la copia del estado que informa Operaciones
-// y la marca de pendiente de envío: MongoDB es atómico por documento, así que la intención de
-// avisar a Operaciones nunca se pierde aunque el broker esté caído (equivale al outbox, ADR-003).
+// SolicitudExterna es el documento de la colección solicitudes_externas: la copia local de una
+// reserva que ya confirmó Operaciones, con su clave de idempotencia y la última vista recibida.
+// Es un read model (teórico 5): se crea con la respuesta de Operaciones y se actualiza con sus
+// eventos. Atiende las consultas del consumidor sin llamar a Operaciones.
 type SolicitudExterna struct {
-	ID             string            `bson:"_id" json:"id"` // "sol-<uuid>"
+	ID             string            `bson:"_id" json:"id"` // "sol-<uuid>", el que generó Operaciones
 	OrganizacionID string            `bson:"organizacion_id" json:"organizacion_id"`
 	Pedido         PedidoTraslado    `bson:"pedido" json:"pedido"`             // lo que mandó el consumidor
 	Idempotencia   ClaveIdempotencia `bson:"idempotencia" json:"idempotencia"` // clave + hash del cuerpo + respuesta original
-	Vista          VistaSolicitud    `bson:"vista" json:"vista"`               // estado tal como lo informa el contrato
-	Version        int64             `bson:"version" json:"version"`           // 0 al crear; luego la agregado_version del último evento aplicado
-	PendienteEnvio bool              `bson:"pendiente_envio" json:"pendiente_envio"`
-	ReclamadoHasta *time.Time        `bson:"reclamado_hasta,omitempty" json:"reclamado_hasta,omitempty"`
-	ReclamadoPor   string            `bson:"reclamado_por,omitempty" json:"reclamado_por,omitempty"`
-	ContextoTraza  map[string]string `bson:"contexto_traza,omitempty" json:"contexto_traza,omitempty"` // propagation.MapCarrier (traceparent)
+	Vista          VistaSolicitud    `bson:"vista" json:"vista"`               // estado tal como lo informa Operaciones
+	Version        int64             `bson:"version" json:"version"`           // agregado_version de la última vista aplicada
 	CreadoEn       time.Time         `bson:"creado_en" json:"creado_en"`
 	ActualizadoEn  time.Time         `bson:"actualizado_en" json:"actualizado_en"`
 }

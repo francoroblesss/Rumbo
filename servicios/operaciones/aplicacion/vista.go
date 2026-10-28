@@ -18,6 +18,9 @@ func cargarZona() *time.Location {
 	return time.FixedZone("-03", -3*60*60)
 }
 
+// ZonaRumbo es la zona horaria en la que opera Rumbo (main la usa para armar el calendario).
+func ZonaRumbo() *time.Location { return zonaRumbo }
+
 func hora(t time.Time) string { return t.In(zonaRumbo).Format(time.RFC3339) }
 
 func horaOpcional(t *time.Time) *string {
@@ -62,6 +65,9 @@ func NuevaVista(s *dominio.Solicitud) puertos.Vista {
 			FinalizadoEn:            horaOpcional(t.FinalizadoEn),
 			DetalleResultado:        t.DetalleResultado,
 		}
+		if t.FranjaInicio != nil {
+			v.Traslado.Franja = &puertos.VistaFranja{Inicio: hora(*t.FranjaInicio), Fin: hora(t.HoraLlegadaComprometida)}
+		}
 		if a := t.Alerta; a != nil {
 			motivos := a.Motivos
 			if motivos == nil {
@@ -71,7 +77,7 @@ func NuevaVista(s *dominio.Solicitud) puertos.Vista {
 		}
 	}
 	if c := s.Cancelacion; c != nil {
-		v.Cancelacion = &puertos.VistaCancelacion{Estado: string(c.Estado), Motivo: c.Motivo, SolicitadaEn: hora(c.SolicitadaEn)}
+		v.Cancelacion = &puertos.VistaCancelacion{Estado: string(c.Estado), Motivo: c.Motivo, SolicitadaEn: hora(c.SolicitadaEn), Tardia: c.Tardia}
 	}
 	return v
 }

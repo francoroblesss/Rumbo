@@ -7,12 +7,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/francoroblesss/Rumbo/servicios/comun/mensajeria"
 	"github.com/francoroblesss/Rumbo/servicios/operaciones/dominio"
 	"github.com/francoroblesss/Rumbo/servicios/operaciones/puertos"
 )
 
+// ahora = 15/10/2026 09:00 en Córdoba.
 var ahora = time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+
+// calendario de prueba: franjas de 2 h entre las 8 y las 20, con lugar para 2 traslados y 1000 kg.
+var calendario = dominio.Calendario{AperturaHora: 8, CierreHora: 20, DuracionHoras: 2, CupoTraslados: 2, CupoKg: 1000,
+	Anticipacion: 2 * time.Hour, Horizonte: 30 * 24 * time.Hour, Zona: zonaRumbo}
 
 type escenario struct {
 	uow   *uowMemoria
@@ -23,25 +27,34 @@ type escenario struct {
 
 func nuevoEscenario() *escenario {
 	e := &escenario{uow: nuevaUoW(), clima: &climaFalso{operabilidad: dominio.Operabilidad{Operable: true, ObservadoEn: ahora}}, reloj: ahora}
-	e.casos = NuevasSolicitudes(e.uow, e.clima, "SACO", func() time.Time { return e.reloj }, "test")
+	e.casos = NuevasSolicitudes(e.uow, e.clima, "SACO", calendario, func() time.Time { return e.reloj }, "test")
 	return e
 }
 
-func comando(mensajeID, id string, hora *time.Time) puertos.ComandoSolicitudExterna {
-	return puertos.ComandoSolicitudExterna{
-		MensajeID: mensajeID, SolicitudID: id, OrganizacionID: "org-1",
-		Datos: dominio.DatosSolicitud{
-			Cosa:                  dominio.Cosa{Descripcion: "Cajas", Cantidad: 20},
-			Desde:                 dominio.Ubicacion{Nombre: "Sucursal Centro", Direccion: "Av. Colón 1234"},
-			Hasta:                 dominio.Ubicacion{Nombre: "Aeropuerto", Direccion: "Av. La Voz del Interior 8500"},
-			HoraLlegadaSolicitada: hora,
-		},
+func datos(hora *time.Time) dominio.DatosSolicitud {
+	return dominio.DatosSolicitud{
+		Cosa:                  dominio.Cosa{Descripcion: "Cajas", Cantidad: 20},
+		Desde:                 dominio.Ubicacion{Nombre: "Sucursal Centro", Direccion: "Av. Colón 1234"},
+		Hasta:                 dominio.Ubicacion{Nombre: "Aeropuerto", Direccion: "Av. La Voz del Interior 8500"},
+		HoraLlegadaSolicitada: hora,
 	}
 }
 
+// registrar deja una solicitud RECIBIDA de un cliente de la web, con su evento en el outbox. El
+// alta desde la web todavía no tiene caso de uso, así que se carga directo con el dominio.
 func (e *escenario) registrar(t *testing.T, id string, hora *time.Time) {
 	t.Helper()
-	if err := e.casos.RegistrarExterna(context.Background(), comando("msg-"+id, id, hora)); err != nil {
+	err := e.uow.Ejecutar(context.Background(), func(ctx context.Context, tx puertos.Transaccion) error {
+		s, ev, err := dominio.NuevaSolicitud(id, "org-1", dominio.OrigenInterno, datos(hora), e.reloj)
+		if err != nil {
+			return err
+		}
+		if err := tx.Insertar(ctx, s); err != nil {
+			return err
+		}
+		return agregarEvento(ctx, tx, s, ev)
+	})
+	if err != nil {
 		t.Fatalf("registrar: %v", err)
 	}
 }
@@ -71,7 +84,7 @@ func verificarEvento(t *testing.T, m mensajeOutbox, tipo dominio.Evento, version
 	if err := json.Unmarshal(m.Sobre.Datos, &d); err != nil {
 		t.Fatal(err)
 	}
-	if d.OrganizacionID != "org-1" || d.Origen != "externo" || d.Solicitud.Estado != estado || d.Solicitud.Version != version {
+	if d.OrganizacionID != "org-1" || d.Origen == "" || d.Solicitud.Estado != estado || d.Solicitud.Version != version {
 		t.Fatalf("%s: datos inesperados: %+v", tipo, d)
 	}
 	if d.Solicitud.ID != m.Sobre.AgregadoID {
@@ -80,45 +93,136 @@ func verificarEvento(t *testing.T, m mensajeOutbox, tipo dominio.Evento, version
 	return d
 }
 
-func TestRegistrarExterna(t *testing.T) {
-	e := nuevoEscenario()
-	e.registrar(t, "sol-1", nil)
+// franja16 es la franja del 16/10 de 10 a 12 (hora de Córdoba).
+var franja16 = time.Date(2026, 10, 16, 13, 0, 0, 0, time.UTC)
 
+func clave(c, hash string) *puertos.Idempotencia {
+	return &puertos.Idempotencia{Endpoint: "reserva", Clave: c, Hash: hash}
+}
+
+func conPeso(kg float64) dominio.DatosSolicitud {
+	d := datos(nil)
+	d.Cosa.PesoKg = &kg
+	return d
+}
+
+func (e *escenario) disponibles(t *testing.T) puertos.FranjaDisponible {
+	t.Helper()
+	d, err := e.casos.Disponibilidad(context.Background(), "2026-10-16", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range d.Franjas {
+		if f.Inicio == "2026-10-16T10:00:00-03:00" {
+			return f
+		}
+	}
+	t.Fatalf("no está la franja de las 10: %+v", d.Franjas)
+	return puertos.FranjaDisponible{}
+}
+
+func TestReservar(t *testing.T) {
+	ctx := context.Background()
+	e := nuevoEscenario()
+
+	v, err := e.casos.Reservar(ctx, "org-1", conPeso(400), franja16, clave("clave-0001", "h1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Estado != "ACEPTADA" || v.Traslado == nil || v.Traslado.Estado != "PROGRAMADO" || v.Traslado.Franja == nil ||
+		v.Traslado.Franja.Inicio != "2026-10-16T10:00:00-03:00" || v.Traslado.Franja.Fin != "2026-10-16T12:00:00-03:00" ||
+		v.Traslado.HoraLlegadaComprometida != v.Traslado.Franja.Fin {
+		t.Fatalf("vista inesperada: %+v %+v", v, v.Traslado)
+	}
 	outbox := e.uow.outbox()
 	if len(outbox) != 1 {
 		t.Fatalf("outbox = %d mensajes, se esperaba 1", len(outbox))
 	}
-	d := verificarEvento(t, outbox[0], dominio.EventoRecibida, 1, "RECIBIDA")
-	if d.Solicitud.CreadoEn != "2026-10-15T09:00:00-03:00" {
-		t.Fatalf("las horas tienen que ir con -03:00: %s", d.Solicitud.CreadoEn)
+	if d := verificarEvento(t, outbox[0], dominio.EventoAceptada, 1, "ACEPTADA"); d.Origen != "externo" {
+		t.Fatalf("origen = %s", d.Origen)
+	}
+	if f := e.disponibles(t); f.TrasladosDisponibles != 1 || f.KgDisponibles != 600 || !f.Disponible {
+		t.Fatalf("disponibilidad después de reservar: %+v", f)
 	}
 
-	t.Run("el mismo comando repetido no duplica", func(t *testing.T) {
-		e.registrar(t, "sol-1", nil)
-		// Otro mensaje con el mismo id de solicitud (Integración lo republicó) tampoco.
-		if err := e.casos.RegistrarExterna(context.Background(), comando("otro-msg", "sol-1", nil)); err != nil {
+	t.Run("misma clave y mismo cuerpo: la misma reserva sin tomar otro lugar", func(t *testing.T) {
+		otra, err := e.casos.Reservar(ctx, "org-1", conPeso(400), franja16, clave("clave-0001", "h1"))
+		if err != nil || otra.ID != v.ID {
+			t.Fatalf("id = %s (original %s), err = %v", otra.ID, v.ID, err)
+		}
+		if f := e.disponibles(t); f.TrasladosDisponibles != 1 || len(e.uow.outbox()) != 1 {
+			t.Fatalf("el reintento tomó otro lugar: %+v", f)
+		}
+	})
+	t.Run("misma clave con otro cuerpo: 409", func(t *testing.T) {
+		_, err := e.casos.Reservar(ctx, "org-1", conPeso(10), franja16, clave("clave-0001", "h2"))
+		if !errors.Is(err, puertos.ErrClaveReutilizada) {
+			t.Fatalf("error = %v", err)
+		}
+	})
+	t.Run("la carga no entra en lo que queda: sin disponibilidad y nada guardado", func(t *testing.T) {
+		_, err := e.casos.Reservar(ctx, "org-1", conPeso(700), franja16, clave("clave-0002", "h3"))
+		if !errors.Is(err, dominio.ErrSinDisponibilidad) {
+			t.Fatalf("error = %v", err)
+		}
+		if p, _ := e.casos.Listar(ctx, "", 1, 20); p.Total != 1 || len(e.uow.outbox()) != 1 {
+			t.Fatalf("se guardó algo: %d solicitudes", p.Total)
+		}
+	})
+	t.Run("se llena la franja", func(t *testing.T) {
+		if _, err := e.casos.Reservar(ctx, "org-1", datos(nil), franja16, clave("clave-0003", "h4")); err != nil {
 			t.Fatal(err)
 		}
-		if n := len(e.uow.outbox()); n != 1 {
-			t.Fatalf("outbox = %d mensajes, se esperaba 1", n)
+		_, err := e.casos.Reservar(ctx, "org-1", datos(nil), franja16, clave("clave-0004", "h5"))
+		if !errors.Is(err, dominio.ErrSinDisponibilidad) {
+			t.Fatalf("error = %v", err)
 		}
-		p, _ := e.casos.Listar(context.Background(), "", 1, 20)
-		if p.Total != 1 {
-			t.Fatalf("hay %d solicitudes, se esperaba 1", p.Total)
+		if f := e.disponibles(t); f.Disponible || f.TrasladosDisponibles != 0 {
+			t.Fatalf("la franja tiene que figurar llena: %+v", f)
+		}
+		// El reintento de la primera reserva sigue devolviendo la reserva original.
+		if otra, err := e.casos.Reservar(ctx, "org-1", conPeso(400), franja16, clave("clave-0001", "h1")); err != nil || otra.ID != v.ID {
+			t.Fatalf("reintento con la franja llena: %v", err)
 		}
 	})
+	t.Run("cancelar devuelve el lugar", func(t *testing.T) {
+		c, err := e.casos.Cancelar(ctx, "org-1", v.ID, "ya no hace falta", nil)
+		if err != nil || c.Traslado.Estado != "CANCELADO" || c.Cancelacion.Estado != "APROBADA" || c.Cancelacion.Tardia {
+			t.Fatalf("v = %+v, err = %v", c.Cancelacion, err)
+		}
+		if f := e.disponibles(t); f.TrasladosDisponibles != 1 || f.KgDisponibles != 1000 {
+			t.Fatalf("no se devolvió el lugar: %+v", f)
+		}
+	})
+	t.Run("franja que no se puede reservar", func(t *testing.T) {
+		casos := map[time.Time]error{
+			franja16.Add(30 * time.Minute):           dominio.ErrFranjaInvalida,
+			ahora.Add(time.Hour).Truncate(time.Hour): dominio.ErrAnticipacionInsuficiente,
+		}
+		for inicio, esperado := range casos {
+			_, err := e.casos.Reservar(ctx, "org-1", datos(nil), inicio, clave("clave-"+inicio.String(), "h"))
+			if !errors.Is(err, esperado) {
+				t.Fatalf("%s: error = %v, se esperaba %v", inicio, err, esperado)
+			}
+		}
+	})
+}
 
-	t.Run("datos inválidos: error permanente y nada guardado", func(t *testing.T) {
-		cmd := comando("msg-mal", "sol-mal", nil)
-		cmd.Datos.Cosa.Cantidad = 0
-		err := e.casos.RegistrarExterna(context.Background(), cmd)
-		if !mensajeria.EsPermanente(err) || !errors.Is(err, dominio.ErrDatosInvalidos) {
-			t.Fatalf("error = %v, se esperaba un error permanente de datos inválidos", err)
+func TestDisponibilidad(t *testing.T) {
+	e := nuevoEscenario()
+	d, err := e.casos.Disponibilidad(context.Background(), "2026-10-15", 1500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Hoy a las 09:00: la franja de las 10 ya no tiene 2 h de anticipación; quedan 12, 14, 16 y 18.
+	if len(d.Franjas) != 4 || d.Franjas[0].Inicio != "2026-10-15T12:00:00-03:00" || d.Franjas[0].Disponible {
+		t.Fatalf("disponibilidad inesperada (1500 kg no entran en ninguna): %+v", d)
+	}
+	for _, mala := range []string{"15/10/2026", "2026-10-14", "2027-01-01"} {
+		if _, err := e.casos.Disponibilidad(context.Background(), mala, 0); err == nil {
+			t.Fatalf("%s: se esperaba un error", mala)
 		}
-		if _, err := e.casos.Obtener(context.Background(), "", "sol-mal"); !errors.Is(err, puertos.ErrNoEncontrada) {
-			t.Fatalf("no tenía que guardarse: %v", err)
-		}
-	})
+	}
 }
 
 func TestCicloContrapropuesta(t *testing.T) {

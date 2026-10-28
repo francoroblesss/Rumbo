@@ -2,7 +2,7 @@
 
 > Define las funcionalidades, las reglas de negocio y los criterios de aceptación del sistema (consigna §3).
 > Cada funcionalidad (`F-xx`) indica qué reglas (`R-xx`) aplica; los criterios de aceptación (`CA-xx`) referencian ambas.
-> Versión 1 — Entrega 1 (2026-10-04). Revisión 2026-10-11: capacidad publicada genérica (F-28, ADR-006).
+> Versión 1 — Entrega 1 (2026-10-04). Revisión 2026-10-11: capacidad publicada genérica (F-28, ADR-006). Revisión 2026-10-28: capacidad publicada de autoservicio, reserva de franjas (F-28, ADR-021).
 
 ## 1. Alcance
 
@@ -19,7 +19,7 @@ Rumbo es una plataforma única de gestión operativa de **traslados programados 
 - Avisos dentro de Rumbo para clientes, choferes y operadores.
 - Búsqueda de traslados.
 - Preliquidación mensual de choferes.
-- Capacidad publicada para otros sistemas: **Solicitar traslado** de una cosa desde un origen hasta un destino (`docs/contracts/`, versión 2).
+- Capacidad publicada para otros sistemas: **Reservar traslado** de una cosa desde un origen hasta un destino en una franja, de autoservicio (`docs/contracts/`, versión 4.0.0).
 - Consumo de condiciones climáticas del sistema de aeropuerto (flujo a definir con su contrato).
 
 ### 1.3 Fuera de alcance
@@ -41,7 +41,7 @@ Rumbo es una plataforma única de gestión operativa de **traslados programados 
 | **Operador** | Personal de Rumbo que revisa solicitudes, planifica, asigna y controla la operación. |
 | **Chofer** | Conductor de Rumbo que ejecuta los recorridos. |
 | **Administrador** | Personal de Rumbo que administra usuarios, clientes, recursos y tarifas, y cierra preliquidaciones. Puede hacer todo lo del operador. |
-| **Sistema externo de stock** | Sistema de otro grupo que usa la capacidad publicada como un cliente de tipo stock. |
+| **Sistema externo de stock** | Sistema de otro grupo que usa la capacidad publicada como un cliente de tipo stock: reserva franjas por API, sin pasar por la revisión del operador. |
 
 - Una persona puede tener más de un rol.
 - La persona transportada **no** es usuaria del sistema.
@@ -94,7 +94,7 @@ Rumbo es una plataforma única de gestión operativa de **traslados programados 
 | F-25 | **Generar traslados de los planes** para los próximos 7 días (automático). | R-10, R-12 |
 | F-26 | **Bandeja de avisos** para cliente, chofer y operador. | R-38 |
 | F-27 | **Buscar traslados** con texto libre, filtros, orden y paginación. | R-39, R-40 |
-| F-28 | **Capacidad publicada "Solicitar traslado"** para sistemas externos: trasladar una **cosa** desde un **origen** hasta un **destino** (tres datos obligatorios; hora y demás opcionales). Contrato en `docs/contracts/` (versión 3.0.0, rutas sin versión: `/traslados`). | R-02, R-04, R-06 a R-09, R-15 a R-17 |
+| F-28 | **Capacidad publicada "Reservar traslado"** para sistemas externos, de autoservicio: consultar la disponibilidad de franjas y **reservar** el traslado de una **cosa** desde un **origen** hasta un **destino** en una franja, con respuesta inmediata; consultar y cancelar. Contrato en `docs/contracts/` (versión 4.0.0, rutas sin versión: `/disponibilidad`, `/traslados`). | R-02, R-04, R-17, R-42 a R-45 |
 | F-29 | **Alerta climática en traslados al aeropuerto** con la capacidad de clima del sistema de aeropuerto (consulta al aceptar y al iniciar el recorrido) | R-41 |
 
 ## 4. Reglas de negocio
@@ -159,6 +159,12 @@ Rumbo es una plataforma única de gestión operativa de **traslados programados 
   - **Al operador:** solicitudes nuevas, traslados que requieren revisión, incidentes, cambios con menos de 24 h y contrapropuestas respondidas o vencidas.
 - **R-39** En la búsqueda, el cliente solo encuentra traslados de su organización; el operador y el administrador, todos.
 - **R-40** La búsqueda ayuda a encontrar: cualquier acción sobre un traslado se valida contra el dato real, no contra el resultado de la búsqueda.
+
+### Capacidad publicada (sistemas externos)
+- **R-42** Un sistema externo **no negocia**: reserva una **franja** de llegada de 2 h (08:00 a 20:00) y la respuesta es inmediata y definitiva: reservado (el traslado queda `PROGRAMADO` y Rumbo se compromete a que llegue antes del fin de la franja) o sin lugar. No hay revisión del operador ni contrapropuesta.
+- **R-43** Cada franja tiene un **cupo** de traslados y de kg para todos los sistemas externos. Una reserva ocupa un lugar y descuenta su peso; **nunca se reserva más que el cupo**, aunque lleguen reservas simultáneas. Una carga más pesada que el cupo total no se puede reservar (dividirla).
+- **R-44** Se reserva con al menos **2 h** de anticipación y hasta **30 días** adelante.
+- **R-45** La cancelación de un sistema externo se aplica en el momento si el traslado no empezó y devuelve el lugar de la franja. Con menos de 24 h no espera la aprobación del operador: queda marcada como **tardía** y se le avisa.
 
 ## 5. Estados y transiciones
 
@@ -234,18 +240,21 @@ RECIBIDA ──operador──> ACEPTADA                   (crea traslados o plan
 ### Búsqueda, avisos e integración
 - **CA-25** (F-27, R-39) **Dado** un cliente, **cuando** busca traslados por un nombre que existe en otra organización, **entonces** no obtiene resultados de esa organización.
 - **CA-26** (F-27) **Dados** más de 20 traslados que cumplen un filtro, **cuando** se busca, **entonces** los resultados vienen paginados y ordenados por fecha y hora.
-- **CA-27** (F-28) **Dado** el sistema externo, **cuando** repite la misma solicitud con la misma clave de idempotencia, **entonces** se registra una sola solicitud y recibe la misma respuesta.
+- **CA-27** (F-28) **Dado** el sistema externo, **cuando** repite la misma reserva con la misma clave de idempotencia, **entonces** se registra una sola reserva, toma un solo lugar y recibe la misma respuesta (aunque mientras tanto la franja se haya llenado).
 - **CA-28** (F-26, R-38) **Dado** un recorrido reasignado a otro chofer, **cuando** se confirma, **entonces** ambos choferes reciben un aviso en su bandeja.
-- **CA-29** (F-28, R-07) **Dado** el sistema externo, **cuando** solicita un traslado solo con cosa, origen y destino (sin hora), **entonces** queda `RECIBIDA` y, al revisarla, el operador le propone un horario (`CONTRAPROPUESTA`) en lugar de fijarlo por su cuenta.
+- **CA-29** (F-28, R-42) **Dado** el sistema externo y una franja con lugar, **cuando** reserva solo con cosa, origen, destino y la franja, **entonces** recibe en el momento el traslado `PROGRAMADO` con la franja comprometida, sin intervención del operador.
 - **CA-30** (F-29, R-41) **Dado** un traslado al aeropuerto dentro de las próximas 6 h y el aeropuerto no operable, **cuando** el operador acepta la solicitud, **entonces** el traslado queda con alerta climática y sus motivos, y se avisa al operador y al cliente.
 - **CA-31** (F-29, R-41) **Dado** el servicio de clima caído, **cuando** el operador acepta una solicitud al aeropuerto, **entonces** la aceptación se completa y el traslado queda "clima no verificado".
+- **CA-32** (F-28, R-43) **Dada** una franja sin lugar para la carga, **cuando** el sistema externo intenta reservarla, **entonces** recibe `SIN_DISPONIBILIDAD` en el momento y no se registra nada.
+- **CA-33** (F-28, R-43) **Dada** una franja con lugar para 3 traslados, **cuando** llegan 20 reservas a la vez, **entonces** se confirman exactamente 3 y las demás reciben `SIN_DISPONIBILIDAD`.
+- **CA-34** (F-28, R-45) **Dado** un traslado reservado para dentro de 6 h, **cuando** el sistema externo lo cancela, **entonces** queda `CANCELADO` en el momento, marcado como tardío, la franja recupera el lugar y el operador recibe un aviso.
 
 ## 7. Bonus anunciados
 Anunciados en la Entrega 2 (consigna §7). Se implementan para la Presentación Grupal; tienen que estar integrados, documentados, testeados y defendidos.
 | Bonus | Qué se hace | Cómo se verifica |
 | --- | --- | --- |
 | **Actualizaciones en tiempo real** | El operador y el cliente ven en la aplicación web los cambios de estado de solicitudes y traslados apenas ocurren, sin recargar, a partir de los eventos que ya publica Operaciones | Un cambio de estado aparece en la pantalla abierta en menos de 2 s |
-| **Tests de punta a punta (e2e)** | Tests automatizados del flujo principal a través del sistema levantado: solicitud por el contrato público → gateway → Integración → Operaciones → cambio de estado visible por consulta | Corren en el CI contra el sistema levantado con Docker Compose |
+| **Tests de punta a punta (e2e)** | Tests automatizados del flujo principal a través del sistema levantado: reserva por el contrato público → gateway → Integración → Operaciones → cambio de estado visible por consulta | Corren en el CI contra el sistema levantado con Docker Compose |
 
 ## 8. Registro de cambios
 | Fecha | Cambio | Motivo |
@@ -254,3 +263,4 @@ Anunciados en la Entrega 2 (consigna §7). Se implementan para la Presentación 
 | 2026-10-16 | F-28: las rutas de la capacidad publicada dejan de llevar versión (`/v2/traslados` → `/traslados`); el contrato pasa a la versión 3.0.0 sin otros cambios | Indicación del profesor en clase (ADR-019) |
 | 2026-10-14 | Se anuncian los bonus (§7): actualizaciones en tiempo real y tests de punta a punta | Consigna §7: los bonus se anuncian en la Entrega 2 |
 | 2026-10-14 | F-29 pasa a "Alerta climática en traslados al aeropuerto". Se agregan R-41 (regla de clima: consulta de operabilidad, alerta climática y decisión del operador) y CA-30 y CA-31 | Consumo de la capacidad de clima del otro grupo (D9, ADR-012) |
+| 2026-10-28 | F-28 pasa a **"Reservar traslado"** de autoservicio: disponibilidad de franjas, reserva con respuesta inmediata, cancelación sin aprobación. Se agregan R-42 a R-45 y CA-32 a CA-34; cambian CA-27 y CA-29 (antes: sin hora, contrapropuesta del operador) | Revisión del grupo: la capacidad publicada no puede depender de un ida y vuelta manual (ADR-021) |

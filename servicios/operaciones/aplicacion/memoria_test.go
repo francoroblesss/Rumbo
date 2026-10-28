@@ -27,15 +27,15 @@ type mensajeOutbox struct {
 type estadoMemoria struct {
 	Solicitudes map[string]*dominio.Solicitud
 	Outbox      []mensajeOutbox
-	Mensajes    map[string]bool
 	Claves      map[string]puertos.RespuestaGuardada
+	Franjas     map[string]dominio.Franja // por inicio en RFC 3339 (UTC)
 }
 
 func nuevaUoW() *uowMemoria {
 	return &uowMemoria{estado: estadoMemoria{
 		Solicitudes: map[string]*dominio.Solicitud{},
-		Mensajes:    map[string]bool{},
 		Claves:      map[string]puertos.RespuestaGuardada{},
+		Franjas:     map[string]dominio.Franja{},
 	}}
 }
 
@@ -98,11 +98,6 @@ func (t *txMemoria) Listar(_ context.Context, estado string, desde, limite int) 
 	return todas[desde:min(desde+limite, total)], total, nil
 }
 
-func (t *txMemoria) Existe(_ context.Context, id string) (bool, error) {
-	_, ok := t.e.Solicitudes[id]
-	return ok, nil
-}
-
 func (t *txMemoria) Insertar(_ context.Context, s *dominio.Solicitud) error {
 	t.e.Solicitudes[s.ID] = copiar(s)
 	return nil
@@ -128,12 +123,31 @@ func (t *txMemoria) AgregarAlOutbox(_ context.Context, exchange, routingKey stri
 	return nil
 }
 
-func (t *txMemoria) RegistrarMensaje(_ context.Context, id string) (bool, error) {
-	if t.e.Mensajes[id] {
-		return true, nil
+// FranjaParaActualizar no necesita bloquear: uowMemoria ya ejecuta una transacción por vez. La
+// concurrencia real se prueba contra MySQL (adaptadores/mysql).
+func (t *txMemoria) FranjaParaActualizar(_ context.Context, plantilla dominio.Franja) (*dominio.Franja, error) {
+	clave := plantilla.Inicio.UTC().Format(time.RFC3339)
+	f, ok := t.e.Franjas[clave]
+	if !ok {
+		f = plantilla
+		t.e.Franjas[clave] = f
 	}
-	t.e.Mensajes[id] = true
-	return false, nil
+	return &f, nil
+}
+
+func (t *txMemoria) GuardarFranja(_ context.Context, f *dominio.Franja) error {
+	t.e.Franjas[f.Inicio.UTC().Format(time.RFC3339)] = *f
+	return nil
+}
+
+func (t *txMemoria) Franjas(_ context.Context, desde, hasta time.Time) ([]dominio.Franja, error) {
+	var franjas []dominio.Franja
+	for _, f := range t.e.Franjas {
+		if !f.Inicio.Before(desde) && !f.Inicio.After(hasta) {
+			franjas = append(franjas, f)
+		}
+	}
+	return franjas, nil
 }
 
 func (t *txMemoria) BuscarIdempotencia(_ context.Context, org, endpoint, clave string) (*puertos.RespuestaGuardada, error) {

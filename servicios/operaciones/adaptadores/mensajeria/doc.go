@@ -1,4 +1,4 @@
 // Package mensajeria es el adaptador de mensajería de Operaciones: publica los eventos del outbox
-// y consume los mensajes de otros servicios (solicitudes externas, ausencias y bajas), con ACK
-// después del efecto (ADR-004). Usa el módulo comun/mensajeria (docs/interfaces-internas.md §5).
+// (ADR-004). Usa el módulo comun/mensajeria (docs/interfaces-internas.md §5). Desde ADR-021 no
+// consume el comando de solicitudes externas: la reserva llega por HTTP y es síncrona.
 package mensajeria

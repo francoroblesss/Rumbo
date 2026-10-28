@@ -30,14 +30,14 @@ docker compose up --build     # levanta infraestructura, microservicios y gatewa
 
 Consumo de memoria: el sistema completo usa unos **2,5–3,5 GB** de RAM; conviene darle a Docker Desktop al menos 4 GB. Para ahorrar:
 - `docker compose up --build operaciones` levanta solo ese servicio y sus dependencias.
-- La **observabilidad** (Grafana LGTM, ~1 GB) es opcional: se activa descomentando `COMPOSE_PROFILES` y `OTEL_EXPORTER_OTLP_ENDPOINT` en `.env`. Sin ella, los servicios igual loguean en JSON por stdout (`docker compose logs`).
+- La **observabilidad** (Grafana LGTM, ~1 GB, y el MySQL de logs) es opcional: se activa descomentando `COMPOSE_PROFILES`, `OTEL_EXPORTER_OTLP_ENDPOINT` y `LOGS_MYSQL_DSN` en `.env`. Sin ella, los servicios igual loguean en JSON por stdout (`docker compose logs`).
 - `.env` trae `COMPOSE_PARALLEL_LIMIT=1`: las imágenes se compilan de a una, que es el pico de memoria.
 
 | Componente | Dirección |
 | --- | --- |
 | API Gateway (único punto de entrada) | http://localhost:8080 — contrato público en `/auth/token`, `/disponibilidad` y `/traslados`, API interna en `/api/<servicio>/...` |
 | Panel de RabbitMQ | http://localhost:15672 |
-| Grafana: logs, métricas, trazas y tablero (`admin`/`admin`; solo con el perfil `observabilidad`) | http://localhost:3000 |
+| Grafana: logs (MySQL), métricas, trazas y tablero (`admin`/`admin`; solo con el perfil `observabilidad`) | http://localhost:3000 |
 | Mock del clima que consume Rumbo | http://localhost:4020 |
 | MySQL (por ejemplo, desde SQL Workbench) | `localhost:13306` |
 | Aplicación web: consola del operador (desarrollo; ingreso con `ADMIN_EMAIL` / `ADMIN_PASSWORD` de `.env`) | `cd frontend && npm install && npm run dev` → http://localhost:5173 |

@@ -128,13 +128,22 @@ Dependencias de cada servicio y qué pasa cuando fallan ([ADR-008](adr/ADR-008-r
 **Circuit breaker** (`github.com/sony/gobreaker/v2`) en las llamadas de Integración a Operaciones: se abre con 5 fallas consecutivas o con 50 % de fallas en al menos 10 llamadas dentro de 60 s (solo cuentan timeouts, errores de red y `5xx`; un `4xx` no), responde `503` con `Retry-After: 30` sin llamar a Operaciones, pasa a semiabierto a los 30 s con 1 llamada de prueba y su estado se ve en `rumbo_circuito_estado{dependencia="operaciones"}`.
 
 ### Observabilidad
-Detalle en [ADR-014](adr/ADR-014-observabilidad.md) (D11).
+Detalle en [ADR-014](adr/ADR-014-observabilidad.md) (D11); los logs, en [ADR-023](adr/ADR-023-logs-en-mysql.md).
 
-- **Stack:** OpenTelemetry en todos los servicios Go (módulo `servicios/comun/observabilidad`) y una sola imagen, `grafana/otel-lgtm`, que reúne el colector OTLP, Prometheus (métricas), Loki (logs), Tempo (trazas) y Grafana (tablero y alertas) en `http://localhost:3000`. Se activa con el perfil `observabilidad` de `compose.yaml`.
-- **Logs:** `slog` en JSON por stdout y a Loki, con `servicio`, `instancia`, `correlation_id`, `trace_id` y `span_id`. El gateway asigna el `X-Correlation-ID`, que viaja por HTTP y en los mensajes de RabbitMQ.
-- **Métricas principales:** `rumbo_http_duracion_segundos` (RED por servicio e instancia), `rumbo_mensajes_procesados_total` (incluye la DLQ), `rumbo_outbox_pendientes`, `rumbo_cache_operaciones_total`, `rumbo_circuito_estado`, `rumbo_gateway_rechazos_total`, `rumbo_solicitudes_total` y `rumbo_clima_consultas_total` (nombres fijos en `docs/interfaces-internas.md` §8).
+- **Stack:**
+  - OpenTelemetry en todos los servicios Go (módulo `servicios/comun/observabilidad`) para métricas y trazas;
+  - una imagen, `grafana/otel-lgtm`, que reúne el colector OTLP, Prometheus (métricas), Tempo (trazas) y Grafana (tablero y alertas) en `http://localhost:3000`;
+  - un **MySQL de logs** aparte (`mysql-logs`, base `observabilidad`) que Grafana lee con un usuario de solo lectura.
+
+  Todo se activa con el perfil `observabilidad` de `compose.yaml`.
+- **Logs:** `slog` en JSON por stdout y, en lotes y en segundo plano, a la tabla `logs` de MySQL (INFO, WARN y ERROR; retención de 7 días). Llevan `servicio`, `instancia`, `correlation_id`, `trace_id` y `span_id`.
+  - Si el MySQL de logs está lento o caído, la request no espera: el log se descarta, se cuenta en `rumbo_logs_descartados_total` y sigue en stdout.
+  - El gateway asigna el `X-Correlation-ID`, que viaja por HTTP y en los mensajes de RabbitMQ.
+- **Métricas principales:** `rumbo_http_duracion_segundos` (RED por servicio e instancia), `rumbo_mensajes_procesados_total` (incluye la DLQ), `rumbo_outbox_pendientes`, `rumbo_cache_operaciones_total`, `rumbo_circuito_estado`, `rumbo_gateway_rechazos_total`, `rumbo_solicitudes_total`, `rumbo_clima_consultas_total` y `rumbo_logs_descartados_total` (nombres fijos en `docs/interfaces-internas.md` §8).
 - **Trazas:** propagación W3C Trace Context por HTTP y por RabbitMQ, incluido el paso por el outbox. El flujo principal se ve en una sola traza: gateway → Integración (`POST /traslados`) → Operaciones (`POST /internas/reservas`) → publicar `operaciones.solicitud.aceptada` → consumir en Integración.
-- **Tablero:** "Rumbo — estado general" (carpeta *Rumbo*), con 11 paneles: requests, errores 5xx y latencia p95 por servicio, requests por instancia de Integración (balanceo), hit ratio de las cachés, pendientes de outbox, mensajes por resultado, estado de los circuitos, consultas de clima, rechazos del gateway y logs de error. Se provisiona desde `infra/grafana/`.
+- **Tablero:** "Rumbo — estado general" (carpeta *Rumbo*), con 14 paneles. Se provisiona desde `infra/grafana/`.
+  - **Métricas (Prometheus):** requests, errores 5xx y latencia p95 por servicio, requests por instancia de Integración (balanceo), hit ratio de las cachés, pendientes de outbox, mensajes por resultado, estado de los circuitos, consultas de clima, rechazos del gateway y logs descartados.
+  - **Logs (MySQL):** errores recientes, logs por minuto y por nivel, y la tabla de logs filtrable por nivel, servicio y `correlation_id`. El `trace_id` de cada fila abre la traza en Tempo.
 - **SLO y alertas** (provisionadas desde `infra/grafana/alertas/`): 99 % de los `POST /traslados` en menos de 300 ms y menos de 1 % de respuestas 5xx. Tres reglas con evaluación cada minuto: `SLO latencia traslados` y `SLO errores traslados` (`for: 5m`) y `Mensajes en DLQ` (`for: 1m`, porque con `5m` un mensaje aislado no llegaba a dispararla; ver [ADR-016](adr/ADR-016-validacion-d5.md)).
 
 ## 9. Distribución y despliegue
@@ -148,6 +157,7 @@ Detalle en [ADR-014](adr/ADR-014-observabilidad.md) (D11).
 | `memcached` | — | Caché de Integración (ADR-007) |
 | `clima-mock` | 4020 | Mock del sistema de aeropuerto (Prism, contrato en `contracts/consumidos/`) |
 | `lgtm` | 3000 (Grafana) · 4317/4318 (OTLP) | Solo con el perfil `observabilidad` (ADR-014) |
+| `mysql-logs` | — | MySQL de logs, base `observabilidad`. Solo con el perfil `observabilidad` (ADR-023) |
 | `mysql` | 13306 (en el host; 3306 dentro de Docker) | Bases `operaciones` y `recursos` |
 | `mongo` | 27017 | Bases `identidad`, `notificaciones` e `integracion` |
 | `rabbitmq` | 5672 · 15672 (panel) | Broker |
@@ -163,5 +173,6 @@ Los scripts de `infra/` crean, al iniciar por primera vez, una base de datos y u
 - **El cupo de las franjas es una capacidad que Rumbo decide ofrecer, no se calcula con los vehículos reales** ([ADR-021](adr/ADR-021-capacidad-de-autoservicio.md)). El operador tiene que respetar las reservas al armar los recorridos.
 - **Las reservas sobre una misma franja se atienden de a una** (bloqueo de la fila, [ADR-022](adr/ADR-022-consistencia-y-concurrencia.md)). Falta medir con k6 cómo afecta a muchas reservas simultáneas sobre la misma franja.
 - **`grafana/otel-lgtm` es para desarrollo, no para producción.**
+- **Los logs pueden perderse si el MySQL de logs está caído o saturado** ([ADR-023](adr/ADR-023-logs-en-mysql.md)): siguen en stdout, pero no aparecen en el tablero. Se ve en `rumbo_logs_descartados_total`.
 - **El clima se midió contra el mock del proveedor** (Prism). El proveedor ya publicó su URL real (contrato 2.0.1, [ADR-020](adr/ADR-020-contrato-clima-2.md)); falta la clave para repetir la medición de [ADR-016](adr/ADR-016-validacion-d5.md). Mientras el servicio real está dormido, los traslados al aeropuerto quedan "clima no verificado".
 - **Consumidores detenidos sin que el proceso caiga ([ADR-017](adr/ADR-017-reconexion-broker-y-balanceador.md)):** con RabbitMQ caído, cada servicio sigue vivo y atiende HTTP, pero no consume. Se detecta por los logs (`se cerró la conexión con RabbitMQ`) y por `rumbo_outbox_pendientes`, que crece mientras el broker no está; todavía no hay una alerta específica.

@@ -15,7 +15,7 @@ Cada decisión se conserva en un archivo independiente `ADR-NNN-titulo-corto.md`
 | D8 | Contrato propio | E1 (actualizar en E2 si cambió) | [ADR-002](ADR-002-contrato-propio.md), contrato reemplazado por [ADR-006](ADR-006-contrato-generico-v2.md) (v2), rutas sin versión en [ADR-019](ADR-019-contrato-sin-version-en-la-ruta.md) (3.0.0), autoservicio con reserva de franja en [ADR-021](ADR-021-capacidad-de-autoservicio.md) (4.0.0) |
 | D9 | Consumo del proveedor | E2 | [ADR-012](ADR-012-consumo-clima.md), contrato del proveedor 2.0.1 en [ADR-020](ADR-020-contrato-clima-2.md) |
 | D10 | Resiliencia | E2 | [ADR-008](ADR-008-resiliencia.md), reconexión reemplazada por [ADR-017](ADR-017-reconexion-broker-y-balanceador.md) |
-| D11 | Observabilidad | E2 primera versión | [ADR-014](ADR-014-observabilidad.md) |
+| D11 | Observabilidad | E2 primera versión | [ADR-014](ADR-014-observabilidad.md), logs en MySQL en [ADR-023](ADR-023-logs-en-mysql.md) |
 | D12 | Balanceo de carga | E2 | [ADR-009](ADR-009-balanceo.md) |
 | D13 | Capacidad y costos | E2 | [ADR-015](ADR-015-capacidad-y-costos.md) |
 
@@ -29,6 +29,7 @@ Cada decisión se conserva en un archivo independiente `ADR-NNN-titulo-corto.md`
 | [ADR-019](ADR-019-contrato-sin-version-en-la-ruta.md) | Rutas sin versión, públicas e internas; el contrato se versiona en su documento (reemplaza parcialmente a ADR-002 y ADR-006) |
 | [ADR-020](ADR-020-contrato-clima-2.md) | Contrato de clima 2.0.1 del proveedor: ruta sin versión, timeouts sin cambios ante el servicio dormido (reemplaza parcialmente a ADR-012) |
 | [ADR-021](ADR-021-capacidad-de-autoservicio.md) | Capacidad publicada de autoservicio: reservar una franja, contrato 4.0.0 (reemplaza parcialmente a ADR-002, ADR-004, ADR-006, ADR-008, ADR-009, ADR-014 y ADR-019) |
+| [ADR-023](ADR-023-logs-en-mysql.md) | Logs en MySQL leídos por Grafana, escritos en lotes y en segundo plano (reemplaza parcialmente a ADR-014) |
 
 ## Formato
 ```

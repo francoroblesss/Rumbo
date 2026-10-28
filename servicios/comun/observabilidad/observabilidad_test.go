@@ -14,7 +14,7 @@ import (
 
 func TestLogsIncluyenCorrelacion(t *testing.T) {
 	var buf bytes.Buffer
-	log := slog.New(manejadorContexto{multiManejador{slog.NewJSONHandler(&buf, nil)}})
+	log := slog.New(manejadorContexto{slog.NewJSONHandler(&buf, nil)})
 	log.InfoContext(ConCorrelacion(context.Background(), "corr-9"), "hola")
 
 	var registro map[string]any

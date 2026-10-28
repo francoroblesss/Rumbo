@@ -1,0 +1,17 @@
+# Fuente de datos de Grafana para los logs (ADR-023): la tabla logs del MySQL de observabilidad,
+# leída con un usuario que solo tiene SELECT (como en la clase práctica 8). Se monta en la carpeta
+# de provisión de la imagen grafana/otel-lgtm, junto a Prometheus y Tempo (ver compose.yaml).
+apiVersion: 1
+
+datasources:
+  - name: Logs (MySQL)
+    uid: mysql-logs
+    type: mysql
+    access: proxy
+    url: mysql-logs:3306
+    user: grafana_lector
+    jsonData:
+      database: observabilidad
+      maxOpenConns: 2
+    secureJsonData:
+      password: ${GRAFANA_LOGS_DB_PASSWORD}

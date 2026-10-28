@@ -199,7 +199,7 @@ Es la misma forma que `SolicitudTraslado` del contrato público (`docs/contracts
 - `cancelacion.tardia` es `true` si se pidió con menos de 24 h. En una reserva externa la cancelación siempre queda `APROBADA`; `PENDIENTE_APROBACION` solo existe para las solicitudes de la web.
 
 ## 7. Logs (todos los servicios)
-`log/slog` en **JSON** a stdout, configurado por `observabilidad.Iniciar`. Los mismos registros viajan a Grafana (Loki) por OpenTelemetry.
+`log/slog` en **JSON** a stdout, configurado por `observabilidad.Iniciar`. Si está `LOGS_MYSQL_DSN`, los registros INFO, WARN y ERROR se guardan además en la tabla `logs` del MySQL de observabilidad, en lotes y en segundo plano. Grafana los lee de ahí ([ADR-023](adr/ADR-023-logs-en-mysql.md)). En la tabla, `correlation_id` y `trace_id` son columnas y el resto de los campos va en `atributos` (JSON).
 
 | Campo | Siempre | Contenido |
 | --- | --- | --- |
@@ -222,6 +222,7 @@ Todos los servicios Gin registran automáticamente, con `observabilidad.Instrume
 | `rumbo_outbox_pendientes` | gauge | `servicio` | Operaciones (Integración ya no tiene pendientes de envío, ADR-021) |
 | `rumbo_cache_operaciones_total` | contador | `cache`, `resultado` (`hit`, `miss`, `error`) | Integración (Memcached), Operaciones (clima) |
 | `rumbo_circuito_estado` | gauge (0 cerrado, 1 semiabierto, 2 abierto) | `dependencia` | Integración, Operaciones |
+| `rumbo_logs_descartados_total` | contador | `motivo` (`cola_llena`, `mysql`) | Todos (`comun/observabilidad`, ADR-023) |
 | `rumbo_clima_consultas_total` | contador | `resultado` (`operable`, `no_operable`, `no_verificado`) | Operaciones |
 | `rumbo_solicitudes_total` | contador | `origen`, `estado` | Operaciones |
 
@@ -239,6 +240,7 @@ Nombres de spans: los HTTP los pone la instrumentación (`POST /traslados`). Los
 | --- | --- |
 | `PUERTO` | Puerto HTTP del servicio |
 | `INSTANCIA` | Nombre de la réplica (si no está, el hostname) |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | Destino de trazas, métricas y logs (vacío = no exporta, por ejemplo en tests) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Destino de trazas y métricas (vacío = no exporta, por ejemplo en tests) |
+| `LOGS_MYSQL_DSN` | MySQL de logs (`rumbo_logs:<clave>@tcp(mysql-logs:3306)/observabilidad`). Vacío = los logs solo salen por stdout |
 | `RABBITMQ_URI` | Broker |
 | `TOKEN_SECRETO` | Firma de tokens (Identidad y gateway) |

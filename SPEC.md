@@ -96,6 +96,8 @@ Rumbo es una plataforma única de gestión operativa de **traslados programados 
 | F-27 | **Buscar traslados** con texto libre, filtros, orden y paginación. | R-39, R-40 |
 | F-28 | **Capacidad publicada "Reservar traslado"** para sistemas externos, de autoservicio: consultar la disponibilidad de franjas y **reservar** el traslado de una **cosa** desde un **origen** hasta un **destino** en una franja, con respuesta inmediata; consultar y cancelar. Contrato en `docs/contracts/` (versión 4.0.0, rutas sin versión: `/disponibilidad`, `/traslados`). | R-02, R-04, R-17, R-42 a R-45 |
 | F-29 | **Alerta climática en traslados al aeropuerto** con la capacidad de clima del sistema de aeropuerto (consulta al aceptar y al iniciar el recorrido) | R-41 |
+| F-30 | **Operador: ver las franjas de un día con su ocupación y los traslados reservados, y avanzar su estado** (`PROGRAMADO` → `EN_CURSO` → `COMPLETADO`) | R-43, R-46, R-47 |
+| F-31 | **Cliente de una organización: consultar en la web los traslados que reservó su organización y cancelarlos** | R-45, R-47 |
 
 ## 4. Reglas de negocio
 
@@ -134,7 +136,7 @@ Rumbo es una plataforma única de gestión operativa de **traslados programados 
 - **R-23** **Capacidad por tramo:** entre cada par de paradas consecutivas, la ocupación a bordo no puede superar la capacidad del vehículo. Se cuentan personas, incluidos los acompañantes, o kg de carga. Una persona en silla de ruedas exige un vehículo adaptado.
 - **R-24** Un chofer tiene como máximo un vehículo propio, que solo maneja él, y puede manejar vehículos de Rumbo. Ida y vuelta se asignan por separado: pueden tener chofer o vehículo distintos.
 - **R-25** Al cambiar un horario, Rumbo detecta los recorridos en conflicto y el operador los resuelve.
-- **R-41** En un traslado con origen o destino en el aeropuerto (`SACO`, marcado por el operador al aceptar) y hora comprometida dentro de las próximas 6 h, Rumbo consulta la operabilidad del aeropuerto al aceptar y al iniciar el recorrido: si no es operable, el traslado queda con una alerta climática con sus motivos, se avisa al operador y al cliente, y el operador decide mantener, proponer otro horario o cancelar; si el servicio de clima no responde, se sigue sin el dato y la alerta queda "clima no verificado".
+- **R-41** En un traslado con origen o destino en el aeropuerto (`SACO`, marcado por el operador al aceptar) y hora comprometida dentro de las próximas 6 h, Rumbo consulta la operabilidad del aeropuerto al aceptar y al iniciar el recorrido: si no es operable, el traslado queda con una alerta climática con sus motivos, se avisa al operador y al cliente, y el operador decide mantener, proponer otro horario o cancelar; si el servicio de clima no responde, se sigue sin el dato y la alerta queda "clima no verificado". **Reemplazada por R-46 (2026-11-06, ADR-025).**
 
 ### Ejecución e incidentes
 - **R-26** En un traslado de varias personas, la ausencia se registra **por persona**. El tramo se completa con quienes viajaron y queda `NO_REALIZADO` solo si no viajó nadie.
@@ -165,6 +167,10 @@ Rumbo es una plataforma única de gestión operativa de **traslados programados 
 - **R-43** Cada franja tiene un **cupo** de traslados y de kg para todos los sistemas externos. Una reserva ocupa un lugar y descuenta su peso; **nunca se reserva más que el cupo**, aunque lleguen reservas simultáneas. Una carga más pesada que el cupo total no se puede reservar (dividirla).
 - **R-44** Se reserva con al menos **2 h** de anticipación y hasta **30 días** adelante.
 - **R-45** La cancelación de un sistema externo se aplica en el momento si el traslado no empezó y devuelve el lugar de la franja. Con menos de 24 h no espera la aprobación del operador: queda marcada como **tardía** y se le avisa.
+
+### Presentación (ADR-024 y ADR-025)
+- **R-46** (reemplaza a R-41) Un traslado va o viene **del aeropuerto** (`SACO`) si el nombre o la dirección de su origen (o, si no, de su destino) contiene, sin distinguir mayúsculas ni tildes, alguna de las palabras configuradas (por defecto "aeropuerto", "saco" y "pajas blancas"). Para esos traslados, con la hora comprometida dentro de las próximas 6 h, Rumbo consulta la operabilidad del aeropuerto **después de la reserva**, sin demorar su respuesta, y **cuando el traslado pasa a `EN_CURSO`**. Si no es operable, el traslado queda con una alerta climática con sus motivos y se avisa al operador y a la organización. Si el servicio de clima no responde, se sigue sin el dato y la alerta queda "clima no verificado".
+- **R-47** En esta etapa, el **operador** avanza el traslado reservado: `PROGRAMADO` → `EN_CURSO` → `COMPLETADO`. No hay otras transiciones (además de la cancelación, R-45). Repetir un avance que ya se hizo no cambia nada. Un traslado `EN_CURSO` ya no se puede cancelar (R-17).
 
 ## 5. Estados y transiciones
 
@@ -243,11 +249,40 @@ RECIBIDA ──operador──> ACEPTADA                   (crea traslados o plan
 - **CA-27** (F-28) **Dado** el sistema externo, **cuando** repite la misma reserva con la misma clave de idempotencia, **entonces** se registra una sola reserva, toma un solo lugar y recibe la misma respuesta (aunque mientras tanto la franja se haya llenado).
 - **CA-28** (F-26, R-38) **Dado** un recorrido reasignado a otro chofer, **cuando** se confirma, **entonces** ambos choferes reciben un aviso en su bandeja.
 - **CA-29** (F-28, R-42) **Dado** el sistema externo y una franja con lugar, **cuando** reserva solo con cosa, origen, destino y la franja, **entonces** recibe en el momento el traslado `PROGRAMADO` con la franja comprometida, sin intervención del operador.
-- **CA-30** (F-29, R-41) **Dado** un traslado al aeropuerto dentro de las próximas 6 h y el aeropuerto no operable, **cuando** el operador acepta la solicitud, **entonces** el traslado queda con alerta climática y sus motivos, y se avisa al operador y al cliente.
-- **CA-31** (F-29, R-41) **Dado** el servicio de clima caído, **cuando** el operador acepta una solicitud al aeropuerto, **entonces** la aceptación se completa y el traslado queda "clima no verificado".
+- **CA-30** (F-29, R-41) **Dado** un traslado al aeropuerto dentro de las próximas 6 h y el aeropuerto no operable, **cuando** el operador acepta la solicitud, **entonces** el traslado queda con alerta climática y sus motivos, y se avisa al operador y al cliente. **Reemplazado por CA-35 (2026-11-06, ADR-025).**
+- **CA-31** (F-29, R-41) **Dado** el servicio de clima caído, **cuando** el operador acepta una solicitud al aeropuerto, **entonces** la aceptación se completa y el traslado queda "clima no verificado". **Reemplazado por CA-36 (2026-11-06, ADR-025).**
 - **CA-32** (F-28, R-43) **Dada** una franja sin lugar para la carga, **cuando** el sistema externo intenta reservarla, **entonces** recibe `SIN_DISPONIBILIDAD` en el momento y no se registra nada.
 - **CA-33** (F-28, R-43) **Dada** una franja con lugar para 3 traslados, **cuando** llegan 20 reservas a la vez, **entonces** se confirman exactamente 3 y las demás reciben `SIN_DISPONIBILIDAD`.
 - **CA-34** (F-28, R-45) **Dado** un traslado reservado para dentro de 6 h, **cuando** el sistema externo lo cancela, **entonces** queda `CANCELADO` en el momento, marcado como tardío, la franja recupera el lugar y el operador recibe un aviso.
+
+### Presentación
+- **CA-35** (F-29, R-46) **Dada** una franja que termina dentro de las próximas 6 h y el aeropuerto no operable, **cuando** el sistema externo reserva un traslado con destino "Aeropuerto Internacional de Córdoba", **entonces** recibe el `201` sin esperar al clima y, segundos después, el traslado queda con alerta climática `NO_OPERABLE` con sus motivos, y el operador y la organización reciben un aviso.
+- **CA-36** (F-29, R-46) **Dado** el servicio de clima caído, **cuando** el operador pasa a `EN_CURSO` un traslado al aeropuerto, **entonces** el cambio de estado se completa y el traslado queda "clima no verificado".
+- **CA-37** (F-30, R-47) **Dado** un traslado `PROGRAMADO`, **cuando** el operador lo pasa a `EN_CURSO` y después a `COMPLETADO`, **entonces** el sistema externo, al consultarlo por la API pública, lo ve `COMPLETADO` con `finalizado_en`.
+- **CA-38** (F-30, R-47) **Dado** un traslado `EN_CURSO`, **cuando** el operador vuelve a pedir `EN_CURSO`, **entonces** recibe la misma vista y no se publica ningún evento; si pide `PROGRAMADO` o el traslado está `CANCELADO`, recibe `ESTADO_NO_PERMITE_OPERACION`.
+- **CA-39** (F-31, R-45) **Dado** un traslado `PROGRAMADO` de su organización, **cuando** el cliente lo cancela desde la web, **entonces** queda `CANCELADO` en el momento, la franja recupera el lugar y el sistema externo lo ve cancelado por la API pública.
+- **CA-40** (F-31) **Dado** un cliente de una organización, **cuando** pide el listado o el detalle de un traslado de otra organización, **entonces** no lo ve (`404` en el detalle).
+- **CA-41** (F-26, bonus) **Dada** la pantalla del operador abierta, **cuando** el sistema externo reserva una franja, **entonces** el aviso "Reserva nueva" aparece en menos de 2 s sin recargar, y la lista de traslados se actualiza sola.
+- **CA-42** (F-26) **Dado** un evento entregado dos veces, **cuando** Notificaciones lo procesa, **entonces** hay un solo aviso; un mensaje ilegible va a la DLQ `notificaciones.avisos.dlq`.
+- **CA-43** (F-27) **Dado** un traslado que cambia de estado, **cuando** pasan 5 s, **entonces** la búsqueda lo devuelve con el estado nuevo; con Solr detenido, la búsqueda responde `503` y avanzar estados sigue funcionando.
+
+## 6 bis. Implementación para la Presentación
+Qué se implementa para la Presentación Grupal y qué queda documentado sin implementar ([ADR-024](docs/adr/ADR-024-alcance-de-la-presentacion.md)). Cada integrante actualiza la columna "Estado" de sus filas cuando su PR se mergea.
+
+| F | Estado | Quién |
+| --- | --- | --- |
+| F-01 a F-05 | Fuera de alcance (ADR-024) | — |
+| F-06 | Cubierta por F-31 (cancelación de reservas) | — |
+| F-07 | Cubierta por F-31 (consulta de reservas) | — |
+| F-08 a F-25 | Fuera de alcance (ADR-024) | — |
+| F-26 | En curso | Sofia (Notificaciones), Delap (web) |
+| F-27 | En curso | Franco (Solr), Delap (web) |
+| F-28 | Implementada (contrato 4.0.0); 4.0.1 en curso | Llanca (4.0.1) |
+| F-29 | En curso (ADR-025) | Llanca |
+| F-30 | En curso | Llanca (API), Delap (web) |
+| F-31 | En curso | Llanca (API), Delap (web) |
+
+Roles de la web en esta etapa: **operador**, **cliente de organización** y **administrador** (reindexar la búsqueda). Sin rol chofer (ADR-024).
 
 ## 7. Bonus anunciados
 Anunciados en la Entrega 2 (consigna §7). Se implementan para la Presentación Grupal; tienen que estar integrados, documentados, testeados y defendidos.
@@ -255,6 +290,8 @@ Anunciados en la Entrega 2 (consigna §7). Se implementan para la Presentación 
 | --- | --- | --- |
 | **Actualizaciones en tiempo real** | El operador y el cliente ven en la aplicación web los cambios de estado de solicitudes y traslados apenas ocurren, sin recargar, a partir de los eventos que ya publica Operaciones | Un cambio de estado aparece en la pantalla abierta en menos de 2 s |
 | **Tests de punta a punta (e2e)** | Tests automatizados del flujo principal a través del sistema levantado: reserva por el contrato público → gateway → Integración → Operaciones → cambio de estado visible por consulta | Corren en el CI contra el sistema levantado con Docker Compose |
+
+Estado (2026-11-06): **Tiempo real** en curso (Sofia, [ADR-027](docs/adr/ADR-027-avisos-en-tiempo-real.md); Delap, web). Se verifica con CA-41. **Tests de punta a punta** en curso (Sofia, [ADR-028](docs/adr/ADR-028-tests-de-punta-a-punta.md)): corren en el CI contra el sistema levantado con Docker Compose y recorren el flujo de ADR-024.
 
 ## 8. Registro de cambios
 | Fecha | Cambio | Motivo |
@@ -264,3 +301,6 @@ Anunciados en la Entrega 2 (consigna §7). Se implementan para la Presentación 
 | 2026-10-14 | Se anuncian los bonus (§7): actualizaciones en tiempo real y tests de punta a punta | Consigna §7: los bonus se anuncian en la Entrega 2 |
 | 2026-10-14 | F-29 pasa a "Alerta climática en traslados al aeropuerto". Se agregan R-41 (regla de clima: consulta de operabilidad, alerta climática y decisión del operador) y CA-30 y CA-31 | Consumo de la capacidad de clima del otro grupo (D9, ADR-012) |
 | 2026-10-28 | F-28 pasa a **"Reservar traslado"** de autoservicio: disponibilidad de franjas, reserva con respuesta inmediata, cancelación sin aprobación. Se agregan R-42 a R-45 y CA-32 a CA-34; cambian CA-27 y CA-29 (antes: sin hora, contrapropuesta del operador) | Revisión del grupo: la capacidad publicada no puede depender de un ida y vuelta manual (ADR-021) |
+| 2026-11-06 | Se agrega la sección "Implementación para la Presentación": qué F-xx se implementan y cuáles quedan fuera. Se agregan F-30 y F-31 | Alcance de la Presentación (ADR-024) |
+| 2026-11-06 | R-41 reemplazada por R-46: el aeropuerto se detecta por nombre o dirección y el clima se consulta después de la reserva y al pasar a `EN_CURSO`. CA-30 y CA-31 reemplazados por CA-35 y CA-36 | Las reservas no pasan por un operador que acepte (ADR-025) |
+| 2026-11-06 | R-47: ciclo reducido del traslado, avanzado por el operador. CA-37 a CA-43 | ADR-024, ADR-027 |

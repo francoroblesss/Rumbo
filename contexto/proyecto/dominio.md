@@ -110,6 +110,8 @@ RECIBIDA
 
 **Clima en traslados al aeropuerto.** Una ubicación puede marcarse como el aeropuerto (Córdoba, `SACO`); en esta etapa lo marca el operador al aceptar la solicitud; en una reserva externa, que no pasa por el operador, la consulta se hace al iniciar el recorrido. Para un traslado con origen o destino en el aeropuerto cuya hora comprometida esté dentro de las próximas 6 h, Rumbo consulta la operabilidad del aeropuerto (al aceptar y al iniciar el recorrido). Si no es operable, el traslado queda con una alerta climática (con sus motivos), se avisa al operador y al cliente, y el operador decide mantener, proponer otro horario o cancelar. Si el servicio de clima no responde, se sigue sin el dato y la alerta queda "clima no verificado".
 
+**Revisión 2026-11-06 ([ADR-025](../../docs/adr/ADR-025-clima-en-las-reservas.md)):** como las reservas no pasan por un operador que acepte, el aeropuerto se detecta por el nombre o la dirección del origen o del destino, y el clima se consulta después de la reserva y cuando el traslado pasa a `EN_CURSO` (R-46). Alcance implementado para la Presentación: [ADR-024](../../docs/adr/ADR-024-alcance-de-la-presentacion.md).
+
 ## 9. Modificaciones y cancelaciones
 - **24 h o más de anticipación:** el cliente puede pedir el cambio o cancelar. Si el cambio afecta horarios o recursos, se revisa la disponibilidad.
 - **Menos de 24 h:** es una **excepción**, y el operador la aprueba o no.

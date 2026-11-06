@@ -11,8 +11,18 @@
 
 x-servicio-go: &servicio-go
   restart: unless-stopped
+  # Vivo, no listo (docs/interfaces-internas.md §11.3). PUERTO es la variable de cada servicio.
+  # Con esto, "docker compose up --wait" espera a que todos respondan (lo usan los tests e2e).
+  healthcheck:
+    test: ["CMD-SHELL", "wget -qO- http://localhost:$$PUERTO/salud > /dev/null || exit 1"]
+    interval: 5s
+    timeout: 3s
+    retries: 20
+    start_period: 10s
   environment: &entorno-comun
     RABBITMQ_URI: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+    # Secreto entre el gateway y los servicios (§11.2, ADR-026).
+    SECRETO_INTERNO: ${SECRETO_INTERNO}
     OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     LOGS_MYSQL_DSN: ${LOGS_MYSQL_DSN:-}
 
@@ -135,6 +145,23 @@ services:
     ports:
       - "4020:4010"
 
+  # Motor de búsqueda de traslados (D6, ADR-011), dueño Operaciones. Como en la clase práctica 5:
+  # el core "traslados" se crea al arrancar; el esquema lo aplica Operaciones.
+  solr:
+    image: solr:9
+    command: ["solr-precreate", "traslados"]
+    mem_limit: 768m
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8983/solr/traslados/admin/ping > /dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 15s
+    volumes:
+      - solr-datos:/var/solr
+    ports:
+      - "8983:8983" # panel de Solr
+
   # ---------------- Microservicios ----------------
   identidad:
     <<: *servicio-go
@@ -150,6 +177,13 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       EXTERNO_CLIENT_ID: ${EXTERNO_CLIENT_ID}
       EXTERNO_CLIENT_SECRET: ${EXTERNO_CLIENT_SECRET}
+      EXTERNO_ORGANIZACION_NOMBRE: ${EXTERNO_ORGANIZACION_NOMBRE:-Gestión de almacenamiento}
+      # Usuarios de demostración de la web (docs/interfaces-internas.md §15).
+      OPERADOR_EMAIL: ${OPERADOR_EMAIL:-}
+      OPERADOR_PASSWORD: ${OPERADOR_PASSWORD:-}
+      CLIENTE_EMAIL: ${CLIENTE_EMAIL:-}
+      CLIENTE_PASSWORD: ${CLIENTE_PASSWORD:-}
+      SECRETO_INTERNO: ${SECRETO_INTERNO}
     depends_on:
       mongo: { condition: service_healthy }
 
@@ -171,6 +205,11 @@ services:
       # el cupo se puede subir para los tests de carga.
       FRANJA_CUPO_TRASLADOS: ${FRANJA_CUPO_TRASLADOS:-4}
       FRANJA_CUPO_KG: ${FRANJA_CUPO_KG:-2000}
+      # Clima en las reservas (ADR-025): palabras que marcan el aeropuerto en origen o destino.
+      AEROPUERTO_PALABRAS: ${AEROPUERTO_PALABRAS:-aeropuerto,saco,pajas blancas}
+      # Solo desarrollo: "example=not_operable" hace que el mock de Prism responda "no operable".
+      CLIMA_PREFER: ${CLIMA_PREFER:-}
+      SOLR_URL: http://solr:8983/solr/traslados
     depends_on:
       mysql: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
@@ -235,8 +274,8 @@ services:
     volumes:
       - ./infra/nginx/integracion.conf:/etc/nginx/nginx.conf:ro
     depends_on:
-      - integracion-1
-      - integracion-2
+      integracion-1: { condition: service_healthy }
+      integracion-2: { condition: service_healthy }
 
   gateway:
     <<: *servicio-go
@@ -248,6 +287,9 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       LOGS_MYSQL_DSN: ${LOGS_MYSQL_DSN:-}
       TOKEN_SECRETO: ${TOKEN_SECRETO}
+      SECRETO_INTERNO: ${SECRETO_INTERNO}
+      # Origen de la aplicación web habilitado por CORS (§11.4).
+      WEB_ORIGEN: ${WEB_ORIGEN:-http://localhost:5173}
       IDENTIDAD_URL: http://identidad:8081
       OPERACIONES_URL: http://operaciones:8082
       RECURSOS_URL: http://recursos:8083
@@ -256,14 +298,15 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      - identidad
-      - operaciones
-      - recursos
-      - notificaciones
-      - balanceador-integracion
+      identidad: { condition: service_healthy }
+      operaciones: { condition: service_healthy }
+      recursos: { condition: service_healthy }
+      notificaciones: { condition: service_healthy }
+      balanceador-integracion: { condition: service_started }
 
 volumes:
   mysql-datos:
   lgtm-datos:
   mysql-logs-datos:
   mongo-datos:
+  solr-datos:

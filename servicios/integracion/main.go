@@ -60,8 +60,12 @@ func main() {
 	if err := repoMongo.AsegurarIndices(ctx); err != nil {
 		terminar("no se pudieron crear los índices", err)
 	}
-	// Decorador cache-aside con Memcached (ADR-007): compartido por las dos réplicas.
-	repo := repositories.NewSolicitudesCache(repoMongo, repositories.NewMemcached(cfg.MemcachedAddr))
+	// Decorador cache-aside con Memcached (ADR-007): compartido por las dos réplicas. En la nube
+	// no hay Memcached (ADR-026) y se lee directo de MongoDB.
+	repo := repositories.ConCacheOpcional(repoMongo, cfg.MemcachedAddr)
+	if cfg.MemcachedAddr == "" {
+		slog.InfoContext(ctx, "caché deshabilitada", slog.String("motivo", "MEMCACHED_ADDR vacío"))
+	}
 	// Cliente hacia Operaciones con timeout de 2 s y circuit breaker (ADR-008).
 	operaciones := clients.NewOperacionesClient(cfg.OperacionesURL)
 	servicio := services.NewSolicitudesService(repo, operaciones, time.Now)

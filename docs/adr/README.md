@@ -12,9 +12,9 @@ Cada decisión se conserva en un archivo independiente `ADR-NNN-titulo-corto.md`
 | D5 | Comunicación entre servicios | E1 inicial (validación en E2) | [ADR-004](ADR-004-comunicacion-entre-servicios.md), validado en [ADR-016](ADR-016-validacion-d5.md), reserva síncrona en [ADR-021](ADR-021-capacidad-de-autoservicio.md) |
 | D6 | Búsqueda | E2 | [ADR-011](ADR-011-busqueda.md) |
 | D7 | Caché | E2 | [ADR-007](ADR-007-cache.md) |
-| D8 | Contrato propio | E1 (actualizar en E2 si cambió) | [ADR-002](ADR-002-contrato-propio.md), contrato reemplazado por [ADR-006](ADR-006-contrato-generico-v2.md) (v2), rutas sin versión en [ADR-019](ADR-019-contrato-sin-version-en-la-ruta.md) (3.0.0), autoservicio con reserva de franja en [ADR-021](ADR-021-capacidad-de-autoservicio.md) (4.0.0) |
+| D8 | Contrato propio | E1 (actualizar en E2 si cambió) | [ADR-002](ADR-002-contrato-propio.md), contrato reemplazado por [ADR-006](ADR-006-contrato-generico-v2.md) (v2), rutas sin versión en [ADR-019](ADR-019-contrato-sin-version-en-la-ruta.md) (3.0.0), autoservicio con reserva de franja en [ADR-021](ADR-021-capacidad-de-autoservicio.md) (4.0.0), ciclo reducido del traslado y contrato 4.0.1 en [ADR-024](ADR-024-alcance-de-la-presentacion.md) |
 | D9 | Consumo del proveedor | E2 | [ADR-012](ADR-012-consumo-clima.md), contrato del proveedor 2.0.1 en [ADR-020](ADR-020-contrato-clima-2.md) |
-| D10 | Resiliencia | E2 | [ADR-008](ADR-008-resiliencia.md), reconexión reemplazada por [ADR-017](ADR-017-reconexion-broker-y-balanceador.md) |
+| D10 | Resiliencia | E2 | [ADR-008](ADR-008-resiliencia.md), reconexión reemplazada por [ADR-017](ADR-017-reconexion-broker-y-balanceador.md), secreto interno y arranque en frío en la nube en [ADR-026](ADR-026-despliegue-en-render.md) |
 | D11 | Observabilidad | E2 primera versión | [ADR-014](ADR-014-observabilidad.md), logs en MySQL en [ADR-023](ADR-023-logs-en-mysql.md) |
 | D12 | Balanceo de carga | E2 | [ADR-009](ADR-009-balanceo.md) |
 | D13 | Capacidad y costos | E2 | [ADR-015](ADR-015-capacidad-y-costos.md) |
@@ -25,11 +25,13 @@ Cada decisión se conserva en un archivo independiente `ADR-NNN-titulo-corto.md`
 | [ADR-005](ADR-005-mysql-como-motor-relacional.md) | MySQL como motor relacional (reemplaza parcialmente a ADR-003) |
 | [ADR-006](ADR-006-contrato-generico-v2.md) | Contrato genérico "Solicitar traslado" v2 (reemplaza parcialmente a ADR-002) |
 | [ADR-017](ADR-017-reconexion-broker-y-balanceador.md) | Reconexión al broker sin terminar el proceso y resolución dinámica de réplicas en NGINX (reemplaza parcialmente a ADR-008) |
-| [ADR-018](ADR-018-despliegue-en-la-nube.md) | Despliegue en la nube: Vercel para la web y Railway para el backend |
+| [ADR-018](ADR-018-despliegue-en-la-nube.md) | Despliegue en la nube: Vercel para la web y Railway para el backend (reemplazada parcialmente por ADR-026) |
 | [ADR-019](ADR-019-contrato-sin-version-en-la-ruta.md) | Rutas sin versión, públicas e internas; el contrato se versiona en su documento (reemplaza parcialmente a ADR-002 y ADR-006) |
 | [ADR-020](ADR-020-contrato-clima-2.md) | Contrato de clima 2.0.1 del proveedor: ruta sin versión, timeouts sin cambios ante el servicio dormido (reemplaza parcialmente a ADR-012) |
 | [ADR-021](ADR-021-capacidad-de-autoservicio.md) | Capacidad publicada de autoservicio: reservar una franja, contrato 4.0.0 (reemplaza parcialmente a ADR-002, ADR-004, ADR-006, ADR-008, ADR-009, ADR-014 y ADR-019) |
 | [ADR-023](ADR-023-logs-en-mysql.md) | Logs en MySQL leídos por Grafana, escritos en lotes y en segundo plano (reemplaza parcialmente a ADR-014) |
+| [ADR-024](ADR-024-alcance-de-la-presentacion.md) | Alcance implementado para la Presentación: flujo de reservas de franjas, ciclo reducido del traslado, se saca la revisión de solicitudes; Recursos en esqueleto (reemplaza parcialmente a ADR-001, ADR-011 y ADR-012) |
+| [ADR-026](ADR-026-despliegue-en-render.md) | Despliegue de la capacidad publicada en Render (plan gratuito), secreto interno entre el gateway y los servicios y arranque en frío (reemplaza parcialmente a ADR-018) |
 
 ## Formato
 ```

@@ -1,0 +1,123 @@
+# Blueprint de Render: despliegue de la capacidad publicada "Reservar traslado" (ADR-026).
+# Solo los cuatro servicios del camino de la capacidad, en el plan gratuito, con las mismas
+# imágenes que compose.yaml. Las bases y el broker son servicios gestionados externos
+# (MongoDB Atlas, Aiven for MySQL y CloudAMQP).
+#
+# Los valores con "sync: false" son secretos o URL que se cargan en el panel de Render al crear
+# el Blueprint: nunca se escriben en el repositorio (consigna §2.12). Los nombres son los mismos
+# que en .env.example.
+#
+# Render le pasa a cada servicio el puerto en PORT; los servicios lo leen de PUERTO, así que se
+# fijan las dos con el mismo valor.
+
+services:
+  # Punto de entrada único: su URL es la que se publica en docs/contracts/README.md.
+  - type: web
+    name: rumbo-gateway
+    runtime: docker
+    plan: free
+    dockerContext: ./servicios
+    dockerfilePath: ./servicios/gateway/Dockerfile
+    healthCheckPath: /salud
+    autoDeploy: true
+    envVars:
+      - key: PUERTO
+        value: "10000"
+      - key: PORT
+        value: "10000"
+      - key: TOKEN_SECRETO
+        sync: false
+      - key: SECRETO_INTERNO
+        sync: false
+      # URL https://…onrender.com de cada servicio (se conocen después de crearlos).
+      - key: IDENTIDAD_URL
+        sync: false
+      - key: OPERACIONES_URL
+        sync: false
+      - key: INTEGRACION_URL
+        sync: false
+      # Recursos y Notificaciones no se despliegan (ADR-026): sus rutas responden 502.
+      - key: DESPERTAR_AL_ARRANCAR
+        value: "true"
+
+  - type: web
+    name: rumbo-identidad
+    runtime: docker
+    plan: free
+    dockerContext: ./servicios
+    dockerfilePath: ./servicios/identidad/Dockerfile
+    healthCheckPath: /salud
+    autoDeploy: true
+    envVars:
+      - key: PUERTO
+        value: "10000"
+      - key: PORT
+        value: "10000"
+      - key: MONGO_URI # Atlas, base identidad
+        sync: false
+      - key: TOKEN_SECRETO
+        sync: false
+      - key: SECRETO_INTERNO
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: EXTERNO_CLIENT_ID
+        value: org-almacenamiento
+      - key: EXTERNO_CLIENT_SECRET # se le pasa al grupo consumidor por un canal privado
+        sync: false
+      - key: EXTERNO_ORGANIZACION_NOMBRE
+        value: Gestión de almacenamiento
+      # Sin OPERADOR_* ni CLIENTE_*: la web corre en local (ADR-026), no se siembran en la nube.
+
+  - type: web
+    name: rumbo-integracion
+    runtime: docker
+    plan: free
+    dockerContext: ./servicios
+    dockerfilePath: ./servicios/integracion/Dockerfile
+    healthCheckPath: /salud
+    autoDeploy: true
+    envVars:
+      - key: PUERTO
+        value: "10000"
+      - key: PORT
+        value: "10000"
+      - key: INSTANCIA
+        value: integracion-render
+      - key: MONGO_URI # Atlas, base integracion
+        sync: false
+      - key: RABBITMQ_URI # CloudAMQP (amqps://…)
+        sync: false
+      - key: OPERACIONES_URL
+        sync: false
+      - key: SECRETO_INTERNO
+        sync: false
+      # Sin MEMCACHED_ADDR: sin caché en la nube, lee de MongoDB (ADR-007, ADR-026).
+
+  - type: web
+    name: rumbo-operaciones
+    runtime: docker
+    plan: free
+    dockerContext: ./servicios
+    dockerfilePath: ./servicios/operaciones/Dockerfile
+    healthCheckPath: /salud
+    autoDeploy: true
+    envVars:
+      - key: PUERTO
+        value: "10000"
+      - key: PORT
+        value: "10000"
+      - key: MYSQL_DSN # Aiven: usuario:clave@tcp(host:puerto)/operaciones?parseTime=true&multiStatements=true&tls=skip-verify
+        sync: false
+      - key: RABBITMQ_URI
+        sync: false
+      - key: SECRETO_INTERNO
+        sync: false
+      - key: CLIMA_URL # URL real del proveedor (ADR-020)
+        sync: false
+      - key: CLIMA_API_KEY
+        sync: false
+      - key: CLIMA_ICAO
+        value: SACO

@@ -13,6 +13,7 @@ import (
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
+	"github.com/francoroblesss/Rumbo/servicios/comun/identidad"
 	"github.com/francoroblesss/Rumbo/servicios/comun/observabilidad"
 	"github.com/francoroblesss/Rumbo/servicios/comun/problema"
 )
@@ -23,8 +24,21 @@ const TiempoMaximo = 5 * time.Second
 // Nuevo devuelve un reverse proxy hacia destino. Si quitarPrefijo no está vacío, se elimina
 // del path antes de reenviar (ej. /api/recursos/choferes → /choferes en Recursos).
 // El gateway no reintenta: el reintento le corresponde al cliente (un solo dueño, teórico 7).
-// Cada llamada propaga la traza (traceparent) al servicio.
-func Nuevo(destino string, quitarPrefijo string) http.Handler {
+// Cada llamada propaga la traza (traceparent) al servicio y lleva el secreto interno
+// (docs/interfaces-internas.md §11.2), si está configurado.
+func Nuevo(destino, quitarPrefijo, secreto string) http.Handler {
+	return nuevo(destino, quitarPrefijo, secreto, TiempoMaximo, 0)
+}
+
+// NuevoStream es Nuevo para el stream de avisos (SSE, ADR-027): sin el deadline de 5 s, porque
+// la conexión dura minutos, y con flush inmediato de cada evento (FlushInterval -1). El
+// ReverseProxy ya hace flush inmediato con text/event-stream; se fija igual para no depender
+// del Content-Type que mande el servicio.
+func NuevoStream(destino, quitarPrefijo, secreto string) http.Handler {
+	return nuevo(destino, quitarPrefijo, secreto, 0, -1)
+}
+
+func nuevo(destino, quitarPrefijo, secreto string, tiempoMaximo, flush time.Duration) http.Handler {
 	u, err := url.Parse(destino)
 	if err != nil {
 		slog.Error("URL de destino inválida", slog.String("destino", destino), slog.String("error", err.Error()))
@@ -39,10 +53,17 @@ func Nuevo(destino string, quitarPrefijo string) http.Handler {
 			}
 			r.SetURL(u)
 			r.SetXForwarded()
+			// El secreto lo pone solo el gateway: el que haya mandado el cliente ya lo borró
+			// entrada.LimpiarIdentidad, y acá se vuelve a borrar por si este proxy se usa solo.
+			r.Out.Header.Del(identidad.HeaderInterno)
+			if secreto != "" {
+				r.Out.Header.Set(identidad.HeaderInterno, secreto)
+			}
 		},
+		FlushInterval: flush,
 		Transport: otelhttp.NewTransport(&http.Transport{
 			DialContext:           (&net.Dialer{Timeout: 2 * time.Second}).DialContext,
-			ResponseHeaderTimeout: TiempoMaximo,
+			ResponseHeaderTimeout: tiempoMaximo, // 0 = sin límite (stream)
 		}),
 		// El gateway ya puso su X-Correlation-ID en la respuesta (es el mismo valor que propagó):
 		// se quita el que devuelve el servicio para no mandarlo dos veces.

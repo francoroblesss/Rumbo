@@ -26,11 +26,13 @@ func BloquearInternas(siguiente http.Handler) http.Handler {
 
 // LimpiarIdentidad borra siempre los headers de identidad que mande el cliente. Solo el
 // gateway los escribe, después de validar el token: así un servicio puede confiar en ellos.
+// Lo mismo con el secreto interno, que agrega el proxy.
 func LimpiarIdentidad(siguiente http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Header.Del(identidad.HeaderUsuario)
 		r.Header.Del(identidad.HeaderOrganizacion)
 		r.Header.Del(identidad.HeaderRoles)
+		r.Header.Del(identidad.HeaderInterno) // el secreto interno también lo pone solo el gateway (§11.2)
 		siguiente.ServeHTTP(w, r)
 	})
 }

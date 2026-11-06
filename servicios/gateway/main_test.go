@@ -13,7 +13,11 @@ import (
 	"github.com/francoroblesss/Rumbo/servicios/gateway/limite"
 )
 
-const secretoPrueba = "secreto-de-prueba-bastante-largo"
+const (
+	secretoPrueba        = "secreto-de-prueba-bastante-largo"
+	secretoInternoPrueba = "secreto-interno-de-prueba"
+	origenWebPrueba      = "http://localhost:5173"
+)
 
 // servicioFalso es un servicio detrás del gateway: guarda la última request que recibió.
 type servicioFalso struct {
@@ -55,6 +59,8 @@ func nuevoEntorno(t *testing.T) *entorno {
 		RecursosURL:       otro.URL,
 		NotificacionesURL: otro.URL,
 		IntegracionURL:    e.integra.URL,
+		SecretoInterno:    secretoInternoPrueba,
+		WebOrigen:         origenWebPrueba,
 	}, limite.Nuevo())
 	return e
 }

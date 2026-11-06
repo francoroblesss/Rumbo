@@ -3,6 +3,7 @@ package observabilidad
 import (
 	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -11,6 +12,8 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+
+	"github.com/francoroblesss/Rumbo/servicios/comun/identidad"
 )
 
 // HeaderCorrelacion viaja en todas las llamadas HTTP internas (docs/interfaces-internas.md §2).
@@ -66,12 +69,36 @@ func ClienteHTTP(timeout time.Duration) *http.Client {
 	}
 }
 
-type transporteCorrelacion struct{ base http.RoundTripper }
+// ClienteInterno es ClienteHTTP más el secreto interno (identidad.HeaderInterno), para las
+// llamadas entre servicios de Rumbo (docs/interfaces-internas.md §11.2, ADR-026). El secreto se
+// lee de SECRETO_INTERNO al crear el cliente; si está vacío, no se agrega nada.
+// Nunca usarlo para llamar a un sistema de otro grupo: le estaríamos mandando nuestro secreto.
+func ClienteInterno(timeout time.Duration) *http.Client {
+	return &http.Client{
+		Timeout: timeout,
+		Transport: transporteCorrelacion{
+			base:    otelhttp.NewTransport(http.DefaultTransport),
+			secreto: os.Getenv(identidad.VariableSecretoInterno),
+		},
+	}
+}
+
+type transporteCorrelacion struct {
+	base    http.RoundTripper
+	secreto string // vacío en ClienteHTTP
+}
 
 func (t transporteCorrelacion) RoundTrip(req *http.Request) (*http.Response, error) {
-	if id := Correlacion(req.Context()); id != "" && req.Header.Get(HeaderCorrelacion) == "" {
-		req = req.Clone(req.Context())
-		req.Header.Set(HeaderCorrelacion, id)
+	id := Correlacion(req.Context())
+	agregarCorrelacion := id != "" && req.Header.Get(HeaderCorrelacion) == ""
+	if agregarCorrelacion || t.secreto != "" {
+		req = req.Clone(req.Context()) // un RoundTripper no debe modificar la request recibida
+		if agregarCorrelacion {
+			req.Header.Set(HeaderCorrelacion, id)
+		}
+		if t.secreto != "" {
+			req.Header.Set(identidad.HeaderInterno, t.secreto)
+		}
 	}
 	return t.base.RoundTrip(req)
 }

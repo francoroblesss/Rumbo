@@ -31,7 +31,7 @@ func TestQuitaElPrefijoAntesDeReenviar(t *testing.T) {
 	defer servicio.Close()
 
 	rec := httptest.NewRecorder()
-	Nuevo(servicio.URL, "/api/recursos").ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/recursos/choferes", nil))
+	Nuevo(servicio.URL, "/api/recursos", "").ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/recursos/choferes", nil))
 
 	if rutaRecibida != "/choferes" {
 		t.Fatalf("el servicio recibió %q, se esperaba /choferes", rutaRecibida)
@@ -45,7 +45,7 @@ func TestElCorrelationIDNoSeDuplicaEnLaRespuesta(t *testing.T) {
 		w.WriteHeader(http.StatusAccepted)
 	}))
 	defer servicio.Close()
-	proxy := Nuevo(servicio.URL, "")
+	proxy := Nuevo(servicio.URL, "", "")
 	// El middleware del gateway ya puso el id en la respuesta antes de reenviar.
 	conMiddleware := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(observabilidad.HeaderCorrelacion, "id-1")
@@ -70,7 +70,7 @@ func TestServicioCaidoResponde502ConProblemDetails(t *testing.T) {
 	servicio.Close() // nadie escucha en esa dirección
 
 	rec := httptest.NewRecorder()
-	Nuevo(destino, "").ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/traslados/x", nil))
+	Nuevo(destino, "", "").ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/traslados/x", nil))
 
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("estado %d, se esperaba 502", rec.Code)
@@ -95,7 +95,7 @@ func TestServicioLentoResponde504ConProblemDetails(t *testing.T) {
 	defer close(liberar)
 
 	rec := httptest.NewRecorder()
-	Nuevo(servicio.URL, "").ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/traslados/x", nil))
+	Nuevo(servicio.URL, "", "").ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/traslados/x", nil))
 
 	if rec.Code != http.StatusGatewayTimeout {
 		t.Fatalf("estado %d, se esperaba 504", rec.Code)

@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/francoroblesss/Rumbo/servicios/comun/identidad"
 	"github.com/francoroblesss/Rumbo/servicios/comun/observabilidad"
 	"github.com/francoroblesss/Rumbo/servicios/identidad/config"
 	"github.com/francoroblesss/Rumbo/servicios/identidad/controllers"
@@ -67,7 +68,11 @@ func main() {
 	// 3. Servidor HTTP instrumentado (traza, correlation id, métrica y log por request).
 	router := gin.New()
 	router.Use(gin.Recovery())
+	// /salud antes de Instrumentar y del secreto: las sondas no se miden ni lo piden (§11.3).
+	observabilidad.Salud(router, "identidad")
 	observabilidad.Instrumentar(router, "identidad")
+	// Después de Instrumentar, para que un 401 por falta del secreto se mida y se loguee (§11.2).
+	router.Use(identidad.ExigirSecretoInterno())
 	controllers.NuevoAuthController(autenticacion).Registrar(router)
 
 	slog.Info("servicio escuchando", slog.String("puerto", cfg.Puerto))

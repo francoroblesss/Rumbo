@@ -15,6 +15,9 @@ type Config struct {
 	RecursosURL       string // servicio Recursos
 	NotificacionesURL string // servicio Notificaciones
 	IntegracionURL    string // servicio Integración de carga
+	SecretoInterno    string // secreto que el gateway agrega a todo lo que reenvía (docs/interfaces-internas.md §11.2)
+	WebOrigen         string // origen de la aplicación web habilitado por CORS (§11.4)
+	Despertar         bool   // despertar al arrancar el camino de la capacidad (Render, ADR-026)
 }
 
 // Cargar lee la configuración del entorno, con valores por defecto para desarrollo local.
@@ -28,6 +31,9 @@ func Cargar() Config {
 		RecursosURL:       valor("RECURSOS_URL", "http://localhost:8083"),
 		NotificacionesURL: valor("NOTIFICACIONES_URL", "http://localhost:8084"),
 		IntegracionURL:    valor("INTEGRACION_URL", "http://localhost:8085"),
+		SecretoInterno:    os.Getenv("SECRETO_INTERNO"),
+		WebOrigen:         valor("WEB_ORIGEN", "http://localhost:5173"),
+		Despertar:         os.Getenv("DESPERTAR_AL_ARRANCAR") == "true",
 	}
 }
 

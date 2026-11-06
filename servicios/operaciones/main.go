@@ -14,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/francoroblesss/Rumbo/servicios/comun/identidad"
 	"github.com/francoroblesss/Rumbo/servicios/comun/mensajeria"
 	"github.com/francoroblesss/Rumbo/servicios/comun/observabilidad"
 	"github.com/francoroblesss/Rumbo/servicios/operaciones/adaptadores/api"
@@ -70,7 +71,11 @@ func main() {
 
 	router := gin.New()
 	router.Use(gin.Recovery())
+	// /salud antes de Instrumentar y del secreto: las sondas no se miden ni lo piden (§11.3).
+	observabilidad.Salud(router, "operaciones")
 	observabilidad.Instrumentar(router, "operaciones")
+	// Después de Instrumentar, para que un 401 por falta del secreto se mida y se loguee (§11.2).
+	router.Use(identidad.ExigirSecretoInterno())
 	api.NuevoHandler(solicitudes).Registrar(router)
 
 	publicador := adaptadormensajeria.NuevoPublicador(conexionRabbit)

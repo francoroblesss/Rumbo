@@ -85,7 +85,7 @@ func NewOperacionesClient(baseURL string) OperacionesClient {
 				slog.String("desde", desde.String()), slog.String("hacia", hacia.String()))
 		},
 	})
-	return &operacionesHTTP{baseURL: baseURL, http: observabilidad.ClienteHTTP(TimeoutOperaciones), breaker: breaker}
+	return &operacionesHTTP{baseURL: baseURL, http: observabilidad.ClienteInterno(TimeoutOperaciones), breaker: breaker}
 }
 
 func (c *operacionesHTTP) Disponibilidad(ctx context.Context, fecha string, pesoKg *float64) (models.Disponibilidad, error) {

@@ -25,9 +25,6 @@ import (
 	"github.com/francoroblesss/Rumbo/servicios/operaciones/config"
 )
 
-// IntervaloVencimiento es cada cuánto se buscan contrapropuestas vencidas.
-const IntervaloVencimiento = 30 * time.Second
-
 // Operaciones: núcleo de Rumbo (solicitudes, planes, traslados, recorridos, asignaciones,
 // incidentes). Arquitectura interna hexagonal (ADR-010): dominio y aplicación en el centro,
 // puertos como contratos y adaptadores (HTTP, MySQL, RabbitMQ, clima) afuera.
@@ -63,11 +60,11 @@ func main() {
 		terminar("no se pudieron aplicar las migraciones", err)
 	}
 	unidadDeTrabajo := mysql.NuevaUnidadDeTrabajo(db)
-	consultaClima := clima.NuevoCliente(cfg.ClimaURL, cfg.ClimaAPIKey)
+	consultaClima := clima.NuevoCliente(cfg.ClimaURL, cfg.ClimaAPIKey, cfg.ClimaPrefer)
 	calendario := cfg.Calendario
 	calendario.Zona = aplicacion.ZonaRumbo()
-	solicitudes := aplicacion.NuevasSolicitudes(unidadDeTrabajo, consultaClima, cfg.ClimaICAO, calendario,
-		func() time.Time { return time.Now().UTC() }, observabilidad.Instancia())
+	solicitudes := aplicacion.NuevasSolicitudes(unidadDeTrabajo, consultaClima, cfg.ClimaICAO, cfg.AeropuertoPalabras,
+		calendario, func() time.Time { return time.Now().UTC() }, observabilidad.Instancia())
 
 	router := gin.New()
 	router.Use(gin.Recovery())
@@ -86,29 +83,18 @@ func main() {
 	}
 	go relay.Ejecutar(ctx)
 
-	go vencerContrapropuestas(ctx, solicitudes)
+	// Clima después de reservar (ADR-025, §13.2): Operaciones consume su propio evento. La
+	// reserva ya respondió; el clima se revisa acá, sin demorarla. Reintentos y DLQ de comun.
+	go mensajeria.Consumir(ctx, conexionRabbit, mensajeria.ConfigConsumidor{
+		Cola:     "operaciones.clima",
+		Exchange: aplicacion.ExchangeEventos,
+		Claves:   []string{"operaciones.solicitud.aceptada"},
+	}, adaptadormensajeria.NuevoManejadorClima(solicitudes))
 
 	// 3. Servidor HTTP (adaptador de entrada), instrumentado.
 	slog.InfoContext(ctx, "servicio escuchando", slog.String("puerto", cfg.Puerto))
 	if err := router.Run(":" + cfg.Puerto); err != nil {
 		terminar("el servidor HTTP se detuvo", err)
-	}
-}
-
-// vencerContrapropuestas es la tarea programada de R-08: cada 30 s vence las contrapropuestas
-// sin respuesta a las 24 h.
-func vencerContrapropuestas(ctx context.Context, solicitudes *aplicacion.Solicitudes) {
-	ticker := time.NewTicker(IntervaloVencimiento)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			if _, err := solicitudes.VencerContrapropuestas(ctx); err != nil && ctx.Err() == nil {
-				slog.ErrorContext(ctx, "no se pudieron vencer las contrapropuestas", slog.String("error", err.Error()))
-			}
-		}
 	}
 }
 

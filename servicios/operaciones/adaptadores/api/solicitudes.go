@@ -37,17 +37,17 @@ func NuevoHandler(casos puertos.Solicitudes) *Handler {
 	return &Handler{casos: casos}
 }
 
-// Registrar agrega las rutas (docs/interfaces-internas.md §4.1 y §4.2).
+// Registrar agrega las rutas (docs/interfaces-internas.md §4.1 y §12).
 func (h *Handler) Registrar(r gin.IRouter) {
-	// API del operador: llega por el gateway (/api/operaciones/...), que ya validó el token.
-	// La autorización la decide Operaciones sobre sus datos (teórico 6).
-	operador := r.Group("/solicitudes", identidad.RequiereRol(identidad.RolOperador, identidad.RolAdministrador))
-	operador.GET("", h.listar)
-	operador.GET("/:id", h.obtener)
-	operador.POST("/:id/aceptacion", h.aceptar)
-	operador.POST("/:id/contrapropuesta", h.contraproponer)
-	operador.POST("/:id/rechazo", h.rechazar)
-	operador.POST("/:id/cancelacion-tardia", h.resolverCancelacionTardia)
+	// API de la aplicación web: llega por el gateway (/api/operaciones/...), que ya validó el
+	// token. La autorización la decide Operaciones sobre sus datos (teórico 6).
+	personal := identidad.RequiereRol(identidad.RolOperador, identidad.RolAdministrador)
+	conCliente := identidad.RequiereRol(identidad.RolOperador, identidad.RolAdministrador, identidad.RolCliente)
+	r.GET("/franjas", personal, h.franjas)
+	r.GET("/solicitudes", conCliente, h.listar)
+	r.GET("/solicitudes/:id", conCliente, h.obtener)
+	r.POST("/solicitudes/:id/estado", personal, h.avanzarEstado)
+	r.POST("/solicitudes/:id/cancelacion", conCliente, h.cancelarDesdeWeb)
 
 	// Endpoints internos para Integración de carga (capacidad publicada, ADR-021): el gateway no
 	// expone /internas/.
@@ -57,13 +57,61 @@ func (h *Handler) Registrar(r gin.IRouter) {
 	internas.POST("/solicitudes/:id/cancelacion", h.cancelar)
 }
 
+// organizacionWeb es la organización con la que se filtra lo que pide la web (§11.1): "" para el
+// personal de Rumbo (ve todas) y la del token para el cliente, nunca un parámetro. Un cliente sin
+// organización no puede ver nada: 403.
+func organizacionWeb(c *gin.Context) (string, bool) {
+	id := identidad.Desde(c)
+	if id.TieneRol(identidad.RolOperador, identidad.RolAdministrador) {
+		return "", true
+	}
+	if strings.TrimSpace(id.Organizacion) == "" {
+		problema.Escribir(c, http.StatusForbidden, "SIN_PERMISO", "Sin permiso",
+			"La identidad no tiene una organización.")
+		return "", false
+	}
+	return id.Organizacion, true
+}
+
+func (h *Handler) franjas(c *gin.Context) {
+	fecha := c.Query("fecha")
+	if fecha == "" {
+		datosInvalidos(c, "fecha", "es obligatorio (AAAA-MM-DD)")
+		return
+	}
+	d, err := h.casos.Franjas(c.Request.Context(), fecha)
+	if errors.Is(err, dominio.ErrDatosInvalidos) {
+		datosInvalidos(c, "fecha", "debe ser AAAA-MM-DD, entre hoy y el fin del período reservable")
+		return
+	}
+	if err != nil {
+		h.error(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, d)
+}
+
 func (h *Handler) listar(c *gin.Context) {
+	org, ok := organizacionWeb(c)
+	if !ok {
+		return
+	}
+	if org == "" {
+		// Solo el personal de Rumbo elige la organización; al cliente se le ignora el parámetro.
+		org = c.Query("organizacion_id")
+	}
 	pagina, ok1 := entero(c, "pagina", paginaPorDefecto)
 	tamanio, ok2 := entero(c, "tamanio", tamanioPorDefecto)
 	if !ok1 || !ok2 {
 		return
 	}
-	p, err := h.casos.Listar(c.Request.Context(), c.Query("estado"), pagina, tamanio)
+	p, err := h.casos.Listar(c.Request.Context(), puertos.FiltroListado{Organizacion: org, Fecha: c.Query("fecha"),
+		EstadoTraslado: c.Query("estado_traslado"), Pagina: pagina, Tamanio: tamanio})
+	if errors.Is(err, dominio.ErrDatosInvalidos) {
+		datosInvalidos(c, "fecha, estado_traslado, pagina o tamanio",
+			"fecha AAAA-MM-DD; estado_traslado PROGRAMADO, EN_CURSO, COMPLETADO o CANCELADO; pagina desde 1; tamanio de 1 a 100")
+		return
+	}
 	if err != nil {
 		h.error(c, err)
 		return
@@ -72,67 +120,41 @@ func (h *Handler) listar(c *gin.Context) {
 }
 
 func (h *Handler) obtener(c *gin.Context) {
-	h.responder(c)(h.casos.Obtener(c.Request.Context(), "", c.Param("id")))
-}
-
-func (h *Handler) aceptar(c *gin.Context) {
-	var cuerpo struct {
-		AeropuertoExtremo *string `json:"aeropuerto_extremo"`
-	}
-	if _, ok := leerCuerpo(c, &cuerpo); !ok {
-		return
-	}
-	var extremo *dominio.Extremo
-	if cuerpo.AeropuertoExtremo != nil {
-		e := dominio.Extremo(*cuerpo.AeropuertoExtremo)
-		if e != dominio.ExtremoOrigen && e != dominio.ExtremoDestino {
-			datosInvalidos(c, "aeropuerto_extremo", "debe ser ORIGEN, DESTINO o null")
-			return
-		}
-		extremo = &e
-	}
-	h.responder(c)(h.casos.Aceptar(c.Request.Context(), "", c.Param("id"), extremo))
-}
-
-func (h *Handler) contraproponer(c *gin.Context) {
-	var cuerpo struct {
-		Hora *string `json:"hora_llegada_propuesta"`
-	}
-	if _, ok := leerCuerpo(c, &cuerpo); !ok {
-		return
-	}
-	if cuerpo.Hora == nil {
-		datosInvalidos(c, "hora_llegada_propuesta", "es obligatorio")
-		return
-	}
-	hora, err := time.Parse(time.RFC3339, *cuerpo.Hora)
-	if err != nil {
-		datosInvalidos(c, "hora_llegada_propuesta", "debe ser una fecha y hora RFC 3339 con zona")
-		return
-	}
-	h.responder(c)(h.casos.Contraproponer(c.Request.Context(), c.Param("id"), hora.UTC()))
-}
-
-func (h *Handler) rechazar(c *gin.Context) {
-	motivo, ok := leerMotivo(c)
+	org, ok := organizacionWeb(c)
 	if !ok {
 		return
 	}
-	h.responder(c)(h.casos.Rechazar(c.Request.Context(), c.Param("id"), motivo))
+	h.responder(c)(h.casos.Obtener(c.Request.Context(), org, c.Param("id")))
 }
 
-func (h *Handler) resolverCancelacionTardia(c *gin.Context) {
+func (h *Handler) avanzarEstado(c *gin.Context) {
 	var cuerpo struct {
-		Aprobar *bool `json:"aprobar"`
+		Estado *string `json:"estado"`
 	}
 	if _, ok := leerCuerpo(c, &cuerpo); !ok {
 		return
 	}
-	if cuerpo.Aprobar == nil {
-		datosInvalidos(c, "aprobar", "es obligatorio")
+	if cuerpo.Estado == nil || (*cuerpo.Estado != string(dominio.TrasladoEnCurso) && *cuerpo.Estado != string(dominio.TrasladoCompletado)) {
+		datosInvalidos(c, "estado", "debe ser EN_CURSO o COMPLETADO")
 		return
 	}
-	h.responder(c)(h.casos.ResolverCancelacionTardia(c.Request.Context(), c.Param("id"), *cuerpo.Aprobar))
+	h.responder(c)(h.casos.AvanzarEstado(c.Request.Context(), "", c.Param("id"), dominio.EstadoTraslado(*cuerpo.Estado)))
+}
+
+func (h *Handler) cancelarDesdeWeb(c *gin.Context) {
+	org, ok := organizacionWeb(c)
+	if !ok {
+		return
+	}
+	motivo, crudo, ok := leerMotivo(c)
+	if !ok {
+		return
+	}
+	idem, ok := idempotencia(c, "cancelacion", crudo)
+	if !ok {
+		return
+	}
+	h.responder(c)(h.casos.CancelarDesdeWeb(c.Request.Context(), org, c.Param("id"), motivo, idem))
 }
 
 func (h *Handler) disponibilidad(c *gin.Context) {
@@ -231,22 +253,15 @@ func (h *Handler) cancelar(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var cuerpo struct {
-		Motivo *string `json:"motivo"`
-	}
-	crudo, ok := leerCuerpo(c, &cuerpo)
+	motivo, crudo, ok := leerMotivo(c)
 	if !ok {
-		return
-	}
-	if cuerpo.Motivo == nil || strings.TrimSpace(*cuerpo.Motivo) == "" {
-		datosInvalidos(c, "motivo", "es obligatorio")
 		return
 	}
 	idem, ok := idempotencia(c, "cancelacion", crudo)
 	if !ok {
 		return
 	}
-	h.responder(c)(h.casos.Cancelar(c.Request.Context(), org, c.Param("id"), *cuerpo.Motivo, idem))
+	h.responder(c)(h.casos.Cancelar(c.Request.Context(), org, c.Param("id"), motivo, idem))
 }
 
 // responder escribe la vista o traduce el error.
@@ -270,12 +285,6 @@ func (h *Handler) error(c *gin.Context, err error) {
 	case errors.Is(err, puertos.ErrClaveReutilizada):
 		problema.Escribir(c, http.StatusConflict, "CLAVE_IDEMPOTENCIA_REUTILIZADA", "Clave de idempotencia reutilizada",
 			"La Idempotency-Key ya se usó con otro cuerpo.")
-	case errors.Is(err, dominio.ErrContrapropuestaVencida):
-		problema.Escribir(c, http.StatusConflict, "CONTRAPROPUESTA_VENCIDA", "La contrapropuesta venció",
-			"Pasaron 24 h desde la contrapropuesta.")
-	case errors.Is(err, dominio.ErrSinHoraPedida):
-		problema.Escribir(c, http.StatusConflict, "ESTADO_NO_PERMITE_OPERACION", "El estado actual no permite la operación",
-			"la solicitud no tiene hora pedida: hay que contraproponer")
 	case errors.Is(err, dominio.ErrEstadoNoPermite):
 		problema.Escribir(c, http.StatusConflict, "ESTADO_NO_PERMITE_OPERACION", "El estado actual no permite la operación",
 			"La solicitud o su traslado no están en un estado que admita esta operación.")
@@ -326,21 +335,25 @@ func leerCuerpo(c *gin.Context, destino any) ([]byte, bool) {
 	return crudo, true
 }
 
-func leerMotivo(c *gin.Context) (string, bool) {
+// leerMotivo lee el cuerpo {"motivo": "…"} de una cancelación y devuelve también los bytes
+// crudos, para el hash de la clave de idempotencia.
+func leerMotivo(c *gin.Context) (string, []byte, bool) {
 	var cuerpo struct {
 		Motivo *string `json:"motivo"`
 	}
-	if _, ok := leerCuerpo(c, &cuerpo); !ok {
-		return "", false
+	crudo, ok := leerCuerpo(c, &cuerpo)
+	if !ok {
+		return "", nil, false
 	}
 	if cuerpo.Motivo == nil || strings.TrimSpace(*cuerpo.Motivo) == "" {
 		datosInvalidos(c, "motivo", "es obligatorio")
-		return "", false
+		return "", nil, false
 	}
-	return *cuerpo.Motivo, true
+	return *cuerpo.Motivo, crudo, true
 }
 
-// organizacion lee la organización que manda Integración (la del consumidor externo).
+// organizacion lee la organización que manda Integración en los endpoints internos (la del
+// consumidor externo).
 func organizacion(c *gin.Context) (string, bool) {
 	org := strings.TrimSpace(c.GetHeader(identidad.HeaderOrganizacion))
 	if org == "" {

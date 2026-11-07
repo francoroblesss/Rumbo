@@ -4,22 +4,24 @@ package puertos
 // eventos (docs/interfaces-internas.md §6). Es el dato que devuelve el puerto de entrada, por
 // eso vive acá (aplicacion la arma con NuevaVista). Las horas van en RFC 3339 con -03:00.
 type Vista struct {
-	ID                    string                `json:"id"`
-	ReferenciaExterna     *string               `json:"referencia_externa"`
-	Estado                string                `json:"estado"`
-	Cosa                  VistaCosa             `json:"cosa"`
-	Origen                VistaUbicacion        `json:"origen"`
-	Destino               VistaUbicacion        `json:"destino"`
-	HoraLlegadaSolicitada *string               `json:"hora_llegada_solicitada"`
-	ToleranciaMinutos     int                   `json:"tolerancia_minutos"`
-	Observaciones         *string               `json:"observaciones"`
-	Contrapropuesta       *VistaContrapropuesta `json:"contrapropuesta"`
-	MotivoRechazo         *string               `json:"motivo_rechazo"`
-	Traslado              *VistaTraslado        `json:"traslado"`
-	Cancelacion           *VistaCancelacion     `json:"cancelacion"`
-	Version               int64                 `json:"version"`
-	CreadoEn              string                `json:"creado_en"`
-	ActualizadoEn         string                `json:"actualizado_en"`
+	ID                    string         `json:"id"`
+	ReferenciaExterna     *string        `json:"referencia_externa"`
+	Estado                string         `json:"estado"`
+	Cosa                  VistaCosa      `json:"cosa"`
+	Origen                VistaUbicacion `json:"origen"`
+	Destino               VistaUbicacion `json:"destino"`
+	HoraLlegadaSolicitada *string        `json:"hora_llegada_solicitada"`
+	ToleranciaMinutos     int            `json:"tolerancia_minutos"`
+	Observaciones         *string        `json:"observaciones"`
+	// PropuestaDeHorario es el campo "contrapropuesta" de la revisión de solicitudes: desde
+	// ADR-024 queda siempre en null, pero se conserva para no cambiar la forma de la vista (§12).
+	PropuestaDeHorario *struct{}         `json:"contrapropuesta"`
+	MotivoRechazo      *string           `json:"motivo_rechazo"`
+	Traslado           *VistaTraslado    `json:"traslado"`
+	Cancelacion        *VistaCancelacion `json:"cancelacion"`
+	Version            int64             `json:"version"`
+	CreadoEn           string            `json:"creado_en"`
+	ActualizadoEn      string            `json:"actualizado_en"`
 }
 
 type VistaCosa struct {
@@ -33,11 +35,6 @@ type VistaUbicacion struct {
 	Nombre    string  `json:"nombre"`
 	Direccion string  `json:"direccion"`
 	Contacto  *string `json:"contacto"`
-}
-
-type VistaContrapropuesta struct {
-	HoraLlegadaPropuesta string `json:"hora_llegada_propuesta"`
-	VenceEn              string `json:"vence_en"`
 }
 
 type VistaTraslado struct {
@@ -70,7 +67,7 @@ type VistaCancelacion struct {
 	Tardia       bool   `json:"tardia"`
 }
 
-// Pagina es una página del listado del operador.
+// Pagina es una página del listado de la web (§11.1).
 type Pagina struct {
 	Resultados []Vista `json:"resultados"`
 	Pagina     int     `json:"pagina"`
@@ -91,4 +88,21 @@ type FranjaDisponible struct {
 	Disponible           bool    `json:"disponible"`
 	TrasladosDisponibles int     `json:"traslados_disponibles"`
 	KgDisponibles        float64 `json:"kg_disponibles"`
+}
+
+// FranjasDelDia son todas las franjas del calendario de una fecha con su ocupación: lo que ve el
+// operador en la web (§12).
+type FranjasDelDia struct {
+	Fecha   string          `json:"fecha"`
+	Franjas []FranjaOcupada `json:"franjas"`
+}
+
+// FranjaOcupada es una franja con su cupo y lo que ya se reservó.
+type FranjaOcupada struct {
+	Inicio              string  `json:"inicio"`
+	Fin                 string  `json:"fin"`
+	CupoTraslados       int     `json:"cupo_traslados"`
+	TrasladosReservados int     `json:"traslados_reservados"`
+	CupoKg              float64 `json:"cupo_kg"`
+	KgReservados        float64 `json:"kg_reservados"`
 }

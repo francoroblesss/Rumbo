@@ -26,6 +26,9 @@ var ahora = time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
 var calendario = dominio.Calendario{AperturaHora: 8, CierreHora: 20, DuracionHoras: 2, CupoTraslados: 3, CupoKg: 1000,
 	Anticipacion: 2 * time.Hour, Horizonte: 30 * 24 * time.Hour, Zona: aplicacion.ZonaRumbo()}
 
+// palabras son las de AEROPUERTO_PALABRAS por defecto.
+var palabras = []string{"aeropuerto", "saco", "pajas blancas"}
+
 // franja16 es la franja del 16/10 de 10 a 12 (hora de Córdoba).
 var franja16 = time.Date(2026, 10, 16, 13, 0, 0, 0, time.UTC)
 
@@ -96,29 +99,6 @@ func datos(hora *time.Time) dominio.DatosSolicitud {
 	}
 }
 
-// registrar guarda una solicitud RECIBIDA de un cliente de la web con su evento en el outbox (el
-// alta desde la web todavía no tiene caso de uso).
-func registrar(t *testing.T, uow *UnidadDeTrabajo, id string, hora *time.Time) {
-	t.Helper()
-	err := uow.Ejecutar(context.Background(), func(ctx context.Context, tx puertos.Transaccion) error {
-		s, ev, err := dominio.NuevaSolicitud(id, "org-1", dominio.OrigenInterno, datos(hora), ahora)
-		if err != nil {
-			return err
-		}
-		if err := tx.Insertar(ctx, s); err != nil {
-			return err
-		}
-		sobre, err := mensajeria.NuevoSobre(ctx, string(ev), s.ID, s.Version, map[string]any{"organizacion_id": "org-1"})
-		if err != nil {
-			return err
-		}
-		return tx.AgregarAlOutbox(ctx, aplicacion.ExchangeEventos, string(ev), sobre)
-	})
-	if err != nil {
-		t.Fatalf("registrar: %v", err)
-	}
-}
-
 func idem(clave string) *puertos.Idempotencia {
 	return &puertos.Idempotencia{Endpoint: "reserva", Clave: clave, Hash: "h"}
 }
@@ -129,88 +109,132 @@ func TestMySQL(t *testing.T) {
 	}
 	uow, _ := baseDePrueba(t)
 	ctx := context.Background()
-	reloj := ahora
 	clima := &climaFijo{o: dominio.Operabilidad{Operable: false, Motivos: []string{"HIGH_WIND"}, ObservadoEn: ahora}}
-	casos := aplicacion.NuevasSolicitudes(uow, clima, "SACO", calendario, func() time.Time { return reloj }, "test")
+	reloj := ahora
+	casos := aplicacion.NuevasSolicitudes(uow, clima, "SACO", palabras, calendario, func() time.Time { return reloj }, "test")
 
-	hora := ahora.Add(3 * time.Hour)
-	t.Run("se guarda y se lee la solicitud", func(t *testing.T) {
-		registrar(t, uow, "sol-1", &hora)
-		p, err := casos.Listar(ctx, "", 1, 20)
-		if err != nil || p.Total != 1 {
-			t.Fatalf("total = %d, err = %v", p.Total, err)
-		}
-		v := p.Resultados[0]
-		if v.Estado != "RECIBIDA" || *v.Cosa.PesoKg != 350 || *v.ReferenciaExterna != "TRF-2026-00123" ||
-			*v.HoraLlegadaSolicitada != "2026-10-15T12:00:00-03:00" || v.ToleranciaMinutos != 120 {
-			t.Fatalf("vista inesperada: %+v", v)
+	t.Run("la migración 0003 crea el índice del listado", func(t *testing.T) {
+		var n int
+		err := uow.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM information_schema.statistics
+			WHERE table_schema = DATABASE() AND table_name = 'traslados' AND index_name = 'idx_traslado_franja'`).Scan(&n)
+		if err != nil || n != 1 {
+			t.Fatalf("índice idx_traslado_franja: %d, err = %v", n, err)
 		}
 	})
 
-	t.Run("aceptar al aeropuerto guarda traslado y alerta", func(t *testing.T) {
-		destino := dominio.ExtremoDestino
-		v, err := casos.Aceptar(ctx, "", "sol-1", &destino)
+	// franjaHoy: hoy (15/10) de 12 a 14; termina dentro de 5 h, en la ventana del clima.
+	franjaHoy := time.Date(2026, 10, 15, 15, 0, 0, 0, time.UTC)
+	franja17 := franja16.AddDate(0, 0, 1)
+	reservar := func(t *testing.T, org string, inicio time.Time, clave string) puertos.Vista {
+		t.Helper()
+		reloj = reloj.Add(time.Second) // cada una con su creado_en, para el orden del listado
+		v, err := casos.Reservar(ctx, org, datos(nil), inicio, idem(clave))
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("reservar: %v", err)
 		}
-		leida, err := casos.Obtener(ctx, "org-1", "sol-1")
-		if err != nil {
-			t.Fatal(err)
+		return v
+	}
+	alAeropuerto := reservar(t, "org-1", franjaHoy, "clave-hoy")
+	b := reservar(t, "org-1", franja16, "clave-16a")
+	c := reservar(t, "org-2", franja16, "clave-16b")
+	d := reservar(t, "org-1", franja17, "clave-17")
+
+	t.Run("se guarda y se lee la reserva con aeropuerto_extremo", func(t *testing.T) {
+		var extremo string
+		if err := uow.db.QueryRowContext(ctx, `SELECT aeropuerto_extremo FROM traslados WHERE solicitud_id = ?`,
+			alAeropuerto.ID).Scan(&extremo); err != nil || extremo != "DESTINO" {
+			t.Fatalf("aeropuerto_extremo = %q, err = %v", extremo, err)
 		}
-		a, b := mustJSON(t, v), mustJSON(t, leida)
-		if a != b {
-			t.Fatalf("lo leído no coincide con lo guardado:\n%s\n%s", a, b)
+		leida, err := casos.Obtener(ctx, "org-1", alAeropuerto.ID)
+		if err != nil || mustJSON(t, leida) != mustJSON(t, alAeropuerto) {
+			t.Fatalf("lo leído no coincide con lo guardado (err = %v):\n%s\n%s", err, mustJSON(t, leida), mustJSON(t, alAeropuerto))
 		}
-		if leida.Version != 3 || leida.Traslado.AlertaClimatica.Estado != "NO_OPERABLE" ||
-			leida.Traslado.AlertaClimatica.Motivos[0] != "HIGH_WIND" {
+		if *leida.Cosa.PesoKg != 350 || *leida.ReferenciaExterna != "TRF-2026-00123" || leida.HoraLlegadaSolicitada != nil ||
+			leida.PropuestaDeHorario != nil || leida.MotivoRechazo != nil {
+			t.Fatalf("vista inesperada: %+v", leida)
+		}
+	})
+
+	t.Run("clima después de reservar: la alerta se guarda una sola vez", func(t *testing.T) {
+		for range 2 {
+			if err := casos.RevisarClimaDeReserva(ctx, alAeropuerto.ID); err != nil {
+				t.Fatal(err)
+			}
+		}
+		leida, _ := casos.Obtener(ctx, "", alAeropuerto.ID)
+		if a := leida.Traslado.AlertaClimatica; a == nil || a.Estado != "NO_OPERABLE" || a.Motivos[0] != "HIGH_WIND" || leida.Version != 2 {
 			t.Fatalf("vista inesperada: %+v", leida.Traslado)
 		}
 	})
 
-	t.Run("cancelación tardía queda pendiente y se resuelve", func(t *testing.T) {
-		idem := &puertos.Idempotencia{Endpoint: "cancelacion", Clave: "clave-0001", Hash: "abc"}
-		v, err := casos.Cancelar(ctx, "org-1", "sol-1", "cambio de planes", idem)
-		if err != nil || v.Cancelacion.Estado != "PENDIENTE_APROBACION" || !v.Cancelacion.Tardia {
+	t.Run("avance de estado y finalizado_en", func(t *testing.T) {
+		if _, err := casos.AvanzarEstado(ctx, "", alAeropuerto.ID, dominio.TrasladoEnCurso); err != nil {
+			t.Fatal(err)
+		}
+		v, err := casos.AvanzarEstado(ctx, "", alAeropuerto.ID, dominio.TrasladoCompletado)
+		if err != nil {
+			t.Fatal(err)
+		}
+		leida, _ := casos.Obtener(ctx, "", alAeropuerto.ID)
+		if mustJSON(t, leida) != mustJSON(t, v) || leida.Traslado.Estado != "COMPLETADO" || leida.Traslado.FinalizadoEn == nil || leida.Version != 4 {
+			t.Fatalf("vista inesperada: %+v", leida.Traslado)
+		}
+	})
+
+	t.Run("listado por fecha y organización con paginación", func(t *testing.T) {
+		ids := func(p puertos.Pagina) string {
+			var r []string
+			for _, v := range p.Resultados {
+				r = append(r, v.ID)
+			}
+			return fmt.Sprint(r)
+		}
+		casosListado := []struct {
+			nombre string
+			filtro puertos.FiltroListado
+			total  int
+			ids    []string
+		}{
+			{"todas, por franja y creación", puertos.FiltroListado{Pagina: 1, Tamanio: 20}, 4, []string{alAeropuerto.ID, b.ID, c.ID, d.ID}},
+			{"del 16/10", puertos.FiltroListado{Fecha: "2026-10-16", Pagina: 1, Tamanio: 20}, 2, []string{b.ID, c.ID}},
+			{"del 16/10 de org-1", puertos.FiltroListado{Organizacion: "org-1", Fecha: "2026-10-16", Pagina: 1, Tamanio: 20}, 1, []string{b.ID}},
+			{"org-1, segunda página de 2", puertos.FiltroListado{Organizacion: "org-1", Pagina: 2, Tamanio: 2}, 3, []string{d.ID}},
+			{"completados", puertos.FiltroListado{EstadoTraslado: "COMPLETADO", Pagina: 1, Tamanio: 20}, 1, []string{alAeropuerto.ID}},
+		}
+		for _, cl := range casosListado {
+			p, err := casos.Listar(ctx, cl.filtro)
+			if err != nil || p.Total != cl.total || ids(p) != fmt.Sprint(cl.ids) {
+				t.Fatalf("%s: total = %d, ids = %s, err = %v; se esperaba %d %v", cl.nombre, p.Total, ids(p), err, cl.total, cl.ids)
+			}
+		}
+	})
+
+	t.Run("cancelar desde la web devuelve el lugar y respeta la clave", func(t *testing.T) {
+		clave := &puertos.Idempotencia{Endpoint: "cancelacion", Clave: "clave-0001", Hash: "abc"}
+		v, err := casos.CancelarDesdeWeb(ctx, "", b.ID, "cambio de planes", clave)
+		if err != nil || v.Cancelacion.Estado != "APROBADA" || v.Traslado.Estado != "CANCELADO" {
 			t.Fatalf("v = %+v, err = %v", v.Cancelacion, err)
 		}
-		repetida, err := casos.Cancelar(ctx, "org-1", "sol-1", "cambio de planes", idem)
+		repetida, err := casos.CancelarDesdeWeb(ctx, "org-1", b.ID, "cambio de planes", clave)
 		if err != nil || mustJSON(t, repetida) != mustJSON(t, v) {
 			t.Fatalf("la misma clave tiene que dar la misma respuesta: %v", err)
 		}
-		idem.Hash = "otro"
-		if _, err := casos.Cancelar(ctx, "org-1", "sol-1", "otro motivo", idem); !errors.Is(err, puertos.ErrClaveReutilizada) {
+		clave.Hash = "otro"
+		if _, err := casos.CancelarDesdeWeb(ctx, "org-1", b.ID, "otro motivo", clave); !errors.Is(err, puertos.ErrClaveReutilizada) {
 			t.Fatalf("error = %v", err)
 		}
-		v, err = casos.ResolverCancelacionTardia(ctx, "sol-1", false)
-		if err != nil || v.Cancelacion.Estado != "RECHAZADA" || v.Traslado.Estado != "PROGRAMADO" {
-			t.Fatalf("v = %+v, err = %v", v, err)
+		f, err := casos.Franjas(ctx, "2026-10-16")
+		if err != nil || f.Franjas[1].Inicio != "2026-10-16T10:00:00-03:00" || f.Franjas[1].TrasladosReservados != 1 || f.Franjas[0].TrasladosReservados != 0 {
+			t.Fatalf("franjas = %+v, err = %v", f, err)
 		}
 	})
 
 	t.Run("organización ajena", func(t *testing.T) {
-		if _, err := casos.Obtener(ctx, "org-otra", "sol-1"); !errors.Is(err, puertos.ErrNoEncontrada) {
+		if _, err := casos.Obtener(ctx, "org-otra", c.ID); !errors.Is(err, puertos.ErrNoEncontrada) {
 			t.Fatalf("error = %v", err)
 		}
 		if _, err := casos.Obtener(ctx, "", "sol-no-existe"); !errors.Is(err, puertos.ErrNoEncontrada) {
 			t.Fatalf("error = %v", err)
-		}
-	})
-
-	t.Run("vencimiento de contrapropuestas", func(t *testing.T) {
-		registrar(t, uow, "sol-2", nil)
-		if _, err := casos.Contraproponer(ctx, "sol-2", ahora.Add(30*time.Hour)); err != nil {
-			t.Fatal(err)
-		}
-		if n, err := casos.VencerContrapropuestas(ctx); err != nil || n != 0 {
-			t.Fatalf("n = %d, err = %v", n, err)
-		}
-		reloj = ahora.Add(24 * time.Hour)
-		if n, err := casos.VencerContrapropuestas(ctx); err != nil || n != 1 {
-			t.Fatalf("n = %d, err = %v", n, err)
-		}
-		v, _ := casos.Obtener(ctx, "", "sol-2")
-		if v.Estado != "RECHAZADA_POR_CLIENTE" {
-			t.Fatalf("estado = %s", v.Estado)
 		}
 	})
 
@@ -241,9 +265,13 @@ func TestMySQL(t *testing.T) {
 		if len(pub.recibidos) != pendientes {
 			t.Fatalf("publicados = %d, se esperaban %d", len(pub.recibidos), pendientes)
 		}
-		if pub.recibidos[0].Tipo != string(dominio.EventoRecibida) || pub.recibidos[1].Tipo != string(dominio.EventoAceptada) ||
-			pub.recibidos[2].Tipo != string(dominio.EventoAlertaClimatica) {
-			t.Fatalf("orden inesperado: %s, %s, %s", pub.recibidos[0].Tipo, pub.recibidos[1].Tipo, pub.recibidos[2].Tipo)
+		// Las 4 reservas, después la alerta de la primera y sus dos avances.
+		esperados := []dominio.Evento{dominio.EventoAceptada, dominio.EventoAceptada, dominio.EventoAceptada, dominio.EventoAceptada,
+			dominio.EventoAlertaClimatica, dominio.EventoTrasladoEstado, dominio.EventoTrasladoEstado, dominio.EventoCancelacionRegistrada}
+		for i, tipo := range esperados {
+			if pub.recibidos[i].Tipo != string(tipo) {
+				t.Fatalf("mensaje %d: %s, se esperaba %s", i, pub.recibidos[i].Tipo, tipo)
+			}
 		}
 		if n, _ := relay.PublicarPendientes(ctx); n != 0 {
 			t.Fatalf("no tenía que volver a publicar: %d", n)
@@ -257,15 +285,7 @@ func TestTransaccionSeDeshace(t *testing.T) {
 	}
 	uow, _ := baseDePrueba(t)
 	ctx := context.Background()
-	casos := aplicacion.NuevasSolicitudes(uow, climaFijo{}, "SACO", calendario, func() time.Time { return ahora }, "test")
-	registrar(t, uow, "sol-1", nil)
-	// Sin hora pedida no se acepta: ni la solicitud ni el outbox cambian.
-	if _, err := casos.Aceptar(ctx, "", "sol-1", nil); !errors.Is(err, dominio.ErrSinHoraPedida) {
-		t.Fatalf("error = %v", err)
-	}
-	if n := contarPendientes(t, uow); n != 1 {
-		t.Fatalf("outbox = %d, se esperaba 1", n)
-	}
+	casos := aplicacion.NuevasSolicitudes(uow, climaFijo{}, "SACO", palabras, calendario, func() time.Time { return ahora }, "test")
 	// Una reserva con datos inválidos falla después de crear y bloquear la franja: el rollback
 	// tiene que deshacer también la franja (no queda ni la fila ni un lugar tomado).
 	mal := datos(nil)
@@ -288,7 +308,7 @@ func TestReservasConcurrentes(t *testing.T) {
 	}
 	uow, _ := baseDePrueba(t)
 	ctx := context.Background()
-	casos := aplicacion.NuevasSolicitudes(uow, climaFijo{}, "SACO", calendario, func() time.Time { return ahora }, "test")
+	casos := aplicacion.NuevasSolicitudes(uow, climaFijo{}, "SACO", palabras, calendario, func() time.Time { return ahora }, "test")
 
 	// 300 kg cada una: por peso entrarían 3 (900 de 1000 kg), así que el límite es el de traslados.
 	carga := datos(nil)

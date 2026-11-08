@@ -1,0 +1,22 @@
+# Recorrido integrado en local — 2026-11-08 (~16:54 UTC), main con los PR #18 a #21
+# docker compose up --build -d --wait (sin observabilidad). Todas las llamadas por el gateway (http://localhost:8080),
+# las mismas que hace la web; la web respondió 200 en http://localhost:5173 y en /traslados/<id> (regla de SPA).
+
+1. Tokens: sistema externo (POST /auth/token), operador y cliente (POST /api/identidad/login) → 200
+2. GET /api/identidad/yo
+   operador → {"nombre":"Operador de Rumbo","roles":["operador"],"organizacion":null}
+   cliente  → {"nombre":"Usuario de almacenamiento","roles":["cliente"],"organizacion":{"id":"org-almacenamiento",...}}
+   token del sistema externo → 404 (no es un usuario, §15)
+3. Streams SSE abiertos (operador y cliente) antes de reservar: GET /api/notificaciones/avisos/stream
+4. GET /disponibilidad?fecha=2026-11-09&peso_kg=100 → franja 08:00 disponible
+5. POST /traslados (sistema externo) → 201 sol-227da8fb-… PROGRAMADO
+6. GET /api/operaciones/franjas?fecha=2026-11-09 (operador) → franja 08:00 con traslados_reservados 1, kg_reservados 100
+7. POST /api/operaciones/solicitudes/{id}/estado EN_CURSO → 200; COMPLETADO → 200
+8. GET /traslados/{id} (sistema externo) → COMPLETADO · GET /api/operaciones/solicitudes/{id} (cliente) → COMPLETADO
+9. Stream del operador: event: aviso "Reserva nueva" — "Se reservó «…» para la franja del 09/11 de 08:00 a 10:00."
+   Stream del cliente: "Traslado en curso" y "Traslado completado" (no recibe los avisos del operador)
+   Log de Notificaciones "aviso enviado por stream": demora_ms 912, 934 y 935 (CA-41: < 2 s)
+10. Bandeja del cliente (no leídos): ["Traslado completado", "Traslado en curso"]
+11. Cancelación del cliente (POST /api/operaciones/solicitudes/{id}/cancelacion) dos veces con la misma Idempotency-Key
+    → las dos 200 CANCELADO, tardia=true (misma respuesta)
+    Avisos: operador "Cancelación tardía"; cliente "Traslado cancelado"

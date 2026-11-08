@@ -1,0 +1,27 @@
+# Evidencia del despliegue en Render (ADR-026) — 2026-11-08 ~19:15 UTC
+# Gateway: https://rumbo-gateway.onrender.com  (commit 9ef9e7b de main)
+salud gateway / identidad / integracion / operaciones: 200 / 200 / 200 / 200
+POST /auth/token (client credentials del sistema externo): 200, token de 291 caracteres
+GET /disponibilidad?fecha=2026-11-10&peso_kg=10: 200, franjas 08:00, 10:00, 12:00, 14:00… disponibles
+POST /traslados (Idempotency-Key nueva): 201 sol-242ef43b-2d0c-45b8-8a60-bde0188a6e6b PROGRAMADO, franja 2026-11-10T08:00-03:00
+POST /traslados (misma Idempotency-Key y mismo cuerpo): 201 con el mismo id (idempotencia)
+GET /traslados/{id}: 200 PROGRAMADO
+POST /traslados/{id}/cancelacion: 200 CANCELADO, tardia=false (se canceló la reserva de prueba)
+Directo a https://rumbo-operaciones.onrender.com/internas/solicitudes/{id} sin X-Rumbo-Interno (con X-Rumbo-Roles: operador falso): 401
+Directo a https://rumbo-integracion.onrender.com/traslados sin X-Rumbo-Interno: 401
+Gateway sin token: 401
+
+# Arranque en frío: 19:32 UTC, después de 17 minutos sin tráfico
+GET https://rumbo-gateway.onrender.com/salud: 200 en 11.678837s
+POST /auth/token (Identidad, despertada por el gateway): 502 en 0.610923s
+Logs del gateway (render logs) en ese arranque:
+  19:33:46 INFO "servicio despierto"            destino=https://rumbo-identidad.onrender.com   espera_ms=74667  (despertó recién con un pedido directo desde internet)
+  19:34:31 WARN "servicio no respondió al despertar" destino=https://rumbo-integracion.onrender.com espera_ms=120002
+  19:34:31 WARN "servicio no respondió al despertar" destino=https://rumbo-operaciones.onrender.com espera_ms=120000
+Pedido directo desde internet a cada servicio dormido: /salud 200 en ~12 s (identidad 11,4 s; integracion 12,4 s; operaciones 11,4 s).
+Conclusión (ADR-030): un servicio gratuito dormido solo despierta con tráfico desde internet, no con el de otro servicio de Render.
+
+# Con el monitor externo (UptimeRobot, /salud cada 5 min) y /salud respondiendo HEAD (PR #26)
+HEAD /salud antes del PR #26: gateway 401, identidad 404 (GET 200). Después: 200 en los cuatro.
+Últimos arranques (render logs): gateway 20:31:05, identidad 20:31:21, integracion 20:31:04, operaciones 20:31:19 (el redespliegue del PR #26).
+20:53 UTC, 22 minutos después sin tráfico propio: ningún arranque nuevo; GET /salud gateway 0,86 s, identidad 0,40 s, integracion 0,82 s, operaciones 0,42 s.

@@ -291,7 +291,7 @@ Anunciados en la Entrega 2 (consigna §7). Se implementan para la Presentación 
 | **Actualizaciones en tiempo real** | El operador y el cliente ven en la aplicación web los cambios de estado de solicitudes y traslados apenas ocurren, sin recargar, a partir de los eventos que ya publica Operaciones | Un cambio de estado aparece en la pantalla abierta en menos de 2 s |
 | **Tests de punta a punta (e2e)** | Tests automatizados del flujo principal a través del sistema levantado: reserva por el contrato público → gateway → Integración → Operaciones → cambio de estado visible por consulta | Corren en el CI contra el sistema levantado con Docker Compose |
 
-Estado (2026-11-06): **Tiempo real** en curso (Sofia, [ADR-027](docs/adr/ADR-027-avisos-en-tiempo-real.md); Delap, web). Se verifica con CA-41. **Tests de punta a punta** en curso (Sofia, [ADR-028](docs/adr/ADR-028-tests-de-punta-a-punta.md)): corren en el CI contra el sistema levantado con Docker Compose y recorren el flujo de ADR-024.
+Estado (2026-11-06): **Tiempo real** en curso (Sofia, [ADR-027](docs/adr/ADR-027-avisos-en-tiempo-real.md); Delap, web). Se verifica con CA-41. **Tests de punta a punta** implementados (job `e2e` del CI) (Sofia, [ADR-028](docs/adr/ADR-028-tests-de-punta-a-punta.md)): corren en el CI contra el sistema levantado con Docker Compose y recorren el flujo de ADR-024.
 
 ## 8. Registro de cambios
 | Fecha | Cambio | Motivo |

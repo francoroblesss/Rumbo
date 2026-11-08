@@ -1,0 +1,22 @@
+2026-11-08T18:30:06Z inicio de k6 (15 min de tráfico por el gateway)
+2026-11-08T18:32:06Z consulta a Grafana: min 2, antes de la caída
+2026-11-08T18:33:06Z CAÍDA PROVOCADA: docker compose stop operaciones
+2026-11-08T18:33:10Z Operaciones detenido
+2026-11-08T18:33:26Z consulta a Grafana: min 3, Operaciones caído
+2026-11-08T18:35:26Z consulta a Grafana: min 5, Operaciones caído
+2026-11-08T18:37:26Z consulta a Grafana: min 7, Operaciones caído
+2026-11-08T18:39:27Z consulta a Grafana: min 9, Operaciones caído
+2026-11-08T18:41:06Z consulta a Grafana: min 11, Operaciones caído (justo antes de volver)
+2026-11-08T18:41:06Z RECUPERACIÓN: docker compose start operaciones
+2026-11-08T18:41:14Z Operaciones sano (healthcheck)
+2026-11-08T18:42:04Z breaker de Integración hacia Operaciones cerrado (rumbo_circuito_estado = 0)
+2026-11-08T18:42:04Z reintento de 3 reservas que dieron 503, con la misma Idempotency-Key
+2026-11-08T18:43:06Z consulta a Grafana: min 13, recuperación
+2026-11-08T18:45:20Z fin de k6
+2026-11-08T18:45:21Z consulta a Grafana: min 15, fin del tráfico
+2026-11-08T18:45:21Z logs extraídos a docs/evidencias/postmortem/logs.txt
+2026-11-08T18:45:22Z resumen de k6 en docs/evidencias/postmortem/resumen.md
+2026-11-08T18:47:10Z consulta posterior a Grafana (query_range del período) agregada a metricas.txt
+2026-11-08T18:47:10Z verificación posterior del Retry-After: docker compose stop operaciones
+2026-11-08T18:47:24Z verificación posterior del Retry-After: Operaciones de nuevo sano
+2026-11-08T18:47:43Z docker compose down (fin de la prueba)

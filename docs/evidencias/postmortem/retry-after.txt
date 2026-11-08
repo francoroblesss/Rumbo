@@ -1,0 +1,7 @@
+
+### 2026-11-08T18:47:14Z · verificación posterior: una reserva con Operaciones detenido (headers de la respuesta)
+HTTP/1.1 503 Service Unavailable
+Content-Type: application/problem+json
+Retry-After: 30
+X-Correlation-Id: 6489edc4-49e7-4149-a1e3-36f4a17ec16b
+{"type":"https://rumbo.example/errores/servicio-no-disponible","title":"Servicio no disponible","status":503,"codigo":"SERVICIO_NO_DISPONIBLE","detail":"Rumbo no puede procesar el pedido en este momento. Reintentar con la misma Idempotency-Key."}

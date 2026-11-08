@@ -1,0 +1,56 @@
+{
+  "modo": "misma",
+  "franja": "2026-11-11T10:00:00-03:00",
+  "fecha": "2026-11-08T17:20:08.925Z",
+  "inicio_escenario": 1794158268,
+  "rampa_s": 5,
+  "meseta_s": 30,
+  "reservas_201_total": 6249,
+  "requests_total": 6250,
+  "escalones": [
+    {
+      "objetivo_rps": 10,
+      "logrado_rps": 10,
+      "requests": 300,
+      "reservas_201": 300,
+      "p50_ms": 9,
+      "p95_ms": 16,
+      "p99_ms": 27.2,
+      "max_ms": 39.4,
+      "errores_pct": 0
+    },
+    {
+      "objetivo_rps": 25,
+      "logrado_rps": 25,
+      "requests": 750,
+      "reservas_201": 750,
+      "p50_ms": 5.6,
+      "p95_ms": 21.4,
+      "p99_ms": 34.5,
+      "max_ms": 144.4,
+      "errores_pct": 0
+    },
+    {
+      "objetivo_rps": 50,
+      "logrado_rps": 50,
+      "requests": 1500,
+      "reservas_201": 1500,
+      "p50_ms": 4.3,
+      "p95_ms": 31.2,
+      "p99_ms": 93.2,
+      "max_ms": 253.6,
+      "errores_pct": 0
+    },
+    {
+      "objetivo_rps": 100,
+      "logrado_rps": 100,
+      "requests": 3000,
+      "reservas_201": 3000,
+      "p50_ms": 3.3,
+      "p95_ms": 62,
+      "p99_ms": 122.6,
+      "max_ms": 196.4,
+      "errores_pct": 0
+    }
+  ]
+}

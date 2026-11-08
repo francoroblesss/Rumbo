@@ -102,11 +102,12 @@ func armar(cfg config.Config, limitador *limite.Limitador) http.Handler {
 	return salud(observabilidad.InstrumentarHTTP(h, "gateway"))
 }
 
-// salud responde GET /salud sin token, sin límite de tráfico y sin medirlo (§11.3): lo usan los
-// healthchecks de Compose y Render. Solo dice que el proceso está vivo.
+// salud responde GET y HEAD /salud sin token, sin límite de tráfico y sin medirlo (§11.3): lo
+// usan los healthchecks de Compose y Render, y los monitores externos que usan HEAD (ADR-026).
+// Solo dice que el proceso está vivo.
 func salud(siguiente http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet && r.URL.Path == "/salud" {
+		if (r.Method == http.MethodGet || r.Method == http.MethodHead) && r.URL.Path == "/salud" {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"estado":"ok","servicio":"gateway"}`))
 			return

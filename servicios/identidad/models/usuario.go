@@ -7,6 +7,7 @@ import "time"
 type Usuario struct {
 	ID             string    `bson:"_id" json:"id"` // "usr-<uuid>"
 	Email          string    `bson:"email" json:"email"`
+	Nombre         string    `bson:"nombre" json:"nombre"` // un documento viejo sin nombre lo lee como ""
 	HashPassword   string    `bson:"hash_password" json:"-"`
 	Roles          []string  `bson:"roles" json:"roles"`
 	OrganizacionID *string   `bson:"organizacion_id,omitempty" json:"organizacion_id,omitempty"`

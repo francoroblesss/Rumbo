@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -39,8 +40,8 @@ type ubicacionFila struct {
 }
 
 const columnas = `s.id, s.organizacion_id, s.origen_solicitud, s.referencia_externa, s.cosa, s.origen, s.destino,
-	s.hora_llegada_solicitada, s.tolerancia_minutos, s.observaciones, s.estado, s.contrapropuesta_hora,
-	s.contrapropuesta_vence, s.motivo_rechazo, s.cancelacion_estado, s.cancelacion_motivo,
+	s.hora_llegada_solicitada, s.tolerancia_minutos, s.observaciones, s.estado,
+	s.motivo_rechazo, s.cancelacion_estado, s.cancelacion_motivo,
 	s.cancelacion_solicitada_en, s.cancelacion_tardia, s.version, s.creado_en, s.actualizado_en,
 	t.id, t.estado, t.hora_llegada_comprometida, t.demora_minutos, t.finalizado_en, t.detalle_resultado,
 	t.aeropuerto_extremo, t.alerta_estado, t.alerta_motivos, t.alerta_observado_en, t.franja_inicio`
@@ -55,7 +56,6 @@ func leerSolicitud(fila escaner) (*dominio.Solicitud, error) {
 		s                                     dominio.Solicitud
 		origen, estado                        string
 		cosa, desde, hasta                    []byte
-		contraHora, contraVence               sql.NullTime
 		cancEstado, cancMotivo                sql.NullString
 		cancEn                                sql.NullTime
 		cancTardia                            bool
@@ -69,8 +69,8 @@ func leerSolicitud(fila escaner) (*dominio.Solicitud, error) {
 		horaPedida                            sql.NullTime
 	)
 	err := fila.Scan(&s.ID, &s.OrganizacionID, &origen, &referencia, &cosa, &desde, &hasta,
-		&horaPedida, &s.ToleranciaMinutos, &observaciones, &estado, &contraHora,
-		&contraVence, &motivoRech, &cancEstado, &cancMotivo,
+		&horaPedida, &s.ToleranciaMinutos, &observaciones, &estado,
+		&motivoRech, &cancEstado, &cancMotivo,
 		&cancEn, &cancTardia, &s.Version, &s.CreadoEn, &s.ActualizadoEn,
 		&tID, &tEstado, &tHora, &tDemora, &tFinalizado, &tDetalle,
 		&tExtremo, &tAlerta, &tMotivos, &tObservado, &tFranja)
@@ -97,9 +97,6 @@ func leerSolicitud(fila escaner) (*dominio.Solicitud, error) {
 	s.Desde = dominio.Ubicacion{Nombre: o.Nombre, Direccion: o.Direccion, Contacto: o.Contacto}
 	s.Hasta = dominio.Ubicacion{Nombre: d.Nombre, Direccion: d.Direccion, Contacto: d.Contacto}
 
-	if contraHora.Valid && contraVence.Valid {
-		s.Contrapropuesta = &dominio.Contrapropuesta{Hora: contraHora.Time.UTC(), VenceEn: contraVence.Time.UTC()}
-	}
 	if cancEstado.Valid {
 		s.Cancelacion = &dominio.Cancelacion{Estado: dominio.EstadoCancelacion(cancEstado.String),
 			Motivo: cancMotivo.String, SolicitadaEn: cancEn.Time.UTC(), Tardia: cancTardia}
@@ -137,7 +134,8 @@ func leerSolicitud(fila escaner) (*dominio.Solicitud, error) {
 
 func (t *transaccion) ObtenerParaActualizar(ctx context.Context, id string) (*dominio.Solicitud, error) {
 	// FOR UPDATE: bloquea la fila hasta el fin de la transacción, así dos operadores (o el
-	// operador y el cliente) no aplican transiciones a la vez sobre la misma solicitud.
+	// operador, el cliente y el consumidor del clima) no aplican cambios a la vez sobre la misma
+	// solicitud.
 	return leerSolicitud(t.tx.QueryRowContext(ctx, `SELECT `+columnas+desdeSolicitudes+` WHERE s.id = ? FOR UPDATE`, id))
 }
 
@@ -145,17 +143,31 @@ func (t *transaccion) Obtener(ctx context.Context, id string) (*dominio.Solicitu
 	return leerSolicitud(t.tx.QueryRowContext(ctx, `SELECT `+columnas+desdeSolicitudes+` WHERE s.id = ?`, id))
 }
 
-func (t *transaccion) Listar(ctx context.Context, estado string, desde, limite int) ([]*dominio.Solicitud, int, error) {
-	filtro, args := "", []any{}
-	if estado != "" {
-		filtro, args = " WHERE s.estado = ?", append(args, estado)
+// Listar filtra por organización, rango del inicio de la franja y estado del traslado, y ordena
+// por inicio de la franja y creación (§12).
+func (t *transaccion) Listar(ctx context.Context, f puertos.FiltroSolicitudes, desde, limite int) ([]*dominio.Solicitud, int, error) {
+	var condiciones []string
+	var args []any
+	if f.Organizacion != "" {
+		condiciones, args = append(condiciones, "s.organizacion_id = ?"), append(args, f.Organizacion)
+	}
+	if f.FranjaDesde != nil && f.FranjaHasta != nil {
+		condiciones = append(condiciones, "t.franja_inicio >= ? AND t.franja_inicio < ?")
+		args = append(args, f.FranjaDesde.UTC(), f.FranjaHasta.UTC())
+	}
+	if f.EstadoTraslado != "" {
+		condiciones, args = append(condiciones, "t.estado = ?"), append(args, f.EstadoTraslado)
+	}
+	filtro := ""
+	if len(condiciones) > 0 {
+		filtro = " WHERE " + strings.Join(condiciones, " AND ")
 	}
 	var total int
-	if err := t.tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM solicitudes s`+filtro, args...).Scan(&total); err != nil {
+	if err := t.tx.QueryRowContext(ctx, `SELECT COUNT(*)`+desdeSolicitudes+filtro, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("contar solicitudes: %w", err)
 	}
 	filas, err := t.tx.QueryContext(ctx, `SELECT `+columnas+desdeSolicitudes+filtro+
-		` ORDER BY s.actualizado_en DESC, s.id DESC LIMIT ? OFFSET ?`, append(args, limite, desde)...)
+		` ORDER BY t.franja_inicio, s.creado_en, s.id LIMIT ? OFFSET ?`, append(args, limite, desde)...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("listar solicitudes: %w", err)
 	}
@@ -179,19 +191,16 @@ func valores(s *dominio.Solicitud) ([]any, error) {
 	if err := errors.Join(err1, err2, err3); err != nil {
 		return nil, fmt.Errorf("serializar la solicitud %s: %w", s.ID, err)
 	}
-	var contraHora, contraVence, cancEn *time.Time
+	var cancEn *time.Time
 	var cancEstado, cancMotivo *string
 	cancTardia := false
-	if c := s.Contrapropuesta; c != nil {
-		contraHora, contraVence = &c.Hora, &c.VenceEn
-	}
 	if c := s.Cancelacion; c != nil {
 		estado := string(c.Estado)
 		cancEstado, cancMotivo, cancEn, cancTardia = &estado, &c.Motivo, &c.SolicitadaEn, c.Tardia
 	}
 	return []any{s.OrganizacionID, string(s.Origen), s.ReferenciaExterna, string(cosa), string(desde), string(hasta),
-		utc(s.HoraLlegadaSolicitada), s.ToleranciaMinutos, s.Observaciones, string(s.Estado), utc(contraHora),
-		utc(contraVence), s.MotivoRechazo, cancEstado, cancMotivo, utc(cancEn), cancTardia, s.Version,
+		utc(s.HoraLlegadaSolicitada), s.ToleranciaMinutos, s.Observaciones, string(s.Estado),
+		s.MotivoRechazo, cancEstado, cancMotivo, utc(cancEn), cancTardia, s.Version,
 		s.CreadoEn.UTC(), s.ActualizadoEn.UTC(), s.ID}, nil
 }
 
@@ -202,9 +211,9 @@ func (t *transaccion) Insertar(ctx context.Context, s *dominio.Solicitud) error 
 	}
 	if _, err := t.tx.ExecContext(ctx, `INSERT INTO solicitudes (organizacion_id, origen_solicitud,
 		referencia_externa, cosa, origen, destino, hora_llegada_solicitada, tolerancia_minutos, observaciones,
-		estado, contrapropuesta_hora, contrapropuesta_vence, motivo_rechazo, cancelacion_estado,
+		estado, motivo_rechazo, cancelacion_estado,
 		cancelacion_motivo, cancelacion_solicitada_en, cancelacion_tardia, version, creado_en, actualizado_en, id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, v...); err != nil {
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, v...); err != nil {
 		return fmt.Errorf("insertar solicitud: %w", err)
 	}
 	return t.guardarTraslado(ctx, s)
@@ -217,8 +226,8 @@ func (t *transaccion) Actualizar(ctx context.Context, s *dominio.Solicitud) erro
 	}
 	if _, err := t.tx.ExecContext(ctx, `UPDATE solicitudes SET organizacion_id = ?, origen_solicitud = ?,
 		referencia_externa = ?, cosa = ?, origen = ?, destino = ?, hora_llegada_solicitada = ?,
-		tolerancia_minutos = ?, observaciones = ?, estado = ?, contrapropuesta_hora = ?,
-		contrapropuesta_vence = ?, motivo_rechazo = ?, cancelacion_estado = ?, cancelacion_motivo = ?,
+		tolerancia_minutos = ?, observaciones = ?, estado = ?,
+		motivo_rechazo = ?, cancelacion_estado = ?, cancelacion_motivo = ?,
 		cancelacion_solicitada_en = ?, cancelacion_tardia = ?, version = ?, creado_en = ?, actualizado_en = ? WHERE id = ?`, v...); err != nil {
 		return fmt.Errorf("actualizar solicitud: %w", err)
 	}
@@ -266,28 +275,6 @@ func (t *transaccion) guardarTraslado(ctx context.Context, s *dominio.Solicitud)
 		return fmt.Errorf("guardar traslado: %w", err)
 	}
 	return nil
-}
-
-func (t *transaccion) IDsContrapropuestasVencidas(ctx context.Context, ahora time.Time, limite int) ([]string, error) {
-	// SKIP LOCKED: si otra transacción tiene tomada una solicitud (una respuesta del cliente en
-	// curso u otra réplica), se saltea en vez de esperarla.
-	filas, err := t.tx.QueryContext(ctx, `SELECT id FROM solicitudes
-		WHERE estado = ? AND contrapropuesta_vence <= ?
-		ORDER BY contrapropuesta_vence LIMIT ? FOR UPDATE SKIP LOCKED`,
-		string(dominio.SolicitudContrapropuesta), ahora.UTC(), limite)
-	if err != nil {
-		return nil, fmt.Errorf("buscar contrapropuestas vencidas: %w", err)
-	}
-	defer filas.Close()
-	var ids []string
-	for filas.Next() {
-		var id string
-		if err := filas.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	return ids, filas.Err()
 }
 
 func (t *transaccion) AgregarAlOutbox(ctx context.Context, exchange, routingKey string, sobre mensajeria.Sobre) error {

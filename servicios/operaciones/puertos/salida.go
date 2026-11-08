@@ -17,10 +17,10 @@ type UnidadDeTrabajo interface {
 type Transaccion interface {
 	ObtenerParaActualizar(ctx context.Context, id string) (*dominio.Solicitud, error) // SELECT … FOR UPDATE; ErrNoEncontrada
 	Obtener(ctx context.Context, id string) (*dominio.Solicitud, error)               // lectura sin bloqueo; ErrNoEncontrada
-	Listar(ctx context.Context, estado string, desde, limite int) ([]*dominio.Solicitud, int, error)
+	// Listar devuelve una página (ordenada por inicio de la franja y después por creación) y el total.
+	Listar(ctx context.Context, f FiltroSolicitudes, desde, limite int) ([]*dominio.Solicitud, int, error)
 	Insertar(ctx context.Context, s *dominio.Solicitud) error
 	Actualizar(ctx context.Context, s *dominio.Solicitud) error
-	IDsContrapropuestasVencidas(ctx context.Context, ahora time.Time, limite int) ([]string, error) // FOR UPDATE SKIP LOCKED
 	AgregarAlOutbox(ctx context.Context, exchange, routingKey string, sobre mensajeria.Sobre) error // guarda también el contexto de traza
 	BuscarIdempotencia(ctx context.Context, org, endpoint, clave string) (*RespuestaGuardada, error)
 	GuardarIdempotencia(ctx context.Context, org, endpoint, clave, hash string, r RespuestaGuardada) error
@@ -29,6 +29,15 @@ type Transaccion interface {
 	FranjaParaActualizar(ctx context.Context, plantilla dominio.Franja) (*dominio.Franja, error)
 	GuardarFranja(ctx context.Context, f *dominio.Franja) error
 	Franjas(ctx context.Context, desde, hasta time.Time) ([]dominio.Franja, error) // ya guardadas, sin bloqueo
+}
+
+// FiltroSolicitudes es el filtro del listado ya resuelto por la aplicación: la fecha llega como
+// rango UTC [FranjaDesde, FranjaHasta) sobre el inicio de la franja.
+type FiltroSolicitudes struct {
+	Organizacion   string
+	FranjaDesde    *time.Time
+	FranjaHasta    *time.Time
+	EstadoTraslado string
 }
 
 // RespuestaGuardada es la respuesta de un endpoint interno conservada para su clave de

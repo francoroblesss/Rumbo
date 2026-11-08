@@ -1,3 +1,4 @@
-// Package aplicacion contiene los casos de uso (aceptar solicitud, planificar recorrido, asignar
-// chofer y vehículo, registrar ejecución...). Coordina el dominio a través de los puertos.
+// Package aplicacion contiene los casos de uso (reservar una franja, cancelar, avanzar el estado
+// del traslado, listar y revisar el clima de una reserva). Coordina el dominio a través de los
+// puertos.
 package aplicacion

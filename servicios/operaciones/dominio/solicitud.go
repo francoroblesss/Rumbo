@@ -5,10 +5,8 @@ import (
 	"time"
 )
 
-// PlazoContrapropuesta es cuánto tiene el cliente para responder una contrapropuesta (R-08).
-const PlazoContrapropuesta = 24 * time.Hour
-
-// PlazoCancelacion es la anticipación mínima para cancelar sin aprobación del operador (R-15/R-16).
+// PlazoCancelacion es la anticipación por debajo de la cual una cancelación queda marcada como
+// tardía (R-45).
 const PlazoCancelacion = 24 * time.Hour
 
 // Solicitud es el agregado raíz de Operaciones (DDD, teórico 8): protege las invariantes del
@@ -17,6 +15,9 @@ const PlazoCancelacion = 24 * time.Hour
 // Cada transición que se aplica incrementa Version (docs/interfaces-internas.md §5.1: la
 // agregado_version) y devuelve el tipo de evento a publicar. El tiempo llega siempre como
 // parámetro (ahora), así las reglas se prueban sin reloj real.
+//
+// Desde ADR-024 las solicitudes nacen de una reserva de franja, ya aceptadas: no hay revisión
+// del operador. HoraLlegadaSolicitada y MotivoRechazo quedan de la Entrega 2 y siempre vacíos.
 type Solicitud struct {
 	ID                    string
 	OrganizacionID        string
@@ -29,7 +30,6 @@ type Solicitud struct {
 	ToleranciaMinutos     int
 	Observaciones         *string
 	Estado                EstadoSolicitud
-	Contrapropuesta       *Contrapropuesta
 	MotivoRechazo         *string
 	Traslado              *Traslado
 	Cancelacion           *Cancelacion
@@ -49,36 +49,13 @@ type DatosSolicitud struct {
 	Observaciones         *string
 }
 
-// NuevaSolicitud registra un pedido que el operador tiene que revisar (aceptar, contraproponer o
-// rechazar). Es el ciclo de los clientes que usan la aplicación web; los sistemas externos no
-// pasan por acá, reservan una franja (NuevaReservaExterna).
-func NuevaSolicitud(id, organizacionID string, origen OrigenSolicitud, d DatosSolicitud, ahora time.Time) (*Solicitud, Evento, error) {
-	if err := validarDatos(id, organizacionID, d); err != nil {
-		return nil, "", err
-	}
-	return &Solicitud{
-		ID:                    id,
-		OrganizacionID:        organizacionID,
-		Origen:                origen,
-		ReferenciaExterna:     d.ReferenciaExterna,
-		Cosa:                  d.Cosa,
-		Desde:                 d.Desde,
-		Hasta:                 d.Hasta,
-		HoraLlegadaSolicitada: d.HoraLlegadaSolicitada,
-		ToleranciaMinutos:     d.ToleranciaMinutos,
-		Observaciones:         d.Observaciones,
-		Estado:                SolicitudRecibida,
-		Version:               1,
-		CreadoEn:              ahora,
-		ActualizadoEn:         ahora,
-	}, EventoRecibida, nil
-}
-
 // NuevaReservaExterna registra lo que pidió un sistema externo por la capacidad publicada: toma
 // un lugar de la franja y deja la solicitud ya aceptada, con su traslado comprometido a llegar
 // antes del fin de la franja. No hay revisión del operador ni contrapropuesta: la respuesta es
 // definitiva en el momento (ADR-021). Si la franja no tiene lugar, no se crea nada.
-func NuevaReservaExterna(id, idTraslado, organizacionID string, d DatosSolicitud, franja *Franja, ahora time.Time) (*Solicitud, Evento, error) {
+// palabras son las de AEROPUERTO_PALABRAS: con ellas se marca qué extremo es el aeropuerto
+// (R-46, ADR-025), sin llamadas externas.
+func NuevaReservaExterna(id, idTraslado, organizacionID string, d DatosSolicitud, franja *Franja, palabras []string, ahora time.Time) (*Solicitud, Evento, error) {
 	if err := validarDatos(id, organizacionID, d); err != nil {
 		return nil, "", err
 	}
@@ -101,6 +78,7 @@ func NuevaReservaExterna(id, idTraslado, organizacionID string, d DatosSolicitud
 			Estado:                  TrasladoProgramado,
 			HoraLlegadaComprometida: franja.Fin,
 			FranjaInicio:            &inicio,
+			AeropuertoExtremo:       ExtremoAeropuerto(d.Desde, d.Hasta, palabras),
 		},
 		Version:       1,
 		CreadoEn:      ahora,
@@ -131,148 +109,54 @@ func (u Ubicacion) completa() bool {
 	return strings.TrimSpace(u.Nombre) != "" && strings.TrimSpace(u.Direccion) != ""
 }
 
-// Aceptar confirma la hora pedida como compromiso y crea el traslado (R-06). Sin hora pedida no
-// se puede aceptar: Rumbo nunca fija un horario por su cuenta, tiene que contraproponer (R-07).
-// idTraslado lo genera quien llama (el dominio no depende de la librería de uuid).
-func (s *Solicitud) Aceptar(idTraslado string, ahora time.Time, extremo *Extremo) (Evento, error) {
-	if s.Estado != SolicitudRecibida {
-		return "", ErrEstadoNoPermite
-	}
-	if s.HoraLlegadaSolicitada == nil {
-		return "", ErrSinHoraPedida
-	}
-	if !s.HoraLlegadaSolicitada.After(ahora) {
-		return "", ErrHorarioEnElPasado
-	}
-	if extremo != nil && *extremo != ExtremoOrigen && *extremo != ExtremoDestino {
-		return "", ErrDatosInvalidos
-	}
-	s.Estado = SolicitudAceptada
-	s.Traslado = &Traslado{
-		ID:                      idTraslado,
-		Estado:                  TrasladoProgramado,
-		HoraLlegadaComprometida: *s.HoraLlegadaSolicitada,
-		AeropuertoExtremo:       extremo,
-	}
-	s.tocar(ahora)
-	return EventoAceptada, nil
-}
-
-// Contraproponer propone otro horario; el cliente tiene 24 h para responder (R-07, R-08).
-func (s *Solicitud) Contraproponer(hora, ahora time.Time) (Evento, error) {
-	if s.Estado != SolicitudRecibida {
-		return "", ErrEstadoNoPermite
-	}
-	if !hora.After(ahora) {
-		return "", ErrHorarioEnElPasado
-	}
-	s.Estado = SolicitudContrapropuesta
-	s.Contrapropuesta = &Contrapropuesta{Hora: hora, VenceEn: ahora.Add(PlazoContrapropuesta)}
-	s.tocar(ahora)
-	return EventoContrapropuesta, nil
-}
-
-// Rechazar descarta la solicitud; el rechazo siempre lleva motivo (R-09).
-func (s *Solicitud) Rechazar(motivo string, ahora time.Time) (Evento, error) {
-	if s.Estado != SolicitudRecibida {
-		return "", ErrEstadoNoPermite
-	}
-	if strings.TrimSpace(motivo) == "" {
-		return "", ErrDatosInvalidos
-	}
-	s.Estado = SolicitudRechazada
-	s.MotivoRechazo = &motivo
-	s.tocar(ahora)
-	return EventoRechazada, nil
-}
-
-// ResponderContrapropuesta registra la respuesta del cliente. Una contrapropuesta vencida no se
-// puede responder; no se cambia nada acá porque la vence la tarea programada (Vencer).
-func (s *Solicitud) ResponderContrapropuesta(acepta bool, idTraslado string, ahora time.Time) (Evento, error) {
-	if s.Estado != SolicitudContrapropuesta || s.Contrapropuesta == nil {
-		return "", ErrEstadoNoPermite
-	}
-	if !ahora.Before(s.Contrapropuesta.VenceEn) {
-		return "", ErrContrapropuestaVencida
-	}
-	if !acepta {
-		s.Estado = SolicitudRechazadaPorCliente
-		s.tocar(ahora)
-		return EventoRechazadaPorCliente, nil
-	}
-	s.Estado = SolicitudAceptada
-	s.Traslado = &Traslado{
-		ID:                      idTraslado,
-		Estado:                  TrasladoProgramado,
-		HoraLlegadaComprometida: s.Contrapropuesta.Hora,
-	}
-	s.tocar(ahora)
-	return EventoAceptada, nil
-}
-
-// Vencer cierra una contrapropuesta sin respuesta a las 24 h y libera el horario (R-08).
-func (s *Solicitud) Vencer(ahora time.Time) (Evento, error) {
-	if s.Estado != SolicitudContrapropuesta || s.Contrapropuesta == nil || ahora.Before(s.Contrapropuesta.VenceEn) {
-		return "", ErrEstadoNoPermite
-	}
-	s.Estado = SolicitudRechazadaPorCliente
-	s.tocar(ahora)
-	return EventoVencida, nil
-}
-
-// Cancelar retira la solicitud o pide cancelar su traslado (R-15, R-16, R-17):
-//   - antes de aceptarse, la solicitud queda CANCELADA;
-//   - aceptada, con 24 h o más de anticipación, el traslado se cancela y la cancelación queda
-//     APROBADA; con menos, queda PENDIENTE_APROBACION para que decida el operador. En los dos
-//     casos la cancelación queda registrada (dominio.md §9);
-//   - un sistema externo no espera la decisión de nadie (ADR-021): su cancelación se aplica
-//     siempre y, si es tardía, queda marcada para que el operador se entere;
-//   - un traslado iniciado o terminado no se cancela.
+// Cancelar cancela el traslado de una reserva (R-45, R-17). Se aplica en el momento y la
+// cancelación queda siempre APROBADA: nadie tiene que aprobarla (ADR-021). Si faltan menos de
+// 24 h queda marcada como tardía, para que el operador se entere. Un traslado iniciado o
+// terminado no se cancela.
 func (s *Solicitud) Cancelar(motivo string, ahora time.Time) (Evento, error) {
 	if strings.TrimSpace(motivo) == "" {
 		return "", ErrDatosInvalidos
 	}
-	switch s.Estado {
-	case SolicitudRecibida, SolicitudContrapropuesta:
-		s.Estado = SolicitudCancelada
-		s.tocar(ahora)
-		return EventoCancelada, nil
-	case SolicitudAceptada:
-		if s.Traslado == nil || !s.Traslado.cancelable() ||
-			(s.Cancelacion != nil && s.Cancelacion.Estado == CancelacionPendienteAprobacion) {
-			return "", ErrEstadoNoPermite
-		}
-		tardia := s.Traslado.HoraLlegadaComprometida.Sub(ahora) < PlazoCancelacion
-		cancelacion := &Cancelacion{Estado: CancelacionPendienteAprobacion, Motivo: motivo, SolicitadaEn: ahora, Tardia: tardia}
-		if !tardia || s.Origen == OrigenExterno {
-			cancelacion.Estado = CancelacionAprobada
-			s.Traslado.Estado = TrasladoCancelado
-		}
-		s.Cancelacion = cancelacion
-		s.tocar(ahora)
-		return EventoCancelacionRegistrada, nil
-	default:
+	if s.Estado != SolicitudAceptada || s.Traslado == nil || !s.Traslado.cancelable() {
 		return "", ErrEstadoNoPermite
 	}
+	s.Cancelacion = &Cancelacion{Estado: CancelacionAprobada, Motivo: motivo, SolicitadaEn: ahora,
+		Tardia: s.Traslado.HoraLlegadaComprometida.Sub(ahora) < PlazoCancelacion}
+	s.Traslado.Estado = TrasladoCancelado
+	s.tocar(ahora)
+	return EventoCancelacionRegistrada, nil
 }
 
-// ResolverCancelacionTardia es la decisión del operador sobre una cancelación con menos de 24 h.
-func (s *Solicitud) ResolverCancelacionTardia(aprobar bool, ahora time.Time) (Evento, error) {
-	if s.Cancelacion == nil || s.Cancelacion.Estado != CancelacionPendienteAprobacion || s.Traslado == nil {
+// IniciarTraslado marca que el traslado salió: PROGRAMADO → EN_CURSO (R-47). En esta etapa lo
+// hace el operador desde la web, en lugar del chofer (ADR-024).
+func (s *Solicitud) IniciarTraslado(ahora time.Time) (Evento, error) {
+	if s.Traslado == nil || s.Traslado.Estado != TrasladoProgramado {
 		return "", ErrEstadoNoPermite
 	}
-	if !aprobar {
-		s.Cancelacion.Estado = CancelacionRechazada
-		s.tocar(ahora)
-		return EventoCancelacionRegistrada, nil
-	}
-	s.Cancelacion.Estado = CancelacionAprobada
-	s.Traslado.Estado = TrasladoCancelado
+	s.Traslado.Estado = TrasladoEnCurso
 	s.tocar(ahora)
 	return EventoTrasladoEstado, nil
 }
 
-// RegistrarAlertaClimatica deja en el traslado el resultado de la regla de clima (R-41). Rumbo no
+// CompletarTraslado marca que el traslado llegó: EN_CURSO → COMPLETADO (R-47).
+func (s *Solicitud) CompletarTraslado(ahora time.Time) (Evento, error) {
+	if s.Traslado == nil || s.Traslado.Estado != TrasladoEnCurso {
+		return "", ErrEstadoNoPermite
+	}
+	s.Traslado.Estado = TrasladoCompletado
+	finalizado := ahora
+	s.Traslado.FinalizadoEn = &finalizado
+	s.tocar(ahora)
+	return EventoTrasladoEstado, nil
+}
+
+// EstadoPedido indica si el traslado ya está en el estado destino: repetir un avance que ya se
+// hizo no cambia nada (R-47, reintento seguro).
+func (s *Solicitud) EstadoPedido(destino EstadoTraslado) bool {
+	return s.Traslado != nil && s.Traslado.Estado == destino
+}
+
+// RegistrarAlertaClimatica deja en el traslado el resultado de la regla de clima (R-46). Rumbo no
 // cancela ni reprograma: avisa y decide el operador.
 func (s *Solicitud) RegistrarAlertaClimatica(alerta AlertaClimatica, ahora time.Time) (Evento, error) {
 	if s.Traslado == nil {
@@ -283,10 +167,11 @@ func (s *Solicitud) RegistrarAlertaClimatica(alerta AlertaClimatica, ahora time.
 	return EventoAlertaClimatica, nil
 }
 
-// RequiereConsultaClima indica si el traslado va o viene del aeropuerto y su hora comprometida
-// cae dentro de las próximas 6 h (R-41).
+// RequiereConsultaClima indica si corresponde consultar el clima (R-46): el traslado va o viene
+// del aeropuerto, todavía no salió (PROGRAMADO) y su hora comprometida cae dentro de las
+// próximas 6 h.
 func (s *Solicitud) RequiereConsultaClima(ahora time.Time) bool {
-	return s.Traslado != nil && s.Traslado.AeropuertoExtremo != nil &&
+	return s.Traslado != nil && s.Traslado.AeropuertoExtremo != nil && s.Traslado.Estado == TrasladoProgramado &&
 		DentroDeVentanaClima(s.Traslado.HoraLlegadaComprometida, ahora)
 }
 

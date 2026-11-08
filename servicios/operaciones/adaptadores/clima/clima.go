@@ -44,6 +44,7 @@ const (
 type Cliente struct {
 	url     string
 	apiKey  string
+	prefer  string
 	http    *http.Client
 	breaker *gobreaker.CircuitBreaker[dominio.Operabilidad]
 	cache   *ccache.Cache[dominio.Operabilidad]
@@ -54,7 +55,12 @@ type Cliente struct {
 var _ puertos.ConsultaClima = (*Cliente)(nil)
 
 // NuevoCliente arma el adaptador con timeout, breaker y caché (ADR-012, teórico 7).
-func NuevoCliente(baseURL, apiKey string) *Cliente {
+//
+// prefer (CLIMA_PREFER) es solo para desarrollo: si no está vacío, cada consulta lleva el header
+// "Prefer: <prefer>". El mock de Prism usa ese header para elegir qué ejemplo del contrato
+// responde: con "example=not_operable" contesta "aeropuerto no operable" y así se puede probar la
+// alerta (CA-35) sin esperar a que haya viento. En la nube queda vacío y no se manda.
+func NuevoCliente(baseURL, apiKey, prefer string) *Cliente {
 	medidor := observabilidad.Medidor()
 	estadoCircuito, _ := medidor.Int64Gauge("rumbo_circuito_estado",
 		metric.WithDescription("Estado del circuit breaker: 0 cerrado, 1 semiabierto, 2 abierto"))
@@ -66,6 +72,7 @@ func NuevoCliente(baseURL, apiKey string) *Cliente {
 	return &Cliente{
 		url:    baseURL,
 		apiKey: apiKey,
+		prefer: prefer,
 		http:   observabilidad.ClienteHTTP(TimeoutIntento),
 		breaker: gobreaker.NewCircuitBreaker[dominio.Operabilidad](gobreaker.Settings{
 			Name:    nombreDependencia,
@@ -161,6 +168,9 @@ func (c *Cliente) intento(ctx context.Context, icao string) (dominio.Operabilida
 	}
 	pedido.Header.Set(headerAPIKey, c.apiKey)
 	pedido.Header.Set("Accept", "application/json")
+	if c.prefer != "" {
+		pedido.Header.Set("Prefer", c.prefer)
+	}
 
 	resp, err := c.http.Do(pedido)
 	if err != nil {

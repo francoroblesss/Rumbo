@@ -1,6 +1,9 @@
 package dominio
 
-import "time"
+import (
+	"slices"
+	"time"
+)
 
 // OrigenSolicitud indica por dónde entró la solicitud: la capacidad publicada (externo) o la
 // aplicación web de Rumbo (interno).
@@ -15,37 +18,33 @@ const (
 type EstadoSolicitud string
 
 const (
-	SolicitudRecibida            EstadoSolicitud = "RECIBIDA"
-	SolicitudContrapropuesta     EstadoSolicitud = "CONTRAPROPUESTA"
-	SolicitudAceptada            EstadoSolicitud = "ACEPTADA"
-	SolicitudRechazada           EstadoSolicitud = "RECHAZADA"
-	SolicitudRechazadaPorCliente EstadoSolicitud = "RECHAZADA_POR_CLIENTE"
-	SolicitudCancelada           EstadoSolicitud = "CANCELADA"
+	// Desde ADR-024 solo se produce ACEPTADA (la reserva). Los demás estados de la revisión
+	// (RECIBIDA, CONTRAPROPUESTA, RECHAZADA, …) quedaron en el tag entrega-2.
+	SolicitudAceptada EstadoSolicitud = "ACEPTADA"
 )
 
-// EstadoCancelacion es el estado de un pedido de cancelación de un traslado ya aceptado.
+// EstadoCancelacion es el estado de la cancelación de un traslado ya aceptado.
 type EstadoCancelacion string
 
-const (
-	CancelacionPendienteAprobacion EstadoCancelacion = "PENDIENTE_APROBACION"
-	CancelacionAprobada            EstadoCancelacion = "APROBADA"
-	CancelacionRechazada           EstadoCancelacion = "RECHAZADA"
-)
+// Una reserva se cancela siempre en el momento (R-45): solo se produce APROBADA.
+const CancelacionAprobada EstadoCancelacion = "APROBADA"
 
 // EstadoTraslado es el ciclo del traslado (dominio.md §10).
 type EstadoTraslado string
 
 const (
-	TrasladoProgramado   EstadoTraslado = "PROGRAMADO"
+	TrasladoProgramado EstadoTraslado = "PROGRAMADO"
+	TrasladoEnCurso    EstadoTraslado = "EN_CURSO"
+	TrasladoCompletado EstadoTraslado = "COMPLETADO"
+	TrasladoCancelado  EstadoTraslado = "CANCELADO"
+	// ASIGNADO, NO_REALIZADO e INTERRUMPIDO siguen en el contrato público, pero ningún método
+	// los produce en esta etapa: no hay recorridos ni ejecución del chofer (ADR-024).
 	TrasladoAsignado     EstadoTraslado = "ASIGNADO"
-	TrasladoEnCurso      EstadoTraslado = "EN_CURSO"
-	TrasladoCompletado   EstadoTraslado = "COMPLETADO"
-	TrasladoCancelado    EstadoTraslado = "CANCELADO"
 	TrasladoNoRealizado  EstadoTraslado = "NO_REALIZADO"
 	TrasladoInterrumpido EstadoTraslado = "INTERRUMPIDO"
 )
 
-// Extremo indica qué punta del traslado es el aeropuerto (regla de clima R-41).
+// Extremo indica qué punta del traslado es el aeropuerto (regla de clima R-46).
 type Extremo string
 
 const (
@@ -65,13 +64,7 @@ const (
 type Evento string
 
 const (
-	EventoRecibida              Evento = "operaciones.solicitud.recibida"
 	EventoAceptada              Evento = "operaciones.solicitud.aceptada"
-	EventoContrapropuesta       Evento = "operaciones.solicitud.contrapropuesta"
-	EventoRechazada             Evento = "operaciones.solicitud.rechazada"
-	EventoRechazadaPorCliente   Evento = "operaciones.solicitud.rechazada_por_cliente"
-	EventoVencida               Evento = "operaciones.solicitud.vencida"
-	EventoCancelada             Evento = "operaciones.solicitud.cancelada"
 	EventoCancelacionRegistrada Evento = "operaciones.cancelacion.registrada"
 	EventoTrasladoEstado        Evento = "operaciones.traslado.estado_cambiado"
 	EventoAlertaClimatica       Evento = "operaciones.traslado.alerta_climatica"
@@ -100,14 +93,8 @@ type Ubicacion struct {
 	Contacto  *string
 }
 
-// Contrapropuesta es el horario que propone Rumbo y hasta cuándo puede responder el cliente.
-type Contrapropuesta struct {
-	Hora    time.Time
-	VenceEn time.Time
-}
-
-// Cancelacion es el pedido de cancelación de un traslado ya aceptado. Tardia indica que se
-// pidió con menos de 24 h de anticipación.
+// Cancelacion es la cancelación de un traslado ya aceptado. Tardia indica que se pidió con menos
+// de 24 h de anticipación.
 type Cancelacion struct {
 	Estado       EstadoCancelacion
 	Motivo       string
@@ -120,6 +107,16 @@ type AlertaClimatica struct {
 	Estado      EstadoAlerta
 	Motivos     []string
 	ObservadoEn *time.Time
+}
+
+// Igual indica si las dos alertas dicen lo mismo: mismo estado y mismos motivos (la hora de
+// observación no cuenta). Con esto, un evento reentregado o una consulta repetida no vuelve a
+// escribir ni a publicar la misma alerta (idempotencia, teórico 4).
+func (a *AlertaClimatica) Igual(otra *AlertaClimatica) bool {
+	if a == nil || otra == nil {
+		return a == otra
+	}
+	return a.Estado == otra.Estado && slices.Equal(a.Motivos, otra.Motivos)
 }
 
 // Operabilidad es lo que Rumbo necesita saber del clima del aeropuerto, ya traducido del

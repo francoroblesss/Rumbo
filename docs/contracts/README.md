@@ -7,7 +7,7 @@ Para reservar hacen falta **`cosa`, `origen`, `destino` y `franja_inicio`**. La 
 ## Versión vigente
 | Versión | Contrato | Base URL | Estado |
 | --- | --- | --- | --- |
-| **4.0.0** | [`traslados.yaml`](traslados.yaml) (OpenAPI 3.1) | Rutas sin versión (`/disponibilidad`, `/traslados`, `/auth/token`) · mock local: `http://localhost:4010` · producción: _a publicar_ | **Vigente** |
+| **4.0.1** | [`traslados.yaml`](traslados.yaml) (OpenAPI 3.1) | Rutas sin versión (`/disponibilidad`, `/traslados`, `/auth/token`) · mock local: `http://localhost:4010` · producción: _a publicar_ | **Vigente** |
 | 3.0.0 | [`traslados-v3.yaml`](traslados-v3.yaml) | Rutas sin versión | Reemplazada por 4.0.0 (ADR-021): tenía revisión del operador y contrapropuesta. Solo se usó contra el mock |
 | 2.1.0 | [`traslados-v2.yaml`](traslados-v2.yaml) | `/v2` | Reemplazada por 3.0.0; nunca tuvo consumidores |
 | 1.0.0 | [`solicitudes-carga-v1.yaml`](solicitudes-carga-v1.yaml) | `/v1` | Reemplazada por 2.0.0; nunca tuvo consumidores ni se implementó |
@@ -60,12 +60,12 @@ Para reservar hacen falta **`cosa`, `origen`, `destino` y `franja_inicio`**. La 
 | Estado | Significado | ¿Final? |
 | --- | --- | --- |
 | `PROGRAMADO` | Reservado: Rumbo se comprometió a la franja | no |
-| `ASIGNADO` | Ya tiene chofer y vehículo | no |
-| `EN_CURSO` | El chofer lo inició | no |
+| `ASIGNADO` | Ya tiene chofer y vehículo. No se produce en esta versión (ADR-024) | no |
+| `EN_CURSO` | El traslado salió (en esta versión lo marca el operador) | no |
 | `COMPLETADO` | La cosa llegó al destino | sí |
 | `CANCELADO` | Cancelado antes de iniciar | sí |
-| `NO_REALIZADO` | No se pudo retirar la cosa (`detalle_resultado`) | sí |
-| `INTERRUMPIDO` | Empezó y no terminó, por ejemplo por una avería (`detalle_resultado`) | sí |
+| `NO_REALIZADO` | No se pudo retirar la cosa (`detalle_resultado`). No se produce en esta versión (ADR-024) | sí |
+| `INTERRUMPIDO` | Empezó y no terminó, por ejemplo por una avería (`detalle_resultado`). No se produce en esta versión (ADR-024) | sí |
 
 Un retraso se informa en `demora_minutos`; no es un estado.
 
@@ -200,6 +200,7 @@ npx @stoplight/prism-cli mock docs/contracts/traslados.yaml -p 4010
 ## Historial de versiones
 | Versión | Fecha | Cambios | Compatible con la anterior |
 | --- | --- | --- | --- |
+| 4.0.1 | 2026-11-07 | Aclaración de los estados que no se producen; sin cambios de forma (ADR-024): `ASIGNADO`, `NO_REALIZADO` e `INTERRUMPIDO` siguen en el enum pero no se producen en esta versión, y `EN_CURSO` lo marca el operador | **Sí** (versión de parche) |
 | 4.0.0 | 2026-10-28 | **Capacidad de autoservicio: reservar una franja** (ADR-021). Nuevo `GET /disponibilidad`. `POST /traslados` exige `franja_inicio` (ya no `hora_llegada_solicitada` ni `tolerancia_minutos`) y responde `201` con el traslado `PROGRAMADO` o `409 SIN_DISPONIBILIDAD` (código nuevo). El recurso que se informa es el traslado (`TrasladoReservado`: `estado` del traslado, `franja`, `cancelacion.tardia`). Se eliminan `RECIBIDA`, `CONTRAPROPUESTA`, `RECHAZADA`, `RECHAZADA_POR_CLIENTE`, `CANCELADA`, `POST /traslados/{id}/respuesta-contrapropuesta`, `CONTRAPROPUESTA_VENCIDA` y la cancelación `PENDIENTE_APROBACION`: la cancelación se aplica en el momento | **No** (versión mayor). El consumidor solo usaba el mock: se le avisa y se actualiza el mock |
 | 3.0.0 | 2026-10-16 | **Las rutas dejan de llevar versión:** `/v2/traslados` → `/traslados` y `/v2/auth/token` → `/auth/token`. Cuerpos, estados, errores, autenticación e idempotencia no cambian (ADR-019) | **No** (cambian las rutas). Sin consumidores todavía: no hubo migración |
 | 2.1.0 | 2026-10-16 | Se documentan `502 SERVICIO_NO_DISPONIBLE` y `504 TIEMPO_AGOTADO`, que el punto de entrada ya podía devolver (deadline de 5 s, ADR-004), ahora con Problem Details. Nuevo `codigo` `TIEMPO_AGOTADO` | **Sí** (versión menor) |

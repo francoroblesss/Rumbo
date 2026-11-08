@@ -113,12 +113,12 @@ func TestMySQL(t *testing.T) {
 	reloj := ahora
 	casos := aplicacion.NuevasSolicitudes(uow, clima, "SACO", palabras, calendario, func() time.Time { return reloj }, "test")
 
-	t.Run("la migración 0003 crea el índice del listado", func(t *testing.T) {
+	t.Run("el listado por fecha tiene el índice de la migración 0002", func(t *testing.T) {
 		var n int
 		err := uow.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM information_schema.statistics
-			WHERE table_schema = DATABASE() AND table_name = 'traslados' AND index_name = 'idx_traslado_franja'`).Scan(&n)
+			WHERE table_schema = DATABASE() AND table_name = 'traslados' AND index_name = 'idx_franja_inicio'`).Scan(&n)
 		if err != nil || n != 1 {
-			t.Fatalf("índice idx_traslado_franja: %d, err = %v", n, err)
+			t.Fatalf("índice idx_franja_inicio: %d, err = %v", n, err)
 		}
 	})
 

@@ -60,12 +60,12 @@ Para reservar hacen falta **`cosa`, `origen`, `destino` y `franja_inicio`**. La 
 | Estado | Significado | ¿Final? |
 | --- | --- | --- |
 | `PROGRAMADO` | Reservado: Rumbo se comprometió a la franja | no |
-| `ASIGNADO` | Ya tiene chofer y vehículo | no |
-| `EN_CURSO` | El chofer lo inició | no |
+| `ASIGNADO` | Ya tiene chofer y vehículo. No se produce en esta versión (ADR-024) | no |
+| `EN_CURSO` | El traslado salió (en esta versión lo marca el operador) | no |
 | `COMPLETADO` | La cosa llegó al destino | sí |
 | `CANCELADO` | Cancelado antes de iniciar | sí |
-| `NO_REALIZADO` | No se pudo retirar la cosa (`detalle_resultado`) | sí |
-| `INTERRUMPIDO` | Empezó y no terminó, por ejemplo por una avería (`detalle_resultado`) | sí |
+| `NO_REALIZADO` | No se pudo retirar la cosa (`detalle_resultado`). No se produce en esta versión (ADR-024) | sí |
+| `INTERRUMPIDO` | Empezó y no terminó, por ejemplo por una avería (`detalle_resultado`). No se produce en esta versión (ADR-024) | sí |
 
 Un retraso se informa en `demora_minutos`; no es un estado.
 

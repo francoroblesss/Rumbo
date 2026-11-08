@@ -16,6 +16,14 @@ type Config struct {
 	AdminPassword       string // su contraseña (se guarda hasheada)
 	ExternoClientID     string // client_id del sistema externo (grupo consumidor)
 	ExternoClientSecret string // su secreto (se guarda hasheado)
+
+	// Usuarios de demostración de la web (docs/interfaces-internas.md §15). Son opcionales: con el
+	// email vacío ese usuario no se siembra (en la nube no hacen falta, la web corre en local).
+	ExternoOrganizacionNombre string // nombre de la organización del sistema externo
+	OperadorEmail             string
+	OperadorPassword          string
+	ClienteEmail              string
+	ClientePassword           string
 }
 
 // Cargar lee la configuración del entorno. Las URIs, los secretos y las credenciales iniciales
@@ -30,7 +38,22 @@ func Cargar() Config {
 		AdminPassword:       obligatorio("ADMIN_PASSWORD"),
 		ExternoClientID:     obligatorio("EXTERNO_CLIENT_ID"),
 		ExternoClientSecret: obligatorio("EXTERNO_CLIENT_SECRET"),
+
+		ExternoOrganizacionNombre: valor("EXTERNO_ORGANIZACION_NOMBRE", "Gestión de almacenamiento"),
+		OperadorEmail:             os.Getenv("OPERADOR_EMAIL"),
+		OperadorPassword:          claveSiHayEmail("OPERADOR_EMAIL", "OPERADOR_PASSWORD"),
+		ClienteEmail:              os.Getenv("CLIENTE_EMAIL"),
+		ClientePassword:           claveSiHayEmail("CLIENTE_EMAIL", "CLIENTE_PASSWORD"),
 	}
+}
+
+// claveSiHayEmail devuelve la contraseña de un usuario de demostración. Solo es obligatoria si
+// su email está definido: un usuario sembrado con la contraseña vacía no podría entrar nunca.
+func claveSiHayEmail(variableEmail, variableClave string) string {
+	if os.Getenv(variableEmail) == "" {
+		return os.Getenv(variableClave)
+	}
+	return obligatorio(variableClave)
 }
 
 // valor devuelve la variable de entorno o, si no está definida, el valor por defecto.

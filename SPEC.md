@@ -275,12 +275,12 @@ Qué se implementa para la Presentación Grupal y qué queda documentado sin imp
 | F-06 | Cubierta por F-31 (cancelación de reservas) | — |
 | F-07 | Cubierta por F-31 (consulta de reservas) | — |
 | F-08 a F-25 | Fuera de alcance (ADR-024) | — |
-| F-26 | En curso | Sofia (Notificaciones), Delap (web) |
-| F-27 | En curso | Franco (Solr), Delap (web) |
-| F-28 | Implementada (contrato 4.0.0); 4.0.1 en curso | Llanca (4.0.1) |
-| F-29 | En curso (ADR-025) | Llanca |
-| F-30 | En curso | Llanca (API), Delap (web) |
-| F-31 | En curso | Llanca (API), Delap (web) |
+| F-26 | API, stream y web implementados; falta probarlos juntos | Sofia (Notificaciones), Delap (web) |
+| F-27 | En curso (web implementada) | Franco (Solr), Delap (web) |
+| F-28 | Implementada (contrato 4.0.1) | Llanca (4.0.1) |
+| F-29 | Implementada (ADR-025) | Llanca |
+| F-30 | Implementada | Llanca (API), Delap (web) |
+| F-31 | Implementada | Llanca (API), Delap (web) |
 
 Roles de la web en esta etapa: **operador**, **cliente de organización** y **administrador** (reindexar la búsqueda). Sin rol chofer (ADR-024).
 

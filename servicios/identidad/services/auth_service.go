@@ -37,12 +37,25 @@ type Token struct {
 	ExpiraEnSegundos int    `json:"expira_en_segundos"`
 }
 
-// Siembra son los datos con los que Identidad se inicializa (variables de entorno).
+// Nombres fijos de los usuarios sembrados (docs/interfaces-internas.md §15).
+const (
+	NombreAdministrador = "Administrador"
+	NombreOperador      = "Operador de Rumbo"
+	NombreCliente       = "Usuario de almacenamiento"
+)
+
+// Siembra son los datos con los que Identidad se inicializa (variables de entorno). Los usuarios
+// de demostración (operador y cliente) son opcionales: con el email vacío no se siembran.
 type Siembra struct {
-	AdminEmail          string
-	AdminPassword       string
-	ExternoClientID     string
-	ExternoClientSecret string
+	AdminEmail                string
+	AdminPassword             string
+	ExternoClientID           string
+	ExternoClientSecret       string
+	ExternoOrganizacionNombre string
+	OperadorEmail             string
+	OperadorPassword          string
+	ClienteEmail              string
+	ClientePassword           string
 }
 
 // reclamos son los claims del token: los estándar más la organización y los roles.
@@ -76,44 +89,88 @@ func NuevoAuthService(usuarios repositories.UsuariosRepository, organizaciones r
 	}
 }
 
-// Sembrar crea, si no existen, el usuario administrador y la organización del sistema externo.
-// Es idempotente: se puede ejecutar en cada arranque y desde varias réplicas.
+// Sembrar crea, si no existen, la organización del sistema externo, el administrador y los
+// usuarios de demostración de la web (docs/interfaces-internas.md §15). Es idempotente: se puede
+// ejecutar en cada arranque y desde varias réplicas. Nunca pisa la contraseña de un usuario que
+// ya existe; al administrador y a la organización solo les completa el nombre si les falta.
 func (s *AuthService) Sembrar(ctx context.Context) error {
-	if err := s.sembrarAdministrador(ctx); err != nil {
+	// Primero la organización: el cliente de demostración pertenece a ella.
+	if err := s.sembrarSistemaExterno(ctx); err != nil {
 		return err
 	}
-	return s.sembrarSistemaExterno(ctx)
-}
-
-func (s *AuthService) sembrarAdministrador(ctx context.Context) error {
-	_, err := s.usuarios.BuscarPorEmail(ctx, s.siembra.AdminEmail)
-	if err == nil {
-		return nil
-	}
-	if !errors.Is(err, repositories.ErrNoEncontrado) {
-		return fmt.Errorf("buscar administrador: %w", err)
-	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(s.siembra.AdminPassword), bcrypt.DefaultCost)
+	administrador, err := s.sembrarUsuario(ctx, &models.Usuario{
+		Email:  s.siembra.AdminEmail,
+		Nombre: NombreAdministrador,
+		Roles:  []string{identidad.RolAdministrador, identidad.RolOperador},
+	}, s.siembra.AdminPassword)
 	if err != nil {
-		return fmt.Errorf("hashear contraseña del administrador: %w", err)
+		return err
 	}
-	usuario := &models.Usuario{
-		ID:           "usr-" + uuid.NewString(),
-		Email:        s.siembra.AdminEmail,
-		HashPassword: string(hash),
-		Roles:        []string{identidad.RolAdministrador, identidad.RolOperador},
-		CreadoEn:     time.Now().UTC(),
+	// El administrador existía antes de que los usuarios tuvieran nombre (§15).
+	if administrador.Nombre == "" {
+		if err := s.usuarios.CompletarNombre(ctx, administrador.ID, NombreAdministrador); err != nil {
+			return err
+		}
 	}
-	if err := s.usuarios.Crear(ctx, usuario); err != nil && !errors.Is(err, repositories.ErrDuplicado) {
-		return fmt.Errorf("crear administrador: %w", err)
+	if s.siembra.OperadorEmail != "" {
+		if _, err := s.sembrarUsuario(ctx, &models.Usuario{
+			Email:  s.siembra.OperadorEmail,
+			Nombre: NombreOperador,
+			Roles:  []string{identidad.RolOperador},
+		}, s.siembra.OperadorPassword); err != nil {
+			return err
+		}
 	}
-	slog.InfoContext(ctx, "usuario administrador sembrado", slog.String("usuario_id", usuario.ID))
+	if s.siembra.ClienteEmail != "" {
+		organizacion := OrganizacionExternaID
+		if _, err := s.sembrarUsuario(ctx, &models.Usuario{
+			Email:          s.siembra.ClienteEmail,
+			Nombre:         NombreCliente,
+			Roles:          []string{identidad.RolCliente},
+			OrganizacionID: &organizacion,
+		}, s.siembra.ClientePassword); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
-func (s *AuthService) sembrarSistemaExterno(ctx context.Context) error {
-	_, err := s.organizaciones.BuscarPorID(ctx, OrganizacionExternaID)
+// sembrarUsuario crea el usuario con la contraseña hasheada si su email no existe, y devuelve el
+// que quedó guardado. Si ya existía, lo devuelve tal cual: no toca su contraseña ni sus datos.
+func (s *AuthService) sembrarUsuario(ctx context.Context, nuevo *models.Usuario, password string) (*models.Usuario, error) {
+	existente, err := s.usuarios.BuscarPorEmail(ctx, nuevo.Email)
 	if err == nil {
+		return existente, nil
+	}
+	if !errors.Is(err, repositories.ErrNoEncontrado) {
+		return nil, fmt.Errorf("buscar usuario %q: %w", nuevo.Nombre, err)
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, fmt.Errorf("hashear contraseña del usuario %q: %w", nuevo.Nombre, err)
+	}
+	nuevo.ID = "usr-" + uuid.NewString()
+	nuevo.HashPassword = string(hash)
+	nuevo.CreadoEn = time.Now().UTC()
+	err = s.usuarios.Crear(ctx, nuevo)
+	if errors.Is(err, repositories.ErrDuplicado) {
+		// Otra réplica lo creó entre la búsqueda y el alta: vale el que quedó guardado.
+		return s.usuarios.BuscarPorEmail(ctx, nuevo.Email)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("crear usuario %q: %w", nuevo.Nombre, err)
+	}
+	slog.InfoContext(ctx, "usuario sembrado", slog.String("usuario_id", nuevo.ID), slog.Any("roles", nuevo.Roles))
+	return nuevo, nil
+}
+
+func (s *AuthService) sembrarSistemaExterno(ctx context.Context) error {
+	existente, err := s.organizaciones.BuscarPorID(ctx, OrganizacionExternaID)
+	if err == nil {
+		// Si existía sin nombre (de antes de §15), se le completa; nunca se pisa uno existente.
+		if existente.Nombre == "" {
+			return s.organizaciones.CompletarNombre(ctx, OrganizacionExternaID, s.siembra.ExternoOrganizacionNombre)
+		}
 		return nil
 	}
 	if !errors.Is(err, repositories.ErrNoEncontrado) {
@@ -125,7 +182,7 @@ func (s *AuthService) sembrarSistemaExterno(ctx context.Context) error {
 	}
 	organizacion := &models.Organizacion{
 		ID:           OrganizacionExternaID,
-		Nombre:       "Sistema de gestión de almacenamiento (grupo consumidor)",
+		Nombre:       s.siembra.ExternoOrganizacionNombre,
 		TipoServicio: models.ServicioStock,
 		ClientesAPI:  []models.ClienteAPI{{ClientID: s.siembra.ExternoClientID, HashSecreto: string(hash)}},
 		CreadoEn:     time.Now().UTC(),

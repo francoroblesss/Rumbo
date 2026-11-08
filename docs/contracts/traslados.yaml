@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Rumbo — Reservar traslado
-  version: 4.0.0
+  version: 4.0.1
   description: |
     Capacidad publicada por Rumbo para que un sistema externo **reserve el traslado de una cosa
     desde un origen hasta un destino** en una franja horaria, y siga su resultado.
@@ -571,12 +571,12 @@ components:
       enum: [PROGRAMADO, ASIGNADO, EN_CURSO, COMPLETADO, CANCELADO, NO_REALIZADO, INTERRUMPIDO]
       description: |
         - `PROGRAMADO`: reservado; Rumbo se comprometió a la franja.
-        - `ASIGNADO`: ya tiene chofer y vehículo.
-        - `EN_CURSO`: el chofer inició el traslado.
+        - `ASIGNADO`: ya tiene chofer y vehículo. No se produce en esta versión de Rumbo (ADR-024); el consumidor puede ignorarlo.
+        - `EN_CURSO`: el traslado salió (en esta versión lo marca el operador).
         - `COMPLETADO`: la cosa llegó al destino. Final.
         - `CANCELADO`: cancelado antes de iniciar. Final.
-        - `NO_REALIZADO`: no se pudo retirar la cosa en el origen. Final.
-        - `INTERRUMPIDO`: empezó y no terminó (por ejemplo, avería). Final.
+        - `NO_REALIZADO`: no se pudo retirar la cosa en el origen. Final. No se produce en esta versión de Rumbo (ADR-024); el consumidor puede ignorarlo.
+        - `INTERRUMPIDO`: empezó y no terminó (por ejemplo, avería). Final. No se produce en esta versión de Rumbo (ADR-024); el consumidor puede ignorarlo.
 
     Cancelacion:
       type: object

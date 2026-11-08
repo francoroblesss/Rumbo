@@ -92,6 +92,23 @@ func (c Calendario) Validar(inicio, ahora time.Time) (Franja, error) {
 // DelDia devuelve, con el cupo completo, las franjas de la fecha (en hora local) que todavía se
 // pueden reservar. Una fecha fuera del horizonte es ErrFranjaInvalida.
 func (c Calendario) DelDia(anio int, mes time.Month, dia int, ahora time.Time) ([]Franja, error) {
+	todas, err := c.Dia(anio, mes, dia, ahora)
+	if err != nil {
+		return nil, err
+	}
+	var franjas []Franja
+	for _, f := range todas {
+		if _, err := c.Validar(f.Inicio, ahora); err == nil {
+			franjas = append(franjas, f)
+		}
+	}
+	return franjas, nil
+}
+
+// Dia devuelve, en orden y con el cupo completo, todas las franjas del horario de la fecha (en
+// hora local), aunque ya hayan empezado: es lo que ve el operador (§12). Una fecha anterior a
+// hoy o fuera del horizonte es ErrFranjaInvalida.
+func (c Calendario) Dia(anio int, mes time.Month, dia int, ahora time.Time) ([]Franja, error) {
 	medianoche := time.Date(anio, mes, dia, 0, 0, 0, 0, c.Zona)
 	hoy := ahora.In(c.Zona)
 	if medianoche.Before(time.Date(hoy.Year(), hoy.Month(), hoy.Day(), 0, 0, 0, 0, c.Zona)) ||
@@ -100,9 +117,7 @@ func (c Calendario) DelDia(anio int, mes time.Month, dia int, ahora time.Time) (
 	}
 	var franjas []Franja
 	for h := c.AperturaHora; h+c.DuracionHoras <= c.CierreHora; h += c.DuracionHoras {
-		if f, err := c.Validar(medianoche.Add(time.Duration(h)*time.Hour), ahora); err == nil {
-			franjas = append(franjas, f)
-		}
+		franjas = append(franjas, c.Nueva(medianoche.Add(time.Duration(h)*time.Hour)))
 	}
 	return franjas, nil
 }

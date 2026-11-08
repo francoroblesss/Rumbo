@@ -161,7 +161,7 @@ func TestContratoEjemplosDeRespuesta(t *testing.T) {
 	t.Run("operable", func(t *testing.T) {
 		p, srv := nuevoProveedor(t, doc)
 		p.responde = responder(200, ejemplo(t, doc, 200, "operable"), nil)
-		o, err := NuevoCliente(srv.URL, "clave-de-prueba").Operabilidad(ctx, "SACO")
+		o, err := NuevoCliente(srv.URL, "clave-de-prueba", "").Operabilidad(ctx, "SACO")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -173,7 +173,7 @@ func TestContratoEjemplosDeRespuesta(t *testing.T) {
 	t.Run("not_operable", func(t *testing.T) {
 		p, srv := nuevoProveedor(t, doc)
 		p.responde = responder(200, ejemplo(t, doc, 200, "not_operable"), nil)
-		o, err := NuevoCliente(srv.URL, "clave-de-prueba").Operabilidad(ctx, "SACO")
+		o, err := NuevoCliente(srv.URL, "clave-de-prueba", "").Operabilidad(ctx, "SACO")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -185,7 +185,7 @@ func TestContratoEjemplosDeRespuesta(t *testing.T) {
 	t.Run("caché de 5 min: la segunda consulta no llega al proveedor", func(t *testing.T) {
 		p, srv := nuevoProveedor(t, doc)
 		p.responde = responder(200, ejemplo(t, doc, 200, "operable"), nil)
-		c := NuevoCliente(srv.URL, "clave-de-prueba")
+		c := NuevoCliente(srv.URL, "clave-de-prueba", "")
 		for range 3 {
 			if _, err := c.Operabilidad(ctx, "SACO"); err != nil {
 				t.Fatal(err)
@@ -222,7 +222,7 @@ func TestContratoErrores(t *testing.T) {
 		t.Run(c.nombre, func(t *testing.T) {
 			p, srv := nuevoProveedor(t, doc)
 			p.responde = responder(c.estado, c.cuerpo, c.headers)
-			cliente := NuevoCliente(srv.URL, "clave-de-prueba")
+			cliente := NuevoCliente(srv.URL, "clave-de-prueba", "")
 			_, err := cliente.Operabilidad(ctx, "SACO")
 			if !errors.Is(err, puertos.ErrClimaNoDisponible) {
 				t.Fatalf("error = %v, se esperaba ErrClimaNoDisponible", err)
@@ -252,7 +252,7 @@ func TestContratoErrores(t *testing.T) {
 			}
 			ok(w, intento)
 		}
-		if _, err := NuevoCliente(srv.URL, "clave-de-prueba").Operabilidad(ctx, "SACO"); err != nil {
+		if _, err := NuevoCliente(srv.URL, "clave-de-prueba", "").Operabilidad(ctx, "SACO"); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -261,7 +261,7 @@ func TestContratoErrores(t *testing.T) {
 		p, srv := nuevoProveedor(t, doc)
 		p.responde = func(w http.ResponseWriter, _ int) { time.Sleep(TimeoutIntento + 200*time.Millisecond) }
 		inicio := time.Now()
-		_, err := NuevoCliente(srv.URL, "clave-de-prueba").Operabilidad(ctx, "SACO")
+		_, err := NuevoCliente(srv.URL, "clave-de-prueba", "").Operabilidad(ctx, "SACO")
 		if !errors.Is(err, puertos.ErrClimaNoDisponible) {
 			t.Fatalf("error = %v", err)
 		}
@@ -292,7 +292,7 @@ func TestBreakerSeAbreConCincoFallas(t *testing.T) {
 	ctx := context.Background()
 	p, srv := nuevoProveedor(t, doc)
 	p.responde = responder(500, nil, nil)
-	cliente := NuevoCliente(srv.URL, "clave-de-prueba")
+	cliente := NuevoCliente(srv.URL, "clave-de-prueba", "")
 
 	// Cada consulta hace 2 intentos (con reintento): a la tercera consulta llega a 5 fallas.
 	for range 3 {
@@ -308,5 +308,24 @@ func TestBreakerSeAbreConCincoFallas(t *testing.T) {
 	_, err := cliente.Operabilidad(ctx, "SACO")
 	if !errors.Is(err, puertos.ErrClimaNoDisponible) || p.pedidos != FallasParaAbrir {
 		t.Fatalf("error = %v, pedidos = %d", err, p.pedidos)
+	}
+}
+
+// TestPrefer: CLIMA_PREFER solo se manda si está configurado (para elegir el ejemplo del mock).
+func TestPrefer(t *testing.T) {
+	doc := cargarContrato(t)
+	for _, prefer := range []string{"", "example=not_operable"} {
+		recibido := "sin pedido"
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			recibido = r.Header.Get("Prefer")
+			responder(200, ejemplo(t, doc, 200, "not_operable"), nil)(w, 0)
+		}))
+		if _, err := NuevoCliente(srv.URL, "clave-de-prueba", prefer).Operabilidad(context.Background(), "SACO"); err != nil {
+			t.Fatal(err)
+		}
+		srv.Close()
+		if recibido != prefer {
+			t.Fatalf("Prefer = %q, se esperaba %q", recibido, prefer)
+		}
 	}
 }

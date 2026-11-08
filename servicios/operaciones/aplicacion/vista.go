@@ -31,7 +31,8 @@ func horaOpcional(t *time.Time) *string {
 	return &h
 }
 
-// NuevaVista traduce el agregado a la vista de solicitud (§6).
+// NuevaVista traduce el agregado a la vista de solicitud (§6). Los campos de la revisión
+// (hora_llegada_solicitada, contrapropuesta, motivo_rechazo) quedan en null desde ADR-024.
 func NuevaVista(s *dominio.Solicitud) puertos.Vista {
 	v := puertos.Vista{
 		ID:                s.ID,
@@ -52,9 +53,6 @@ func NuevaVista(s *dominio.Solicitud) puertos.Vista {
 		Version:               s.Version,
 		CreadoEn:              hora(s.CreadoEn),
 		ActualizadoEn:         hora(s.ActualizadoEn),
-	}
-	if c := s.Contrapropuesta; c != nil {
-		v.Contrapropuesta = &puertos.VistaContrapropuesta{HoraLlegadaPropuesta: hora(c.Hora), VenceEn: hora(c.VenceEn)}
 	}
 	if t := s.Traslado; t != nil {
 		v.Traslado = &puertos.VistaTraslado{

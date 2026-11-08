@@ -83,14 +83,26 @@ func (t *txMemoria) Obtener(_ context.Context, id string) (*dominio.Solicitud, e
 	return copiar(s), nil
 }
 
-func (t *txMemoria) Listar(_ context.Context, estado string, desde, limite int) ([]*dominio.Solicitud, int, error) {
+func (t *txMemoria) Listar(_ context.Context, f puertos.FiltroSolicitudes, desde, limite int) ([]*dominio.Solicitud, int, error) {
 	var todas []*dominio.Solicitud
 	for _, s := range t.e.Solicitudes {
-		if estado == "" || string(s.Estado) == estado {
-			todas = append(todas, copiar(s))
+		tr := s.Traslado
+		switch {
+		case f.Organizacion != "" && s.OrganizacionID != f.Organizacion,
+			f.EstadoTraslado != "" && (tr == nil || string(tr.Estado) != f.EstadoTraslado),
+			f.FranjaDesde != nil && (tr == nil || tr.FranjaInicio == nil || tr.FranjaInicio.Before(*f.FranjaDesde) || !tr.FranjaInicio.Before(*f.FranjaHasta)):
+			continue
 		}
+		todas = append(todas, copiar(s))
 	}
-	sort.Slice(todas, func(i, j int) bool { return todas[i].ActualizadoEn.After(todas[j].ActualizadoEn) })
+	// Mismo orden que MySQL: inicio de la franja y después creación.
+	sort.Slice(todas, func(i, j int) bool {
+		a, b := todas[i].Traslado.FranjaInicio, todas[j].Traslado.FranjaInicio
+		if !a.Equal(*b) {
+			return a.Before(*b)
+		}
+		return todas[i].CreadoEn.Before(todas[j].CreadoEn)
+	})
 	total := len(todas)
 	if desde > total {
 		desde = total
@@ -106,16 +118,6 @@ func (t *txMemoria) Insertar(_ context.Context, s *dominio.Solicitud) error {
 func (t *txMemoria) Actualizar(_ context.Context, s *dominio.Solicitud) error {
 	t.e.Solicitudes[s.ID] = copiar(s)
 	return nil
-}
-
-func (t *txMemoria) IDsContrapropuestasVencidas(_ context.Context, ahora time.Time, limite int) ([]string, error) {
-	var ids []string
-	for id, s := range t.e.Solicitudes {
-		if s.Estado == dominio.SolicitudContrapropuesta && !ahora.Before(s.Contrapropuesta.VenceEn) && len(ids) < limite {
-			ids = append(ids, id)
-		}
-	}
-	return ids, nil
 }
 
 func (t *txMemoria) AgregarAlOutbox(_ context.Context, exchange, routingKey string, sobre mensajeria.Sobre) error {
@@ -163,14 +165,19 @@ func (t *txMemoria) GuardarIdempotencia(_ context.Context, org, endpoint, clave,
 	return nil
 }
 
-// climaFalso responde lo configurado y cuenta las consultas.
+// climaFalso responde lo configurado y cuenta las consultas. Si mientras se consulta tiene que
+// pasar algo en paralelo (otra transacción), lo hace durante.
 type climaFalso struct {
 	operabilidad dominio.Operabilidad
 	err          error
 	consultas    int
+	durante      func()
 }
 
 func (c *climaFalso) Operabilidad(context.Context, string) (dominio.Operabilidad, error) {
 	c.consultas++
+	if c.durante != nil {
+		c.durante()
+	}
 	return c.operabilidad, c.err
 }

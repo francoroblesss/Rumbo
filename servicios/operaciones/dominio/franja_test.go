@@ -62,6 +62,19 @@ func TestCalendarioDelDia(t *testing.T) {
 	esperarError(t, err, ErrFranjaInvalida)
 }
 
+func TestCalendarioDia(t *testing.T) {
+	// Lo que ve el operador: todas las franjas del día, también las que ya empezaron.
+	hoy, err := calendario.Dia(2026, time.October, 15, ahora)
+	if err != nil || len(hoy) != 6 || !hoy[0].Inicio.Equal(local(15, 8, 0)) || !hoy[5].Fin.Equal(local(15, 20, 0)) ||
+		hoy[0].CupoTraslados != 3 || hoy[0].TrasladosReservados != 0 {
+		t.Fatalf("hoy: %+v, err = %v", hoy, err)
+	}
+	_, err = calendario.Dia(2026, time.October, 14, ahora)
+	esperarError(t, err, ErrFranjaInvalida)
+	_, err = calendario.Dia(2026, time.December, 1, ahora)
+	esperarError(t, err, ErrFranjaInvalida)
+}
+
 func TestFranjaReservarYLiberar(t *testing.T) {
 	f := calendario.Nueva(local(16, 10, 0))
 	esperarError(t, f.Reservar(1500), ErrExcedeCapacidad)
@@ -87,9 +100,9 @@ func TestFranjaReservarYLiberar(t *testing.T) {
 func reserva(t *testing.T, peso *float64) (*Solicitud, *Franja) {
 	t.Helper()
 	f := calendario.Nueva(local(17, 14, 0))
-	d := datosValidos(nil)
+	d := datosValidos()
 	d.Cosa.PesoKg = peso
-	s, ev, err := NuevaReservaExterna("sol-1", "tra-1", "org-1", d, &f, ahora)
+	s, ev, err := NuevaReservaExterna("sol-1", "tra-1", "org-1", d, &f, palabras, ahora)
 	esperarEvento(t, ev, err, EventoAceptada)
 	return s, &f
 }
@@ -109,14 +122,14 @@ func TestNuevaReservaExterna(t *testing.T) {
 	t.Run("sin lugar no crea nada", func(t *testing.T) {
 		llena := calendario.Nueva(local(17, 14, 0))
 		llena.TrasladosReservados = llena.CupoTraslados
-		_, _, err := NuevaReservaExterna("sol-2", "tra-2", "org-1", datosValidos(nil), &llena, ahora)
+		_, _, err := NuevaReservaExterna("sol-2", "tra-2", "org-1", datosValidos(), &llena, palabras, ahora)
 		esperarError(t, err, ErrSinDisponibilidad)
 	})
 	t.Run("datos inválidos no toman lugar", func(t *testing.T) {
 		libre := calendario.Nueva(local(17, 14, 0))
-		d := datosValidos(nil)
+		d := datosValidos()
 		d.Cosa.Descripcion = ""
-		_, _, err := NuevaReservaExterna("sol-3", "tra-3", "org-1", d, &libre, ahora)
+		_, _, err := NuevaReservaExterna("sol-3", "tra-3", "org-1", d, &libre, palabras, ahora)
 		esperarError(t, err, ErrDatosInvalidos)
 		if libre.TrasladosReservados != 0 {
 			t.Fatal("tomó lugar con datos inválidos")
@@ -142,15 +155,6 @@ func TestCancelarReservaExterna(t *testing.T) {
 		esperarEvento(t, ev, err, EventoCancelacionRegistrada)
 		if s.Cancelacion.Estado != CancelacionAprobada || !s.Cancelacion.Tardia || s.Traslado.Estado != TrasladoCancelado {
 			t.Fatalf("cancelación inesperada: %+v %+v", s.Cancelacion, s.Traslado)
-		}
-	})
-	t.Run("una solicitud interna tardía sigue esperando al operador", func(t *testing.T) {
-		s := aceptada(t, 3*time.Hour)
-		if _, err := s.Cancelar("cambio de planes", ahora); err != nil {
-			t.Fatal(err)
-		}
-		if _, _, libera := s.LiberaFranja(); libera || s.Cancelacion.Estado != CancelacionPendienteAprobacion || !s.Cancelacion.Tardia {
-			t.Fatalf("cancelación inesperada: %+v", s.Cancelacion)
 		}
 	})
 }

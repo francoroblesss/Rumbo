@@ -33,6 +33,40 @@ jobs:
       - name: Tests
         run: go test ./...
 
+  # Tests de punta a punta (ADR-028): levantan el sistema con el procedimiento único y recorren el
+  # flujo de la Presentación por el gateway, como un cliente real.
+  e2e:
+    name: E2E · flujo de la Presentación
+    needs: servicios
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: pruebas/e2e/go.mod
+          cache: false # el módulo no tiene dependencias (ni go.sum)
+      - name: Configuración
+        run: cp .env.example .env
+      - name: Levantar el sistema
+        run: docker compose up --build -d --wait
+      # Las variables de .env pasan al entorno de los pasos siguientes. No se usa
+      # `set -a; source .env`: la línea EXTERNO_ORGANIZACION_NOMBRE=Gestión de almacenamiento
+      # (sin comillas) hace que bash intente ejecutar "de", y con bash -e el paso se corta.
+      - name: Exportar las variables de .env
+        run: grep -E '^[A-Za-z_][A-Za-z0-9_]*=' .env >> "$GITHUB_ENV"
+      - name: Tests de punta a punta
+        working-directory: pruebas/e2e
+        run: go test -tags e2e -count=1 -v ./...
+      - name: Estado y logs del sistema (si falló)
+        if: failure()
+        run: |
+          docker compose ps
+          docker compose logs --no-color
+      - name: Bajar el sistema
+        if: always()
+        run: docker compose down -v
+
   web:
     name: Web
     runs-on: ubuntu-latest

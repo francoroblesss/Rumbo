@@ -57,8 +57,10 @@ consultar_grafana() {
   {
     echo "### $(date -u +%Y-%m-%dT%H:%M:%SZ) · $1"
     prometheus 'rumbo_circuito_estado'
-    prometheus 'sum by (job) (rate(rumbo_http_duracion_segundos_seconds_count{estado=~"5.."}[1m]))'
-    prometheus 'sum by (job, estado) (rate(rumbo_http_duracion_segundos_seconds_count{job="gateway",ruta="/traslados"}[1m]))'
+    # Ventana de 5 min, como la alerta: con [1m] no hay dos muestras (las métricas se exportan por
+    # OTLP cada pocos segundos a minutos) y la consulta sale vacía.
+    prometheus 'sum by (job) (rate(rumbo_http_duracion_segundos_seconds_count{estado=~"5.."}[5m]))'
+    prometheus 'sum by (job, estado) (rate(rumbo_http_duracion_segundos_seconds_count{job="gateway",ruta="/traslados"}[5m]))'
     alertas
     echo
   } >> "$METRICAS"
@@ -111,7 +113,7 @@ CLAVES=$(grep '^CLAVES=' "$EV/reintentos.txt" | cut -d= -f2 | sed "s/,/','/g")
 {
   echo
   echo "Filas en operaciones.claves_idempotencia por clave reintentada (endpoint reserva):"
-  docker compose exec -T mysql mysql -uoperaciones -p"$OPERACIONES_DB_PASSWORD" operaciones --table -e \
+  docker compose exec -T mysql mysql --default-character-set=utf8mb4 -uoperaciones -p"$OPERACIONES_DB_PASSWORD" operaciones --table -e \
     "SELECT clave, COUNT(*) AS filas, MAX(estado_http) AS estado_http FROM claves_idempotencia WHERE endpoint = 'reserva' AND clave IN ('$CLAVES') GROUP BY clave;" 2>/dev/null
 } | tee -a "$EV/reintentos.txt"
 
@@ -122,29 +124,7 @@ wait "$K6"
 anotar "fin de k6"
 consultar_grafana "min 15, fin del tráfico"
 
-# Logs del período, con el usuario de solo lectura de Grafana: WARN y ERROR de Integración y del
-# gateway, e INFO de Operaciones desde que volvió.
-DESDE=$(head -1 "$LINEA" | cut -d' ' -f1 | sed 's/T/ /; s/Z//')
-VUELTA=$(grep 'RECUPERACIÓN' "$LINEA" | cut -d' ' -f1 | sed 's/T/ /; s/Z//')
-consulta_logs() {
-  docker compose exec -T mysql-logs mysql -ugrafana_lector -p"$GRAFANA_LOGS_DB_PASSWORD" observabilidad --table -e "$1" 2>/dev/null
-}
-{
-  echo "Logs del MySQL de logs (ADR-023) entre $DESDE y el fin de k6, horas en UTC."
-  echo
-  echo "## Conteo por servicio, nivel y mensaje"
-  consulta_logs "SELECT servicio, nivel, mensaje, COUNT(*) AS cantidad, MIN(creado_en) AS primero, MAX(creado_en) AS ultimo FROM logs
-    WHERE creado_en >= '$DESDE' AND ((servicio IN ('integracion','gateway') AND nivel IN ('WARN','ERROR')) OR (servicio = 'operaciones' AND creado_en >= '$VUELTA'))
-    GROUP BY servicio, nivel, mensaje ORDER BY primero;"
-  echo
-  echo "## WARN y ERROR de integracion y gateway"
-  consulta_logs "SELECT creado_en, nivel, servicio, instancia, mensaje, correlation_id, LEFT(atributos, 400) AS atributos FROM logs
-    WHERE creado_en >= '$DESDE' AND servicio IN ('integracion','gateway') AND nivel IN ('WARN','ERROR') ORDER BY creado_en;"
-  echo
-  echo "## INFO de operaciones al volver"
-  consulta_logs "SELECT creado_en, nivel, servicio, mensaje, correlation_id, LEFT(atributos, 300) AS atributos FROM logs
-    WHERE creado_en >= '$VUELTA' AND servicio = 'operaciones' AND nivel = 'INFO' AND mensaje <> 'request atendida' ORDER BY creado_en LIMIT 60;"
-} > "$EV/logs.txt"
+bash pruebas/fallas/logs.sh "$LINEA" > "$EV/logs.txt"
 anotar "logs extraídos a $EV/logs.txt"
 
 node pruebas/fallas/resumir.mjs "$EV/k6.json" "$EV/resumen.md" > /dev/null

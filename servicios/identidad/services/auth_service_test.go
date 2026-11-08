@@ -16,10 +16,15 @@ import (
 const secretoPrueba = "secreto-de-prueba-bastante-largo"
 
 var siembraPrueba = Siembra{
-	AdminEmail:          "admin@rumbo.local",
-	AdminPassword:       "clave-admin-web",
-	ExternoClientID:     "cliente-externo",
-	ExternoClientSecret: "secreto-externo",
+	AdminEmail:                "admin@rumbo.local",
+	AdminPassword:             "clave-admin-web",
+	ExternoClientID:           "cliente-externo",
+	ExternoClientSecret:       "secreto-externo",
+	ExternoOrganizacionNombre: "Gestión de almacenamiento",
+	OperadorEmail:             "operador@rumbo.local",
+	OperadorPassword:          "clave-operador",
+	ClienteEmail:              "cliente@almacenamiento.local",
+	ClientePassword:           "clave-cliente",
 }
 
 func nuevoServicioPrueba(t *testing.T) (*AuthService, *repositories.UsuariosMock, *repositories.OrganizacionesMock) {
@@ -130,7 +135,7 @@ func TestSembrarEsIdempotenteYGuardaSoloHashes(t *testing.T) {
 	if err := servicio.Sembrar(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(usuarios.PorEmail) != 1 || len(organizaciones.PorID) != 1 {
+	if len(usuarios.PorEmail) != 3 || len(organizaciones.PorID) != 1 {
 		t.Fatalf("sembrar dos veces duplicó datos: %d usuarios, %d organizaciones",
 			len(usuarios.PorEmail), len(organizaciones.PorID))
 	}

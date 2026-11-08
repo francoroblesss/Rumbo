@@ -32,9 +32,11 @@ Consumo de memoria: el sistema completo usa unos **2,5–3,5 GB** de RAM; convie
 - `docker compose up --build operaciones` levanta solo ese servicio y sus dependencias.
 - La **observabilidad** (Grafana LGTM, ~1 GB, y el MySQL de logs) es opcional: se activa descomentando `COMPOSE_PROFILES`, `OTEL_EXPORTER_OTLP_ENDPOINT` y `LOGS_MYSQL_DSN` en `.env`. Sin ella, los servicios igual loguean en JSON por stdout (`docker compose logs`).
 - `.env` trae `COMPOSE_PARALLEL_LIMIT=1`: las imágenes se compilan de a una, que es el pico de memoria.
+- La **aplicación web** también se puede correr en desarrollo, fuera de Docker y con recarga en caliente: `cd web && npm install && npm run dev` (Node.js 22; queda en http://localhost:5173 contra el gateway de `VITE_API_URL`). Detalle en [`web/README.md`](web/README.md).
 
 | Componente | Dirección |
 | --- | --- |
+| Aplicación web (operador, cliente y administrador; usuarios de demo en `.env`, ver [`web/README.md`](web/README.md)) | http://localhost:5173 |
 | API Gateway (único punto de entrada) | http://localhost:8080 — contrato público en `/auth/token`, `/disponibilidad` y `/traslados`, API interna en `/api/<servicio>/...` |
 | Panel de RabbitMQ | http://localhost:15672 |
 | Grafana: logs (MySQL), métricas, trazas y tablero (`admin`/`admin`; solo con el perfil `observabilidad`) | http://localhost:3000 |
@@ -51,6 +53,7 @@ servicios/        un módulo Go por microservicio + el gateway (go.work los agru
   recursos/       Recursos y preliquidación (capas)      → MySQL
   notificaciones/ Notificaciones (capas)                 → MongoDB
   integracion/    Integración de carga (capas)           → MongoDB
+web/              aplicación web (React + Vite + TypeScript + Mantine, ADR-029)
 infra/            inicialización de MySQL y MongoDB, NGINX (balanceador) y Grafana (tablero y alertas)
 pruebas/carga/    pruebas de carga con k6 (ADR-015)
 docs/             arquitectura, ADR, contrato publicado, capacidad, evidencias y postmortem

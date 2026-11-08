@@ -304,6 +304,14 @@ services:
       notificaciones: { condition: service_healthy }
       balanceador-integracion: { condition: service_started }
 
+  # ---------------- Aplicación web ----------------
+  # SPA de los usuarios de Rumbo (ADR-029), servida por NGINX. Habla solo con el gateway
+  # (http://localhost:8080, desde el navegador). Solo local: no se despliega (ADR-026).
+  web:
+    build: ./web
+    ports: ["5173:80"]
+    depends_on: [gateway]
+
 volumes:
   mysql-datos:
   lgtm-datos:

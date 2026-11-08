@@ -33,6 +33,7 @@ Cada decisión se conserva en un archivo independiente `ADR-NNN-titulo-corto.md`
 | [ADR-024](ADR-024-alcance-de-la-presentacion.md) | Alcance implementado para la Presentación: flujo de reservas de franjas, ciclo reducido del traslado, se saca la revisión de solicitudes; Recursos en esqueleto (reemplaza parcialmente a ADR-001, ADR-011 y ADR-012) |
 | [ADR-025](ADR-025-clima-en-las-reservas.md) | Clima del aeropuerto en las reservas: el aeropuerto se detecta por nombre o dirección; el clima se consulta asíncrono después de reservar y síncrono al pasar a `EN_CURSO`, con fail-open (reemplaza parcialmente a ADR-012 y ADR-020) |
 | [ADR-026](ADR-026-despliegue-en-render.md) | Despliegue de la capacidad publicada en Render (plan gratuito), secreto interno entre el gateway y los servicios y arranque en frío (reemplaza parcialmente a ADR-018) |
+| [ADR-029](ADR-029-aplicacion-web.md) | Aplicación web con React, Vite, TypeScript y Mantine: SPA servida por NGINX en local, cliente HTTP único con `Idempotency-Key` por intención, sesión en `sessionStorage` y avisos en tiempo real por SSE leído con `fetch`; no reserva franjas |
 
 ## Formato
 ```

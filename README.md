@@ -61,8 +61,18 @@ compose.yaml      levanta todo el sistema
 ```
 
 ## Parte desplegada
-La aplicación web (para los usuarios de Rumbo; se construye para la Presentación Grupal) se publica en **Vercel** y el backend en **Railway**; solo el API Gateway queda expuesto ([ADR-018](docs/adr/ADR-018-despliegue-en-la-nube.md)).
-> _Pendiente: la URL pública se agrega acá y en [`docs/contracts/README.md`](docs/contracts/README.md) cuando se despliegue (requerida para la Presentación Grupal)._
+**URL pública del API Gateway: https://rumbo-gateway.onrender.com** (capacidad publicada "Reservar traslado", contrato [4.0.1](docs/contracts/README.md)).
+
+Se despliega en **Render**, plan gratuito, con el Blueprint [`render.yaml`](render.yaml) ([ADR-026](docs/adr/ADR-026-despliegue-en-render.md), que reemplaza parcialmente a [ADR-018](docs/adr/ADR-018-despliegue-en-la-nube.md)). Render vuelve a desplegar solo con cada merge a `main`.
+
+| En la nube | Solo en local (`docker compose up`) |
+| --- | --- |
+| API Gateway, Identidad, Integración y Operaciones (el camino de la capacidad publicada), con MongoDB Atlas, Aiven for MySQL y CloudAMQP | La aplicación web, Notificaciones, Recursos, Solr, Memcached, NGINX con 2 réplicas de Integración y Grafana |
+
+- Solo el gateway se usa desde afuera. Los servicios tienen URL propia en Render, pero sin el secreto interno que pone el gateway responden `401` ([ADR-026](docs/adr/ADR-026-despliegue-en-render.md)).
+- Los secretos (`SECRETO_INTERNO`, `TOKEN_SECRETO`, credenciales de las bases y del broker) se cargan en el panel de Render; nunca están en el repositorio.
+- **Siempre despierta durante la evaluación:** en el plan gratuito un servicio se duerme a los 15 minutos sin tráfico, y solo lo despierta un pedido desde internet (no el de otro servicio de Render). Por eso un monitor externo (UptimeRobot) le pide `/salud` a los cuatro cada 5 minutos, hasta la Presentación ([ADR-030](docs/adr/ADR-030-monitor-externo-en-render.md)). Si alguna vez quedan dormidos: `IDENTIDAD_URL=https://rumbo-identidad.onrender.com OPERACIONES_URL=https://rumbo-operaciones.onrender.com INTEGRACION_URL=https://rumbo-integracion.onrender.com sh infra/render/despertar.sh https://rumbo-gateway.onrender.com` (~15 s).
+- Las rutas `/api/notificaciones/...` y `/api/recursos/...` responden `502` en la nube: esos servicios no se despliegan.
 
 ## Forma de trabajo
 El proyecto sigue un enfoque guiado por especificación: primero el dominio y las reglas de negocio (`SPEC.md`), después las decisiones de arquitectura registradas antes de programar (`docs/adr/`) y recién entonces el código. Los cambios de decisión no borran la historia: quedan registrados en nuevos ADR.

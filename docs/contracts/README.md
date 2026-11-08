@@ -7,7 +7,7 @@ Para reservar hacen falta **`cosa`, `origen`, `destino` y `franja_inicio`**. La 
 ## Versión vigente
 | Versión | Contrato | Base URL | Estado |
 | --- | --- | --- | --- |
-| **4.0.1** | [`traslados.yaml`](traslados.yaml) (OpenAPI 3.1) | Rutas sin versión (`/disponibilidad`, `/traslados`, `/auth/token`) · mock local: `http://localhost:4010` · producción: _a publicar_ | **Vigente** |
+| **4.0.1** | [`traslados.yaml`](traslados.yaml) (OpenAPI 3.1) | Rutas sin versión (`/disponibilidad`, `/traslados`, `/auth/token`) · mock local: `http://localhost:4010` · producción: **`https://rumbo-gateway.onrender.com`** (ver [Arranque en frío](#arranque-en-frío)) | **Vigente** |
 | 3.0.0 | [`traslados-v3.yaml`](traslados-v3.yaml) | Rutas sin versión | Reemplazada por 4.0.0 (ADR-021): tenía revisión del operador y contrapropuesta. Solo se usó contra el mock |
 | 2.1.0 | [`traslados-v2.yaml`](traslados-v2.yaml) | `/v2` | Reemplazada por 3.0.0; nunca tuvo consumidores |
 | 1.0.0 | [`solicitudes-carga-v1.yaml`](solicitudes-carga-v1.yaml) | `/v1` | Reemplazada por 2.0.0; nunca tuvo consumidores ni se implementó |
@@ -113,6 +113,11 @@ Formato **Problem Details** (RFC 9457, `application/problem+json`) con un `codig
 - **Polling:** consultar como máximo una vez por minuto, usando `actualizado_desde` para traer solo lo que cambió.
 - **Fechas:** ISO 8601 con zona horaria. Rumbo opera en hora de Argentina (`-03:00`).
 - **Campos desconocidos:** el consumidor debe ignorar los campos que no conozca (ver Compatibilidad).
+
+## Arranque en frío
+Producción corre en el plan gratuito de Render ([ADR-026](../adr/ADR-026-despliegue-en-render.md)). Durante la evaluación, un monitor mantiene despierto a Rumbo ([ADR-030](../adr/ADR-030-monitor-externo-en-render.md)), así que los pedidos se responden en el momento. Si igual llegara a estar dormido (por ejemplo, después de la Presentación):
+- el primer pedido puede devolver `502` o `504`, o tardar hasta un minuto: **reintentarlo con backoff**. Una reserva se reintenta con **la misma `Idempotency-Key`**: es seguro, no toma otro lugar;
+- usar un timeout de al menos 30 s en el primer pedido.
 
 ## Compatibilidad
 - **Cambios compatibles** (versión menor o de parche; las rutas no cambian):

@@ -14,7 +14,7 @@ Cada decisión se conserva en un archivo independiente `ADR-NNN-titulo-corto.md`
 | D7 | Caché | E2 | [ADR-007](ADR-007-cache.md) |
 | D8 | Contrato propio | E1 (actualizar en E2 si cambió) | [ADR-002](ADR-002-contrato-propio.md), contrato reemplazado por [ADR-006](ADR-006-contrato-generico-v2.md) (v2), rutas sin versión en [ADR-019](ADR-019-contrato-sin-version-en-la-ruta.md) (3.0.0), autoservicio con reserva de franja en [ADR-021](ADR-021-capacidad-de-autoservicio.md) (4.0.0), ciclo reducido del traslado y contrato 4.0.1 en [ADR-024](ADR-024-alcance-de-la-presentacion.md) |
 | D9 | Consumo del proveedor | E2 | [ADR-012](ADR-012-consumo-clima.md), contrato del proveedor 2.0.1 en [ADR-020](ADR-020-contrato-clima-2.md), consulta en las reservas en [ADR-025](ADR-025-clima-en-las-reservas.md) |
-| D10 | Resiliencia | E2 | [ADR-008](ADR-008-resiliencia.md), reconexión reemplazada por [ADR-017](ADR-017-reconexion-broker-y-balanceador.md), secreto interno y arranque en frío en la nube en [ADR-026](ADR-026-despliegue-en-render.md) |
+| D10 | Resiliencia | E2 | [ADR-008](ADR-008-resiliencia.md), reconexión reemplazada por [ADR-017](ADR-017-reconexion-broker-y-balanceador.md), secreto interno y arranque en frío en la nube en [ADR-026](ADR-026-despliegue-en-render.md), monitor externo que la mantiene despierta en [ADR-030](ADR-030-monitor-externo-en-render.md) |
 | D11 | Observabilidad | E2 primera versión | [ADR-014](ADR-014-observabilidad.md), logs en MySQL en [ADR-023](ADR-023-logs-en-mysql.md) |
 | D12 | Balanceo de carga | E2 | [ADR-009](ADR-009-balanceo.md) |
 | D13 | Capacidad y costos | E2 | [ADR-015](ADR-015-capacidad-y-costos.md) |
@@ -32,9 +32,10 @@ Cada decisión se conserva en un archivo independiente `ADR-NNN-titulo-corto.md`
 | [ADR-023](ADR-023-logs-en-mysql.md) | Logs en MySQL leídos por Grafana, escritos en lotes y en segundo plano (reemplaza parcialmente a ADR-014) |
 | [ADR-024](ADR-024-alcance-de-la-presentacion.md) | Alcance implementado para la Presentación: flujo de reservas de franjas, ciclo reducido del traslado, se saca la revisión de solicitudes; Recursos en esqueleto (reemplaza parcialmente a ADR-001, ADR-011 y ADR-012) |
 | [ADR-025](ADR-025-clima-en-las-reservas.md) | Clima del aeropuerto en las reservas: el aeropuerto se detecta por nombre o dirección; el clima se consulta asíncrono después de reservar y síncrono al pasar a `EN_CURSO`, con fail-open (reemplaza parcialmente a ADR-012 y ADR-020) |
-| [ADR-026](ADR-026-despliegue-en-render.md) | Despliegue de la capacidad publicada en Render (plan gratuito), secreto interno entre el gateway y los servicios y arranque en frío (reemplaza parcialmente a ADR-018) |
+| [ADR-026](ADR-026-despliegue-en-render.md) | Despliegue de la capacidad publicada en Render (plan gratuito), secreto interno entre el gateway y los servicios y arranque en frío (reemplaza parcialmente a ADR-018; el arranque en frío, reemplazado parcialmente por ADR-030) |
 | [ADR-027](ADR-027-avisos-en-tiempo-real.md) | Avisos en tiempo real con Server-Sent Events (bonus): se persisten primero en MongoDB y el stream los consulta cada segundo, sin hub en memoria; avisos por rol u organización con `leido` compartido |
 | [ADR-029](ADR-029-aplicacion-web.md) | Aplicación web con React, Vite, TypeScript y Mantine: SPA servida por NGINX en local, cliente HTTP único con `Idempotency-Key` por intención, sesión en `sessionStorage` y avisos en tiempo real por SSE leído con `fetch`; no reserva franjas |
+| [ADR-030](ADR-030-monitor-externo-en-render.md) | Monitor externo (UptimeRobot) que le pide `/salud` a los servicios de Render cada 5 minutos hasta la Presentación, porque un servicio dormido no despierta con el tráfico de otro servicio de Render (reemplaza parcialmente a ADR-026) |
 
 ## Formato
 ```

@@ -111,3 +111,12 @@ func TestElStreamNoSeCortaALosCincoSegundos(t *testing.T) {
 		t.Fatalf("se esperaba el evento después de 6 s, se leyó %q (%v)", linea, err)
 	}
 }
+
+// HEAD /salud sin token: es lo que manda un monitor externo (ADR-026). Antes caía en la
+// autenticación y daba 401.
+func TestSaludDelGatewayConHEAD(t *testing.T) {
+	e := nuevoEntorno(t)
+	if w := e.pedir(http.MethodHead, "/salud", "", nil); w.Code != http.StatusOK {
+		t.Fatalf("HEAD /salud: %d, se esperaba 200", w.Code)
+	}
+}

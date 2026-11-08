@@ -12,7 +12,7 @@ Lista para preparar la demo (mié 11 o vie 13/11/2026). El guion del ensayo se c
 - [ ] **Local:** Docker Desktop iniciado, `.env` con el perfil de observabilidad activado (`COMPOSE_PROFILES`, `OTEL_EXPORTER_OTLP_ENDPOINT` y `LOGS_MYSQL_DSN`) y `docker compose up --build -d --wait`. Web en http://localhost:5173 con los usuarios de `.env`; Grafana en http://localhost:3000.
 
 ## Un par de minutos antes
-- [ ] **Despertar el servicio de clima del otro grupo.** Ellos también están en el plan gratuito de Render: su documentación dice que el servicio se duerme sin pedidos y que el primer pedido tarda cerca de un minuto. Nuestro cliente espera 1 s por intento ([ADR-012](adr/ADR-012-integracion-clima.md), [ADR-025](adr/ADR-025-clima-en-las-reservas.md)), así que si está dormido cuando el operador pasa un traslado a `EN_CURSO`, sale "no se pudo verificar el clima" (es la degradación decidida, fail-open; se puede mostrar a propósito):
+- [ ] **Despertar el servicio de clima del otro grupo.** Ellos también están en el plan gratuito de Render: su documentación dice que el servicio se duerme sin pedidos y que el primer pedido tarda cerca de un minuto. Nuestro cliente espera 1 s por intento ([ADR-012](adr/ADR-012-consumo-clima.md), [ADR-025](adr/ADR-025-clima-en-las-reservas.md)), así que si está dormido cuando el operador pasa un traslado a `EN_CURSO`, sale "no se pudo verificar el clima" (es la degradación decidida, fail-open; se puede mostrar a propósito):
   ```sh
   curl -H "X-API-Key: <CLIMA_API_KEY>" https://clima-aeropuerto.onrender.com/airports/SACO/conditions
   ```

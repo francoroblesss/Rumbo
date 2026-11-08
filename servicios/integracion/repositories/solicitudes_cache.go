@@ -167,3 +167,14 @@ func (m *Memcached) Delete(clave string) error {
 	}
 	return nil
 }
+
+// ConCacheOpcional arma el repositorio con el decorador cache-aside de Memcached (ADR-007) si
+// hay una dirección, o devuelve el de MongoDB tal cual si no la hay. En la nube no hay
+// Memcached (ADR-026): sin caché, la lectura va directo a MongoDB, que es la misma degradación
+// que cuando Memcached está caído.
+func ConCacheOpcional(base SolicitudesRepository, memcachedAddr string) SolicitudesRepository {
+	if memcachedAddr == "" {
+		return base
+	}
+	return NewSolicitudesCache(base, NewMemcached(memcachedAddr))
+}

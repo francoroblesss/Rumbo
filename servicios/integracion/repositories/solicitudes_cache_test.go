@@ -124,3 +124,13 @@ func TestCacheAplicarVistaBorraLaClave(t *testing.T) {
 		t.Fatal("un evento viejo no tiene que invalidar")
 	}
 }
+
+func TestSinDireccionDeMemcachedNoSeArmaLaCache(t *testing.T) {
+	base := NewSolicitudesMock()
+	if repo := ConCacheOpcional(base, ""); repo != SolicitudesRepository(base) {
+		t.Fatalf("sin MEMCACHED_ADDR se esperaba el repositorio base, se obtuvo %T", repo)
+	}
+	if _, ok := ConCacheOpcional(base, "memcached:11211").(*SolicitudesCache); !ok {
+		t.Fatal("con MEMCACHED_ADDR se esperaba el decorador de caché")
+	}
+}

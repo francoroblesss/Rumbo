@@ -70,3 +70,17 @@ func TestSaludRespondeSinPasarPorElMiddleware(t *testing.T) {
 		t.Fatalf("una ruta registrada después sí tiene que pasar por el middleware: %d", w.Code)
 	}
 }
+
+// Los monitores externos (UptimeRobot gratis) usan HEAD: /salud tiene que responder 200 también.
+func TestSaludRespondeHEAD(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	Salud(r, "prueba")
+	r.Use(func(c *gin.Context) { c.AbortWithStatus(http.StatusTeapot) })
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodHead, "/salud", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("HEAD /salud: %d, se esperaba 200", w.Code)
+	}
+}

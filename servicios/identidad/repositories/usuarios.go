@@ -23,7 +23,10 @@ var (
 // no de MongoDB.
 type UsuariosRepository interface {
 	BuscarPorEmail(ctx context.Context, email string) (*models.Usuario, error)
+	BuscarPorID(ctx context.Context, id string) (*models.Usuario, error)
 	Crear(ctx context.Context, usuario *models.Usuario) error
+	// CompletarNombre pone el nombre solo si el usuario no tiene uno: nunca pisa uno existente.
+	CompletarNombre(ctx context.Context, id, nombre string) error
 }
 
 // UsuariosMongo implementa UsuariosRepository sobre la colección usuarios de la base identidad.
@@ -45,15 +48,44 @@ func NuevoUsuariosMongo(ctx context.Context, db *mongo.Database) (*UsuariosMongo
 }
 
 func (r *UsuariosMongo) BuscarPorEmail(ctx context.Context, email string) (*models.Usuario, error) {
+	return r.buscar(ctx, bson.D{{Key: "email", Value: email}})
+}
+
+func (r *UsuariosMongo) BuscarPorID(ctx context.Context, id string) (*models.Usuario, error) {
+	return r.buscar(ctx, bson.D{{Key: "_id", Value: id}})
+}
+
+func (r *UsuariosMongo) buscar(ctx context.Context, filtro bson.D) (*models.Usuario, error) {
 	var usuario models.Usuario
-	err := r.coleccion.FindOne(ctx, bson.D{{Key: "email", Value: email}}).Decode(&usuario)
+	err := r.coleccion.FindOne(ctx, filtro).Decode(&usuario)
 	if errors.Is(err, mongo.ErrNoDocuments) {
 		return nil, ErrNoEncontrado
 	}
 	if err != nil {
-		return nil, fmt.Errorf("buscar usuario por email: %w", err)
+		return nil, fmt.Errorf("buscar usuario: %w", err)
 	}
 	return &usuario, nil
+}
+
+func (r *UsuariosMongo) CompletarNombre(ctx context.Context, id, nombre string) error {
+	// La condición va en el filtro (y no en un "leer y después escribir") para que dos réplicas
+	// arrancando a la vez no pisen un nombre que otra ya puso.
+	_, err := r.coleccion.UpdateOne(ctx, filtroSinNombre(id), bson.D{{Key: "$set", Value: bson.D{{Key: "nombre", Value: nombre}}}})
+	if err != nil {
+		return fmt.Errorf("completar nombre del usuario: %w", err)
+	}
+	return nil
+}
+
+// filtroSinNombre encuentra el documento con ese _id solo si no tiene nombre (campo ausente o vacío).
+func filtroSinNombre(id string) bson.D {
+	return bson.D{
+		{Key: "_id", Value: id},
+		{Key: "$or", Value: bson.A{
+			bson.D{{Key: "nombre", Value: bson.D{{Key: "$exists", Value: false}}}},
+			bson.D{{Key: "nombre", Value: ""}},
+		}},
+	}
 }
 
 func (r *UsuariosMongo) Crear(ctx context.Context, usuario *models.Usuario) error {
@@ -87,6 +119,17 @@ func (m *UsuariosMock) BuscarPorEmail(_ context.Context, email string) (*models.
 	return usuario, nil
 }
 
+func (m *UsuariosMock) BuscarPorID(_ context.Context, id string) (*models.Usuario, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, usuario := range m.PorEmail {
+		if usuario.ID == id {
+			return usuario, nil
+		}
+	}
+	return nil, ErrNoEncontrado
+}
+
 func (m *UsuariosMock) Crear(_ context.Context, usuario *models.Usuario) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -94,5 +137,16 @@ func (m *UsuariosMock) Crear(_ context.Context, usuario *models.Usuario) error {
 		return ErrDuplicado
 	}
 	m.PorEmail[usuario.Email] = usuario
+	return nil
+}
+
+func (m *UsuariosMock) CompletarNombre(_ context.Context, id, nombre string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, usuario := range m.PorEmail {
+		if usuario.ID == id && usuario.Nombre == "" {
+			usuario.Nombre = nombre
+		}
+	}
 	return nil
 }

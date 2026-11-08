@@ -18,6 +18,8 @@ type OrganizacionesRepository interface {
 	BuscarPorClientID(ctx context.Context, clientID string) (*models.Organizacion, error)
 	BuscarPorID(ctx context.Context, id string) (*models.Organizacion, error)
 	Crear(ctx context.Context, organizacion *models.Organizacion) error
+	// CompletarNombre pone el nombre solo si la organización no tiene uno: nunca pisa uno existente.
+	CompletarNombre(ctx context.Context, id, nombre string) error
 }
 
 // OrganizacionesMongo implementa OrganizacionesRepository sobre la colección organizaciones.
@@ -70,6 +72,14 @@ func (r *OrganizacionesMongo) Crear(ctx context.Context, organizacion *models.Or
 	return nil
 }
 
+func (r *OrganizacionesMongo) CompletarNombre(ctx context.Context, id, nombre string) error {
+	_, err := r.coleccion.UpdateOne(ctx, filtroSinNombre(id), bson.D{{Key: "$set", Value: bson.D{{Key: "nombre", Value: nombre}}}})
+	if err != nil {
+		return fmt.Errorf("completar nombre de la organización: %w", err)
+	}
+	return nil
+}
+
 // OrganizacionesMock implementa OrganizacionesRepository en memoria, para los tests del service.
 type OrganizacionesMock struct {
 	mu    sync.Mutex
@@ -110,5 +120,14 @@ func (m *OrganizacionesMock) Crear(_ context.Context, organizacion *models.Organ
 		return ErrDuplicado
 	}
 	m.PorID[organizacion.ID] = organizacion
+	return nil
+}
+
+func (m *OrganizacionesMock) CompletarNombre(_ context.Context, id, nombre string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if organizacion, ok := m.PorID[id]; ok && organizacion.Nombre == "" {
+		organizacion.Nombre = nombre
+	}
 	return nil
 }

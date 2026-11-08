@@ -55,10 +55,15 @@ func main() {
 	}
 
 	autenticacion := services.NuevoAuthService(usuarios, organizaciones, cfg.TokenSecreto, services.Siembra{
-		AdminEmail:          cfg.AdminEmail,
-		AdminPassword:       cfg.AdminPassword,
-		ExternoClientID:     cfg.ExternoClientID,
-		ExternoClientSecret: cfg.ExternoClientSecret,
+		AdminEmail:                cfg.AdminEmail,
+		AdminPassword:             cfg.AdminPassword,
+		ExternoClientID:           cfg.ExternoClientID,
+		ExternoClientSecret:       cfg.ExternoClientSecret,
+		ExternoOrganizacionNombre: cfg.ExternoOrganizacionNombre,
+		OperadorEmail:             cfg.OperadorEmail,
+		OperadorPassword:          cfg.OperadorPassword,
+		ClienteEmail:              cfg.ClienteEmail,
+		ClientePassword:           cfg.ClientePassword,
 	})
 	if err := autenticacion.Sembrar(ctxInicio); err != nil {
 		terminar("no se pudo sembrar los datos iniciales", err)
@@ -74,6 +79,7 @@ func main() {
 	// Después de Instrumentar, para que un 401 por falta del secreto se mida y se loguee (§11.2).
 	router.Use(identidad.ExigirSecretoInterno())
 	controllers.NuevoAuthController(autenticacion).Registrar(router)
+	controllers.NuevoPerfilController(services.NuevoPerfilService(usuarios, organizaciones)).Registrar(router)
 
 	slog.Info("servicio escuchando", slog.String("puerto", cfg.Puerto))
 	if err := router.Run(":" + cfg.Puerto); err != nil {

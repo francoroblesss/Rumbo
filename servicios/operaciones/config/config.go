@@ -22,6 +22,9 @@ type Config struct {
 	ClimaAPIKey  string // clave de consumidor del proveedor de clima (secreto)
 	ClimaICAO    string // aeropuerto consultado
 	ClimaPrefer  string // solo desarrollo: header Prefer para elegir el ejemplo del mock (ADR-025)
+	// SolrURL es el core de búsqueda de traslados (ADR-011). Opcional: sin ella (Render, ADR-026)
+	// la búsqueda responde 503 y el resto del servicio funciona igual.
+	SolrURL string
 
 	// AeropuertoPalabras marcan qué extremo del traslado es el aeropuerto (R-46, ADR-025): ya en
 	// minúsculas y sin tildes.
@@ -45,6 +48,7 @@ func Cargar() Config {
 		ClimaAPIKey:        obligatorio("CLIMA_API_KEY"),
 		ClimaICAO:          valor("CLIMA_ICAO", "SACO"),
 		ClimaPrefer:        os.Getenv("CLIMA_PREFER"),
+		SolrURL:            os.Getenv("SOLR_URL"),
 		AeropuertoPalabras: lista("AEROPUERTO_PALABRAS", "aeropuerto,saco,pajas blancas"),
 		Calendario: dominio.Calendario{
 			AperturaHora:  entero("FRANJA_APERTURA_HORA", 8),

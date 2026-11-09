@@ -2,7 +2,7 @@
 
 Una sección por cada punto que pide la consigna para la Presentación Grupal (`contexto/proyecto/consigna.md`, "Miércoles 11 o viernes 13 de noviembre"). Cada una dice qué se verificó, cómo y dónde está el resultado. Las verificaciones de la Entrega 2 que siguen valiendo están en [`entrega-2.md`](entrega-2.md).
 
-Los puntos marcados **PENDIENTE-CIERRE** se completan con los PR que faltan (búsqueda y buckets de latencia) y en el ensayo.
+Los puntos marcados **PENDIENTE-CIERRE** se completan con el PR que falta (buckets de latencia) y en el ensayo.
 
 ## 1. Frontend completo, desde el ingreso hasta la funcionalidad compartida
 - **Qué hay:** aplicación web (`web/`, [ADR-029](../adr/ADR-029-aplicacion-web.md)) con ingreso, menú por rol y las pantallas de operador (franjas, traslados, avance de estado, cancelación, búsqueda, avisos), cliente de organización (sus traslados, cancelación, búsqueda, avisos) y administrador (además, reconstruir el índice). La funcionalidad compartida es la del flujo de la capacidad: lo que reserva el sistema externo por la API, el operador lo ve y lo avanza, y el sistema externo y el cliente ven el resultado.
@@ -65,7 +65,22 @@ Hit ratio de 99,0 % (`rumbo_cache_operaciones_total`). El flujo cacheado no camb
 - **Alerta por DLQ:** regla `Mensajes en DLQ` en Grafana ([ADR-016](../adr/ADR-016-validacion-d5.md)).
 
 ## 10. Búsqueda indexada con paginación, filtros, orden y actualización o reconstrucción del índice
-PENDIENTE-CIERRE: se completa con el PR de la búsqueda (F-27, [ADR-011](../adr/ADR-011-busqueda.md), `interfaces-internas.md` §16). Evidencias esperadas: búsqueda con texto, filtros, orden y página por el gateway; aislamiento por organización (CA-25); reindexación (`"reindexación terminada"`); demora de indexación p95 (panel 15) y Solr caído → `503` sin afectar las reservas (CA-43).
+- **Qué hay:** Apache Solr 9 con el core `traslados`, en Operaciones (F-27, [ADR-011](../adr/ADR-011-busqueda.md), `interfaces-internas.md` §16, [`ARCHITECTURE.md`](../ARCHITECTURE.md) §4 y §7):
+  - `GET /api/operaciones/traslados/busqueda` con texto libre (análisis en español), filtros por organización, estado, rango de fechas y alerta climática, orden por fecha o relevancia, y paginación;
+  - el índice se actualiza por eventos (cola `operaciones.indexador`, versión monotónica) y se reconstruye desde MySQL con `POST /api/operaciones/admin/reindexacion`.
+
+  En la web: `/buscar` (operador y cliente) y `/admin/busqueda` (administrador).
+- **Verificado con tests contra Solr real** (testcontainers, en el CI; `servicios/operaciones/adaptadores/solr/solr_test.go`):
+  - el esquema se aplica dos veces sin error;
+  - "CAJA" encuentra "Cajas" y "mercaderia" encuentra "mercadería";
+  - relevancia, filtros, paginación con total, y un traslado sin franja queda último por fecha;
+  - cada organización ve solo lo suyo, incluso con un intento de inyección en el filtro (CA-25);
+  - un evento viejo no pisa uno nuevo, y 10 escrituras concurrentes del mismo documento (versiones 4 a 13) dejan la 13.
+- **Verificado con el sistema levantado, por el gateway** (PR #29):
+  - **Reindexación:** como operador da `403`; como administrador, `202`, y en el log `"reindexación terminada"` con 12 505 traslados en ~61 s.
+  - **Demora de indexación:** una reserva nueva aparece en la búsqueda a los **0,64 s** (`demora_segundos` 0,51; objetivo ≤ 5 s, panel 15).
+  - **Aislamiento (CA-25):** el cliente que pide otra organización ve solo la suya. `estado=ASIGNADO` → `422`; sin token → `401`.
+  - **Solr caído (CA-43):** con `docker compose stop solr`, la búsqueda responde `503`, pero reservar da `201` y avanzar a `EN_CURSO` da `200`. Al volver Solr, el traslado aparece `EN_CURSO` a los 7,1 s, porque lo aplica un reintento del indexador.
 
 ## 11. Verificación de las decisiones con evidencia del sistema
 
@@ -75,9 +90,10 @@ PENDIENTE-CIERRE: se completa con el PR de la búsqueda (F-27, [ADR-011](../adr/
 | Capacidad y principal límite (D13, [ADR-015](../adr/ADR-015-capacidad-y-costos.md)) | Mismo informe: p95 ≤ 62 ms a 100 reservas/s; principal límite `mysql` (21,5 % de un núcleo) |
 | Resiliencia ante la caída de Operaciones (D10, [ADR-008](../adr/ADR-008-resiliencia.md), [ADR-021](../adr/ADR-021-capacidad-de-autoservicio.md)) | [`POSTMORTEM.md`](../POSTMORTEM.md): 8 min de caída provocada, `503` con `Retry-After`, breaker abierto a los 35 s, consultas en `200` todo el tiempo, cero reservas duplicadas o perdidas; evidencia en [`postmortem/`](postmortem/) |
 | Flujo de punta a punta | Job `e2e` del CI ([ADR-028](../adr/ADR-028-tests-de-punta-a-punta.md)): flujo principal, idempotencia, franja llena, cancelación y sin token, en cada PR |
+| Búsqueda (D6, [ADR-011](../adr/ADR-011-busqueda.md)) | §10: tests con Solr real; demora de indexación de 0,51 s (objetivo ≤ 5 s); `503` solo en la búsqueda con Solr caído (CA-43); reindexación de 12 505 traslados en ~61 s |
 | Tiempo real (bonus, [ADR-027](../adr/ADR-027-avisos-en-tiempo-real.md), CA-41) | `demora_ms` 912–935 en el stream ([`recorrido-integrado.txt`](presentacion/recorrido-integrado.txt)) |
 | Despliegue ([ADR-026](../adr/ADR-026-despliegue-en-render.md), [ADR-030](../adr/ADR-030-monitor-externo-en-render.md)) | [`presentacion/render.txt`](presentacion/render.txt) |
 | Observabilidad (D11, [ADR-014](../adr/ADR-014-observabilidad.md)) | Traza, logs correlacionados y balanceo de la Entrega 2 en [`entrega-2.md`](entrega-2.md); logs y métricas de la caída en [`postmortem/`](postmortem/). PENDIENTE-CIERRE: traza del flujo actual (reserva → cuatro consumidores) y p95 de latencia real después del PR de los buckets |
 
 ## 12. Limitaciones conocidas y deuda técnica aceptada
-En [`ARCHITECTURE.md`](../ARCHITECTURE.md) §10, actualizada para la Presentación: alcance recortado, Recursos en esqueleto, punto único de falla para reservar, alertas, cuota de Render y arranque en frío, nube sin caché ni búsqueda, stream que consulta MongoDB cada segundo y el clima real pendiente de la clave.
+En [`ARCHITECTURE.md`](../ARCHITECTURE.md) §10, actualizada para la Presentación: alcance recortado, Recursos en esqueleto, punto único de falla para reservar, alertas, cuota de Render y arranque en frío, nube sin caché ni búsqueda, índice atrasado después de una caída larga de Solr (se recupera reindexando), stream que consulta MongoDB cada segundo y el clima real pendiente de la clave.

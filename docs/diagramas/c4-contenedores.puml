@@ -2,7 +2,6 @@
 ' Rumbo — C4 nivel 2: contenedores. Fuente del diagrama; se renderiza con docs/diagramas/README.md.
 !include <C4/C4_Container>
 
-AddElementTag("pendiente", $bgColor="#bbbbbb", $borderColor="#888888", $fontColor="#222222", $legendText="En desarrollo para la Presentación")
 AddElementTag("esqueleto", $bgColor="#dddddd", $borderColor="#888888", $fontColor="#222222", $legendText="Esqueleto: arranca y responde /salud (ADR-024)")
 AddElementTag("infra", $bgColor="#438dd5", $legendText="Infraestructura derivada (no es fuente de verdad)")
 
@@ -27,7 +26,7 @@ System_Boundary(rumbo, "Rumbo") {
   ContainerDb(mysql, "MySQL", "MySQL 8.4 · dos bases", "operaciones · recursos (una base y un usuario por servicio).")
   ContainerDb(memcached, "Memcached", "Memcached 1.6", "Caché compartida por las dos réplicas: GET /traslados/{id}, TTL 60 s.", $tags="infra")
   ContainerQueue(rabbit, "RabbitMQ", "RabbitMQ 3", "Eventos de Operaciones; reintento con TTL y DLQ por cola.")
-  ContainerDb(solr, "Apache Solr", "Solr 9 · core traslados", "Índice de búsqueda de traslados, derivado de Operaciones.", $tags="pendiente")
+  ContainerDb(solr, "Apache Solr", "Solr 9 · core traslados", "Índice de búsqueda de traslados, derivado de Operaciones.", $tags="infra")
   Container(lgtm, "Grafana LGTM", "OpenTelemetry · Prometheus · Tempo · Grafana", "Métricas, trazas, tablero y alertas. Los servicios Go le exportan por OTLP; los logs los lee del MySQL de logs.", $tags="infra")
   ContainerDb(mysqllogs, "MySQL de logs", "MySQL 8.4 · base observabilidad", "Tabla logs (INFO, WARN, ERROR) de todos los servicios, insertada en lotes; 7 días.", $tags="infra")
 }

@@ -31,7 +31,7 @@ Fuente: [`diagramas/c4-contenedores.puml`](diagramas/c4-contenedores.puml).
 - **Almacenamiento:** una base de datos por microservicio, dos en **MySQL** y tres en **MongoDB**. Cada servicio accede solo a la suya.
 - **RabbitMQ** para la mensajería asíncrona.
 - **Memcached** como caché compartida de Integración (D7, [ADR-007](adr/ADR-007-cache.md)).
-- **Apache Solr** como motor de búsqueda de traslados (D6, [ADR-011](adr/ADR-011-busqueda.md)). PENDIENTE-CIERRE: se pasa a implementado cuando se mergea el PR de la búsqueda (Llanca); regenerar el diagrama sin el tag `pendiente`.
+- **Apache Solr 9** como motor de búsqueda de traslados, con un core `traslados` del que es dueño Operaciones (D6, [ADR-011](adr/ADR-011-busqueda.md)).
 - **Grafana LGTM** para métricas, trazas, tablero y alertas, y un **MySQL de logs** (D11, [ADR-014](adr/ADR-014-observabilidad.md), [ADR-023](adr/ADR-023-logs-en-mysql.md)).
 
 ## 3. Servicios
@@ -75,7 +75,13 @@ Detalle en [ADR-003](adr/ADR-003-persistencia.md) (D3); el motor relacional es M
 | Integración de carga | MongoDB, base `integracion` | Copia de la reserva externa leída como unidad; reserva, clave de idempotencia y última vista en un mismo documento |
 
 - **Una base de datos por microservicio**, cada una con su propio usuario. Las bases viven en una instancia por motor.
-- El índice de búsqueda, la caché y el broker son derivados, no fuente de verdad. El índice de Solr se reconstruye desde MySQL con `POST /api/operaciones/admin/reindexacion` ([ADR-011](adr/ADR-011-busqueda.md)). PENDIENTE-CIERRE: describir el core `traslados` (documento, análisis en español, campos de filtro) con el PR de la búsqueda.
+- El índice de búsqueda, la caché y el broker son derivados, no fuente de verdad. El índice de Solr se reconstruye desde MySQL con `POST /api/operaciones/admin/reindexacion` sin perder nada ([ADR-011](adr/ADR-011-busqueda.md)).
+- **Core `traslados` de Solr** (vista derivada de MySQL, diseñada para la lectura y no como copia de las tablas, teórico 5): un documento por traslado, con `id` = id de la solicitud.
+  - **Texto:** `descripcion_texto` y `texto` (descripción, referencia externa, y nombres y direcciones de origen y destino), con el tipo propio `texto_es_rumbo`.
+  - **Filtros y orden:** `organizacion_id`, `estado_traslado`, `alerta_climatica` y `franja_inicio`.
+  - **Control:** `version`, la `agregado_version` del último evento aplicado.
+  - **Para mostrar:** los campos de la respuesta de `interfaces-internas.md` §16.
+  - El esquema lo aplica Operaciones al arrancar con la Schema API y solo agrega lo que falta.
 - **Operación con garantías de consistencia: la reserva de una franja** ([ADR-022](adr/ADR-022-consistencia-y-concurrencia.md), D4). En una transacción de MySQL:
   - se resuelve la `Idempotency-Key`;
   - se bloquea la fila de la franja (`SELECT … FOR UPDATE`);
@@ -134,7 +140,22 @@ Detalle en [ADR-004](adr/ADR-004-comunicacion-entre-servicios.md) (D5).
 
 **Balanceo** ([ADR-009](adr/ADR-009-balanceo.md), D12): **NGINX** delante de dos réplicas de Integración de carga (`integracion-1` e `integracion-2`), con **round robin**. El gateway envía `/traslados` a `balanceador-integracion`. Los *health checks* son pasivos (3 fallas en 30 s sacan a la réplica de rotación durante 30 s) y NGINX reintenta en la otra réplica solo ante caída, timeout, `502` o `503`, y **solo en métodos idempotentes**: un `POST` nunca se reintenta en el balanceador. Cada réplica identifica sus logs y métricas con el atributo `instancia`.
 
-**Búsqueda** ([ADR-011](adr/ADR-011-busqueda.md) con el alcance de ADR-024, D6, `interfaces-internas.md` §16): **Apache Solr** con un core `traslados`, dueño Operaciones (adaptador de salida, no un servicio aparte). `GET /api/operaciones/traslados/busqueda` con texto libre, filtros (organización, estado, rango de fechas y alerta climática), orden por fecha o relevancia y paginación; **al cliente se le fuerza su organización**. El índice se actualiza por eventos con un indexador idempotente (solo aplica versiones más nuevas), se reconstruye desde MySQL y tiene un retraso máximo tolerable de 5 s (p95). Si Solr cae, solo la búsqueda responde `503`. PENDIENTE-CIERRE: completar con lo implementado en el PR de la búsqueda (Llanca): análisis del texto en español, boost, concurrencia optimista y la demora medida.
+**Búsqueda** ([ADR-011](adr/ADR-011-busqueda.md) con el alcance de ADR-024, D6, `interfaces-internas.md` §16): **Apache Solr** con un core `traslados`, dueño Operaciones (adaptador de salida, no un servicio aparte). `GET /api/operaciones/traslados/busqueda` con texto libre, filtros (organización, estado, rango de fechas y alerta climática), orden por fecha o relevancia y paginación; **al cliente se le fuerza su organización**. El índice se actualiza por eventos con un indexador idempotente (solo aplica versiones más nuevas), se reconstruye desde MySQL y tiene un retraso máximo tolerable de 5 s (p95). Si Solr cae, solo la búsqueda responde `503`.
+- **Análisis del texto en español** (tipo `texto_es_rumbo`, igual al indexar y al consultar): tokenizador estándar → minúsculas → stopwords en español → sin tildes → plural a singular (`SpanishMinimalStem`). Así "Cajas", "caja" y "CAJA" quedan como `caja`, y "mercadería" como `mercaderia`. El `text_es` de Solr no servía: dejaba "cajas" como `caj` y "caja" como `caja`, y buscar "caja" no encontraba "Cajas".
+- **Filtro ≠ ranking:**
+  - el texto va en `q` con eDisMax y boost `qf=descripcion_texto^3 texto`, así lo que se traslada pesa más que los nombres y las direcciones;
+  - los filtros van en `fq`, que restringe sin cambiar el puntaje, y los literales con `{!term}`, así un valor del usuario no se interpreta como sintaxis de Solr.
+- **Indexador:** cola `operaciones.indexador`. Escribe con versión monotónica y concurrencia optimista de Solr, sin bloqueos:
+  1. real-time get de la versión indexada; si es igual o mayor, no hace nada (evento repetido o viejo);
+  2. si no, escribe con `_version_` = la leída (o `-1` si no existía);
+  3. si otra escritura ganó en el medio, Solr responde `409` y se repite, hasta 5 veces.
+
+  Hay un soft commit en cada escritura, así el cambio queda visible enseguida. Las solicitudes sin traslado no se indexan.
+- **Reindexación:** `POST /admin/reindexacion` (solo administrador) responde `202` y recorre MySQL en segundo plano, de a 200 solicitudes por transacción, con la misma regla de versión.
+- **Medido** (PR #29):
+  - una reserva nueva aparece en la búsqueda a los 0,64 s (`demora_segundos` 0,51; panel 15 y `rumbo_indexacion_demora_segundos`);
+  - la reindexación de 12 505 traslados tarda ~61 s (~205 por segundo);
+  - con Solr detenido, la búsqueda da `503` y reservar y avanzar siguen en `201` y `200`; al volver Solr, el traslado aparece con el estado nuevo a los 7,1 s (CA-43).
 
 ## 8. Resiliencia y observabilidad
 Dependencias de cada servicio y qué pasa cuando fallan ([ADR-008](adr/ADR-008-resiliencia.md), D10):
@@ -168,10 +189,10 @@ Detalle en [ADR-014](adr/ADR-014-observabilidad.md) (D11); los logs, en [ADR-023
 - **Logs:** `slog` en JSON por stdout y, en lotes y en segundo plano, a la tabla `logs` de MySQL (INFO, WARN y ERROR; retención de 7 días). Llevan `servicio`, `instancia`, `correlation_id`, `trace_id` y `span_id`.
   - Si el MySQL de logs está lento o caído, la request no espera: el log se descarta, se cuenta en `rumbo_logs_descartados_total` y sigue en stdout.
   - El gateway asigna el `X-Correlation-ID`, que viaja por HTTP y en los mensajes de RabbitMQ.
-- **Métricas principales:** `rumbo_http_duracion_segundos` (RED por servicio e instancia), `rumbo_mensajes_procesados_total` (incluye la DLQ), `rumbo_outbox_pendientes`, `rumbo_cache_operaciones_total`, `rumbo_circuito_estado`, `rumbo_gateway_rechazos_total`, `rumbo_solicitudes_total`, `rumbo_traslados_estado_total` (transiciones desde la web), `rumbo_clima_consultas_total` (con el atributo `momento`: reserva o inicio), `rumbo_indexacion_demora_segundos` (PENDIENTE-CIERRE: llega con el PR de la búsqueda) y `rumbo_logs_descartados_total` (nombres fijos en `docs/interfaces-internas.md` §8).
+- **Métricas principales:** `rumbo_http_duracion_segundos` (RED por servicio e instancia), `rumbo_mensajes_procesados_total` (incluye la DLQ), `rumbo_outbox_pendientes`, `rumbo_cache_operaciones_total`, `rumbo_circuito_estado`, `rumbo_gateway_rechazos_total`, `rumbo_solicitudes_total`, `rumbo_traslados_estado_total` (transiciones desde la web), `rumbo_clima_consultas_total` (con el atributo `momento`: reserva o inicio), `rumbo_indexacion_demora_segundos` (desde que ocurre un cambio hasta que queda visible en la búsqueda) y `rumbo_logs_descartados_total` (nombres fijos en `docs/interfaces-internas.md` §8).
 - **Trazas:** propagación W3C Trace Context por HTTP y por RabbitMQ, incluido el paso por el outbox. El flujo principal se ve en una sola traza: gateway → Integración (`POST /traslados`) → Operaciones (`POST /internas/reservas`) → publicar `operaciones.solicitud.aceptada` → consumir en Integración, Notificaciones, clima e indexador.
 - **Tiempo real:** cada aviso enviado por el stream loguea `demora_ms` desde que se guardó (en la prueba integrada, ~0,9 s; el objetivo de CA-41 es menos de 2 s).
-- **Tablero:** "Rumbo — estado general" (carpeta *Rumbo*), con 15 paneles (PENDIENTE-CIERRE: el 15, demora de indexación, llega con el PR de la búsqueda). Se provisiona desde `infra/grafana/`.
+- **Tablero:** "Rumbo — estado general" (carpeta *Rumbo*), con 15 paneles. Se provisiona desde `infra/grafana/`.
   - **Métricas (Prometheus):** requests, errores 5xx y latencia p95 por servicio, requests por instancia de Integración (balanceo), hit ratio de las cachés, pendientes de outbox, mensajes por resultado, estado de los circuitos, consultas de clima, rechazos del gateway, logs descartados y demora de indexación de la búsqueda (p95, objetivo 5 s).
   - **Logs (MySQL):** errores recientes, logs por minuto y por nivel, y la tabla de logs filtrable por nivel, servicio y `correlation_id`. El `trace_id` de cada fila abre la traza en Tempo.
 - **SLO y alertas** (provisionadas desde `infra/grafana/alertas/`): 99 % de los `POST /traslados` en menos de 300 ms y menos de 1 % de respuestas 5xx. Tres reglas con evaluación cada minuto: `SLO latencia traslados` y `SLO errores traslados` (`for: 5m`) y `Mensajes en DLQ` (`for: 1m`, [ADR-016](adr/ADR-016-validacion-d5.md)). En la caída provocada, la de errores pasó a *Firing* a los 7 min 34 s ([postmortem](POSTMORTEM.md)). PENDIENTE-CIERRE: con el PR de los buckets (Llanca), confirmar que el p95 del tablero y la alerta de latencia miden de verdad.
@@ -208,7 +229,7 @@ Los scripts de `infra/` crean, al iniciar por primera vez, una base de datos y u
 | Monitor externo | UptimeRobot, `/salud` de los cuatro cada 5 minutos, hasta la Presentación |
 
 - Los secretos (`SECRETO_INTERNO`, `TOKEN_SECRETO`, credenciales de las bases y del broker, clave del clima) se cargan en el panel de Render.
-- **No van a la nube:** la aplicación web, Notificaciones, Recursos, Solr, Memcached, NGINX con la segunda réplica y Grafana. Se demuestran en local. En la nube, las rutas `/api/notificaciones/...` y `/api/recursos/...` responden `502` y la búsqueda `503`.
+- **No van a la nube:** la aplicación web, Notificaciones, Recursos, Solr, Memcached, NGINX con la segunda réplica y Grafana. Se demuestran en local. En la nube, las rutas `/api/notificaciones/...` y `/api/recursos/...` responden `502` y la búsqueda `503`: sin `SOLR_URL`, Operaciones no levanta el indexador.
 - **Arranque en frío:** en el plan gratuito un servicio se duerme a los 15 minutos sin tráfico, y **solo lo despierta un pedido desde internet**, no el de otro servicio de Render (medido el 08/11: el despertar del gateway al arrancar recibía `502` al instante). Por eso el monitor externo de ADR-030. Si quedan dormidos: `infra/render/despertar.sh`.
 
 ## 10. Limitaciones conocidas y deuda técnica aceptada
@@ -227,6 +248,7 @@ Los scripts de `infra/` crean, al iniciar por primera vez, una base de datos y u
 - **La alerta de errores tarda:** "SLO errores traslados" pasó a *Firing* a los 7 min 34 s, mientras que el breaker abierto (`rumbo_circuito_estado` = 2) se ve a los 35 s. Falta una alerta específica por breaker abierto.
 - **El histograma de latencia no tenía buckets en segundos:** el p95 del tablero marcaba 4,75 s constante y la alerta "SLO latencia traslados" disparaba con cualquier tráfico. PENDIENTE-CIERRE: lo corrige el PR de los buckets (Llanca); pasar este punto a "resuelto" con el valor medido.
 - **`GET /disponibilidad` durante una caída de Operaciones** no se verificó en el postmortem.
+- **Una caída larga de Solr deja el índice atrasado:** con la política de `comun` (3 reintentos, a ~1, ~4 y ~16 s), un evento que ocurre con Solr caído por más de ~21 s termina en `operaciones.indexador.dlq`, y ese cambio no se ve en la búsqueda hasta que llega un evento más nuevo del mismo traslado. Se recupera con `POST /api/operaciones/admin/reindexacion` (ADR-011). La alerta `Mensajes en DLQ` lo avisa.
 - **Consumidores detenidos sin que el proceso caiga ([ADR-017](adr/ADR-017-reconexion-broker-y-balanceador.md)):** con RabbitMQ caído, cada servicio sigue vivo y atiende HTTP, pero no consume. Se detecta por los logs y por `rumbo_outbox_pendientes`; no hay una alerta específica.
 
 **Nube (Render, [ADR-026](adr/ADR-026-despliegue-en-render.md) y [ADR-030](adr/ADR-030-monitor-externo-en-render.md))**
@@ -238,5 +260,7 @@ Los scripts de `infra/` crean, al iniciar por primera vez, una base de datos y u
 **Otros**
 - **El stream de avisos consulta MongoDB cada 1 s por conexión abierta** ([ADR-027](adr/ADR-027-avisos-en-tiempo-real.md)): sin hub en memoria, cualquier réplica sirve cualquier stream y un reinicio no pierde nada, pero el costo crece con la cantidad de pantallas abiertas.
 - **El clima real:** el proveedor publicó su URL (contrato 2.0.1, [ADR-020](adr/ADR-020-contrato-clima-2.md)) y su servicio también se duerme sin pedidos (el primer pedido tarda cerca de un minuto). Con nuestro timeout de 1 s, si está dormido la alerta queda "clima no verificado" (fail-open). PENDIENTE-CIERRE: falta la clave del proveedor para medir contra el servicio real; repetir la verificación de [ADR-016](adr/ADR-016-validacion-d5.md) cuando llegue.
+- **El esquema de Solr solo agrega campos:** para cambiar uno que ya existe hay que borrar el volumen `solr-datos` y reindexar (el índice es derivado: no se pierde nada).
+- **Soft commit en cada escritura del indexador:** hace visible el cambio enseguida y la demora medida es la real. Con el volumen de Rumbo no pesa (0,5 s de demora, ~205 traslados por segundo al reindexar); con mucho más volumen habría que agrupar los commits (`commitWithin`).
 - **`grafana/otel-lgtm` es para desarrollo, no para producción.**
 - **Los logs pueden perderse si el MySQL de logs está caído o saturado** ([ADR-023](adr/ADR-023-logs-en-mysql.md)): siguen en stdout, pero no aparecen en el tablero. Se ve en `rumbo_logs_descartados_total`.

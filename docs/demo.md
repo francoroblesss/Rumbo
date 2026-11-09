@@ -18,5 +18,8 @@ Lista para preparar la demo (mié 11 o vie 13/11/2026). El guion del ensayo se c
   ```
   Con la clave real responde `200`. Que un pedido sin clave válida (`401`) también lo despierte es una deducción nuestra por cómo se comporta Render (todo pedido desde internet despierta al servicio), **no está verificado** contra su servicio: usar la clave.
 
+## Durante la demo
+- [ ] **Si se muestra Solr caído (CA-43):** pararlo poco tiempo (`docker compose stop solr`, mostrar el `503` de la búsqueda y la reserva en `201`, y `docker compose start solr` antes de ~20 s). Con la política de reintentos de `comun` (~1, ~4 y ~16 s), un evento que ocurre con Solr caído más de ~21 s termina en `operaciones.indexador.dlq` y ese cambio no se ve en la búsqueda. Si pasa, entrar como administrador a `/admin/busqueda` y reconstruir el índice ([ADR-011](adr/ADR-011-busqueda.md)). Además, la alerta `Mensajes en DLQ` se dispara a los ~1 min.
+
 ## Después de la Presentación
 - [ ] **Pausar los cuatro monitores de UptimeRobot** (vie 13/11 a la noche). Si quedan activos, la cuota de 750 h del mes se agota alrededor del 15/11 y Render suspende los servicios hasta diciembre ([ADR-030](adr/ADR-030-monitor-externo-en-render.md)). Si la evaluación sigue (Defensa Individual), rehacer la cuenta de horas antes de decidir.

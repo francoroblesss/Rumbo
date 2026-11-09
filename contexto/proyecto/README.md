@@ -1,6 +1,6 @@
 # Proyecto final — Rumbo
 
-**Estado (08/11/2026):** Entrega 1 (tag `entrega-1`) y Entrega 2 (tag `entrega-2`) entregadas. En curso: **Presentación Grupal** (mié 11 o vie 13/11/2026), con el alcance de ADR-024. Implementado y en `main`: Operaciones (reserva de franjas, API de la web, avance de estado, clima en las reservas), Notificaciones (bandeja y tiempo real), Identidad (perfil y usuarios de demo), la aplicación web, la capacidad publicada desplegada en Render (https://rumbo-gateway.onrender.com, ADR-026 y ADR-030), tests e2e en el CI, prueba de carga sobre una franja y el postmortem. Falta: la búsqueda con Solr (F-27) y los buckets del histograma de latencia, la clave real del clima, el ensayo y el tag `presentacion`. Proyecto **grupal**.
+**Estado (09/11/2026):** Entrega 1 (tag `entrega-1`) y Entrega 2 (tag `entrega-2`) entregadas. En curso: **Presentación Grupal** (mié 11 o vie 13/11/2026), con el alcance de ADR-024. Implementado y en `main`: Operaciones (reserva de franjas, API de la web, avance de estado, clima en las reservas, búsqueda con Solr), Notificaciones (bandeja y tiempo real), Identidad (perfil y usuarios de demo), la aplicación web, la capacidad publicada desplegada en Render (https://rumbo-gateway.onrender.com, ADR-026 y ADR-030), tests e2e en el CI, prueba de carga sobre una franja, el postmortem y la corrección de los buckets del histograma de latencia. Falta: la clave real del clima, el ensayo y el tag `presentacion`. Proyecto **grupal**.
 
 ## Archivos
 - `consigna.md` — transcripción fiel de `Enunciado TP Final.pdf`.

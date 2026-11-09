@@ -20,7 +20,8 @@ import (
 // serie por cada id.
 func InstrumentarHTTP(h http.Handler, servicio string) http.Handler {
 	duracion, _ := Medidor().Float64Histogram("rumbo_http_duracion_segundos",
-		metric.WithDescription("Duración de las requests HTTP atendidas"), metric.WithUnit("s"))
+		metric.WithDescription("Duración de las requests HTTP atendidas"), metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(bucketsDuracionHTTP...))
 	instancia := Instancia()
 
 	interno := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

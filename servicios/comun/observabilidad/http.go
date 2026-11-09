@@ -19,12 +19,20 @@ import (
 // HeaderCorrelacion viaja en todas las llamadas HTTP internas (docs/interfaces-internas.md §2).
 const HeaderCorrelacion = "X-Correlation-ID"
 
+// bucketsDuracionHTTP son los límites del histograma rumbo_http_duracion_segundos, en segundos
+// como la métrica. Sin ellos, el SDK de OpenTelemetry usa límites pensados para milisegundos
+// (0, 5, 10, 25…): toda request de menos de 5 s caía en el primer bucket y el p95 daba 4,75 s
+// constante (docs/POSTMORTEM.md, acción de mejora 1). Cubren el SLO de 300 ms (ADR-014) y el
+// deadline de 5 s. Los usan Instrumentar (Gin) e InstrumentarHTTP (gateway).
+var bucketsDuracionHTTP = []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10}
+
 // Instrumentar agrega a un router de Gin: la traza de cada request (continuando la del
 // llamador), el correlation id en el contexto y en la respuesta, la métrica de duración y un
 // log por request. Usar con gin.New() (no gin.Default(), que agrega su propio log de texto).
 func Instrumentar(r *gin.Engine, servicio string) {
 	duracion, _ := Medidor().Float64Histogram("rumbo_http_duracion_segundos",
-		metric.WithDescription("Duración de las requests HTTP atendidas"), metric.WithUnit("s"))
+		metric.WithDescription("Duración de las requests HTTP atendidas"), metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(bucketsDuracionHTTP...))
 	instancia := Instancia()
 
 	r.Use(otelgin.Middleware(servicio), func(c *gin.Context) {

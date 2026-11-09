@@ -21,8 +21,10 @@ import (
 	"github.com/francoroblesss/Rumbo/servicios/operaciones/adaptadores/clima"
 	adaptadormensajeria "github.com/francoroblesss/Rumbo/servicios/operaciones/adaptadores/mensajeria"
 	"github.com/francoroblesss/Rumbo/servicios/operaciones/adaptadores/mysql"
+	"github.com/francoroblesss/Rumbo/servicios/operaciones/adaptadores/solr"
 	"github.com/francoroblesss/Rumbo/servicios/operaciones/aplicacion"
 	"github.com/francoroblesss/Rumbo/servicios/operaciones/config"
+	"github.com/francoroblesss/Rumbo/servicios/operaciones/puertos"
 )
 
 // Operaciones: núcleo de Rumbo (solicitudes, planes, traslados, recorridos, asignaciones,
@@ -63,8 +65,21 @@ func main() {
 	consultaClima := clima.NuevoCliente(cfg.ClimaURL, cfg.ClimaAPIKey, cfg.ClimaPrefer)
 	calendario := cfg.Calendario
 	calendario.Zona = aplicacion.ZonaRumbo()
+	reloj := func() time.Time { return time.Now().UTC() }
 	solicitudes := aplicacion.NuevasSolicitudes(unidadDeTrabajo, consultaClima, cfg.ClimaICAO, cfg.AeropuertoPalabras,
-		calendario, func() time.Time { return time.Now().UTC() }, observabilidad.Instancia())
+		calendario, reloj, observabilidad.Instancia())
+
+	// Búsqueda de traslados (ADR-011): Solr es opcional. Sin SOLR_URL (Render, ADR-026) solo la
+	// búsqueda responde 503. El esquema se aplica en segundo plano: no frena el arranque.
+	var buscador puertos.BuscadorTraslados
+	if cfg.SolrURL != "" {
+		clienteSolr := solr.NuevoCliente(cfg.SolrURL, observabilidad.ClienteHTTP(2*time.Second))
+		buscador = clienteSolr
+		go asegurarEsquema(ctx, clienteSolr)
+	} else {
+		slog.InfoContext(ctx, "búsqueda deshabilitada: falta SOLR_URL")
+	}
+	busqueda := aplicacion.NuevaBusqueda(buscador, unidadDeTrabajo, reloj)
 
 	router := gin.New()
 	router.Use(gin.Recovery())
@@ -74,6 +89,7 @@ func main() {
 	// Después de Instrumentar, para que un 401 por falta del secreto se mida y se loguee (§11.2).
 	router.Use(identidad.ExigirSecretoInterno())
 	api.NuevoHandler(solicitudes).Registrar(router)
+	api.NuevoHandlerBusqueda(busqueda).Registrar(router) // sin motor responde 503
 
 	publicador := adaptadormensajeria.NuevoPublicador(conexionRabbit)
 	defer publicador.Cerrar()
@@ -91,10 +107,43 @@ func main() {
 		Claves:   []string{"operaciones.solicitud.aceptada"},
 	}, adaptadormensajeria.NuevoManejadorClima(solicitudes))
 
+	// Indexador de la búsqueda (ADR-011, §16): el índice es una vista derivada que se actualiza con
+	// los eventos que Operaciones ya publica. Si Solr cae, los eventos esperan en la cola
+	// (reintentos y DLQ de comun) y la operación sigue (teórico 7).
+	if buscador != nil {
+		go mensajeria.Consumir(ctx, conexionRabbit, mensajeria.ConfigConsumidor{
+			Cola:     adaptadormensajeria.ColaIndexador,
+			Exchange: aplicacion.ExchangeEventos,
+			Claves:   adaptadormensajeria.ClavesIndexador,
+		}, adaptadormensajeria.NuevoManejadorIndexador(busqueda))
+	}
+
 	// 3. Servidor HTTP (adaptador de entrada), instrumentado.
 	slog.InfoContext(ctx, "servicio escuchando", slog.String("puerto", cfg.Puerto))
 	if err := router.Run(":" + cfg.Puerto); err != nil {
 		terminar("el servidor HTTP se detuvo", err)
+	}
+}
+
+// asegurarEsquema aplica el esquema de Solr con reintentos (1 s, 2 s, 4 s… hasta 30 s): Solr
+// puede tardar en arrancar y el primer cambio de esquema recarga el core, que puede pasarse del
+// timeout del cliente. Mientras tanto, buscar e indexar lo vuelven a intentar por su cuenta.
+func asegurarEsquema(ctx context.Context, c *solr.Cliente) {
+	espera := time.Second
+	for {
+		err := c.AsegurarEsquema(ctx)
+		if err == nil {
+			slog.InfoContext(ctx, "esquema de búsqueda listo")
+			return
+		}
+		slog.WarnContext(ctx, "no se pudo aplicar el esquema de búsqueda, se reintenta",
+			slog.String("error", err.Error()), slog.Duration("espera", espera))
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(espera):
+		}
+		espera = min(espera*2, 30*time.Second)
 	}
 }
 

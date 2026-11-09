@@ -29,8 +29,5 @@ La estructura de la consigna §3 está en la raíz del repo: `README.md`, `SPEC.
 | Capacidad propia en la nube | `README.md` ("Parte desplegada"), `docs/contracts/README.md`, ADR-026, ADR-030 |
 | Postmortem de la caída provocada | `docs/POSTMORTEM.md` |
 
-## Pendientes
-1. **Agregar a los docentes como colaboradores** del repo (cuando el grupo pase sus usuarios).
-
 ## Decisiones pendientes en la Entrega 2 (histórico)
 D2 (estilos internos: ya hay una estructura preliminar), D6 (búsqueda), D7 (caché), D9 (consumo del clima, cuando se conozca el contrato), D10 (resiliencia), D12 (balanceo), D13 (capacidad y costos), validación de D1/D3/D5 (en D5: ajustar timeouts con latencias medidas, por la devolución del profesor), primera versión de D11. D4 (consistencia) se apoya en la transacción con bloqueo por recurso prevista en ADR-005 (MySQL). Bonus: anunciarlos en la Entrega 2.

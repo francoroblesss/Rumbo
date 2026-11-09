@@ -28,7 +28,6 @@ La estructura de la consigna §3 está en la raíz del repo: `README.md`, `SPEC.
 | Arquitectura y limitaciones (§10) | `docs/ARCHITECTURE.md` |
 | Capacidad propia en la nube | `README.md` ("Parte desplegada"), `docs/contracts/README.md`, ADR-026, ADR-030 |
 | Postmortem de la caída provocada | `docs/POSTMORTEM.md` |
-| Preparar la demo | `docs/demo.md` |
 
 ## Pendientes
 1. **Agregar a los docentes como colaboradores** del repo (cuando el grupo pase sus usuarios).

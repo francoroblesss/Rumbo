@@ -2,14 +2,13 @@
 
 Una sección por cada punto que pide la consigna para la Presentación Grupal (`contexto/proyecto/consigna.md`, "Miércoles 11 o viernes 13 de noviembre"). Cada una dice qué se verificó, cómo y dónde está el resultado. Las verificaciones de la Entrega 2 que siguen valiendo están en [`entrega-2.md`](entrega-2.md).
 
-Los puntos marcados **PENDIENTE-CIERRE** se completan cuando llegue la clave del clima y en el ensayo.
+Los puntos marcados **PENDIENTE-CIERRE** se completan cuando llegue la clave del clima.
 
 ## 1. Frontend completo, desde el ingreso hasta la funcionalidad compartida
 - **Qué hay:** aplicación web (`web/`, [ADR-029](../adr/ADR-029-aplicacion-web.md)) con ingreso, menú por rol y las pantallas de operador (franjas, traslados, avance de estado, cancelación, búsqueda, avisos), cliente de organización (sus traslados, cancelación, búsqueda, avisos) y administrador (además, reconstruir el índice). La funcionalidad compartida es la del flujo de la capacidad: lo que reserva el sistema externo por la API, el operador lo ve y lo avanza, y el sistema externo y el cliente ven el resultado.
 - **Verificado:**
   - CI: job `Web` (lint con oxlint, build y 19 tests de `api.ts` y `sse.ts`).
   - Recorrido integrado por el gateway con las mismas llamadas que hace la web: [`presentacion/recorrido-integrado.txt`](presentacion/recorrido-integrado.txt).
-- PENDIENTE-CIERRE: capturas del recorrido en el navegador (ingreso de operador y cliente, franjas, avance, aviso que aparece sin recargar), en el ensayo.
 
 ## 2. Punto de entrada único con autenticación, direccionamiento y control de tráfico
 - **Qué hay:** API Gateway (`servicios/gateway`): token firmado, ruteo por prefijo, límite de 60 pedidos por minuto por organización, correlation id, CORS de la web y secreto interno hacia los servicios ([ADR-026](../adr/ADR-026-despliegue-en-render.md)).
@@ -93,7 +92,7 @@ Hit ratio de 99,0 % (`rumbo_cache_operaciones_total`). El flujo cacheado no camb
 | Búsqueda (D6, [ADR-011](../adr/ADR-011-busqueda.md)) | §10: tests con Solr real; demora de indexación de 0,51 s (objetivo ≤ 5 s); `503` solo en la búsqueda con Solr caído (CA-43); reindexación de 12 505 traslados en ~61 s |
 | Tiempo real (bonus, [ADR-027](../adr/ADR-027-avisos-en-tiempo-real.md), CA-41) | `demora_ms` 912–935 en el stream ([`recorrido-integrado.txt`](presentacion/recorrido-integrado.txt)) |
 | Despliegue ([ADR-026](../adr/ADR-026-despliegue-en-render.md), [ADR-030](../adr/ADR-030-monitor-externo-en-render.md)) | [`presentacion/render.txt`](presentacion/render.txt) |
-| Observabilidad (D11, [ADR-014](../adr/ADR-014-observabilidad.md)) | Traza, logs correlacionados y balanceo de la Entrega 2 en [`entrega-2.md`](entrega-2.md); logs y métricas de la caída en [`postmortem/`](postmortem/). p95 de latencia real con los buckets en segundos: de 4,75 s constante a 0,236 s (gateway) con el mismo tráfico (acción de mejora 1 del postmortem). PENDIENTE-CIERRE: traza del flujo actual (reserva → cuatro consumidores) |
+| Observabilidad (D11, [ADR-014](../adr/ADR-014-observabilidad.md)) | Traza, logs correlacionados y balanceo de la Entrega 2 en [`entrega-2.md`](entrega-2.md); logs y métricas de la caída en [`postmortem/`](postmortem/). p95 de latencia real con los buckets en segundos: de 4,75 s constante a 0,236 s (gateway) con el mismo tráfico (acción de mejora 1 del postmortem) |
 
 ## 12. Limitaciones conocidas y deuda técnica aceptada
 En [`ARCHITECTURE.md`](../ARCHITECTURE.md) §10, actualizada para la Presentación: alcance recortado, Recursos en esqueleto, punto único de falla para reservar, alertas, cuota de Render y arranque en frío, nube sin caché ni búsqueda, índice atrasado después de una caída larga de Solr (se recupera reindexando), stream que consulta MongoDB cada segundo y el clima real pendiente de la clave.

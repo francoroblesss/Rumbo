@@ -32,7 +32,7 @@ El sistema a construir es **Rumbo**: su dominio está en `contexto/proyecto/domi
 
 **Código:** `servicios/<servicio>/` (un módulo Go cada uno, agrupados con `go.work`; Operaciones en hexagonal, el resto en capas). **`servicios/comun/`** tiene lo compartido (observabilidad, `/salud`, mensajería con reintentos y DLQ, identidad del gateway, secreto interno, Problem Details): usarlo, no reimplementarlo. **El contrato interno entre servicios está en `docs/interfaces-internas.md`** (§11 a §16 para la Presentación). Alcance implementado para la Presentación: ADR-024. `web/` es la aplicación web (React + Vite + TS + Mantine, ADR-029; no expone la capacidad publicada). `pruebas/` tiene carga (k6), e2e (en el CI) y fallas. `infra/` (init de MySQL, MongoDB y el MySQL de logs; NGINX; Grafana; Render) y `compose.yaml` y `render.yaml` en la raíz. Puertos: gateway 8080, identidad 8081, operaciones 8082, recursos 8083, notificaciones 8084, integracion 8085, web 5173, Solr 8983.
 
-**Nube:** la capacidad publicada (gateway, Identidad, Integración y Operaciones) está en Render gratis, https://rumbo-gateway.onrender.com (ADR-026), con un monitor externo que la mantiene despierta hasta la Presentación (ADR-030). Antes de presentar: `docs/demo.md`.
+**Nube:** la capacidad publicada (gateway, Identidad, Integración y Operaciones) está en Render gratis, https://rumbo-gateway.onrender.com (ADR-026), con un monitor externo que la mantiene despierta hasta la Presentación (ADR-030).
 
 ## Material fuente
 

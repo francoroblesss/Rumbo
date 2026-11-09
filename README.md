@@ -107,4 +107,3 @@ El proyecto sigue un enfoque guiado por especificación: primero el dominio y la
 | [`docs/evidencias/`](docs/evidencias/presentacion.md) | Evidencias por requisito: [Presentación](docs/evidencias/presentacion.md) y [Entrega 2](docs/evidencias/entrega-2.md) (traza distribuida, logs correlacionados, balanceo y fallas) |
 | [`docs/diagramas/`](docs/diagramas/README.md) | Diagramas C4 como código (C4-PlantUML) |
 | [`docs/POSTMORTEM.md`](docs/POSTMORTEM.md) | Informe de la caída provocada de Operaciones; evidencia en [`docs/evidencias/postmortem/`](docs/evidencias/postmortem/) |
-| [`docs/demo.md`](docs/demo.md) | Lista para preparar la demo de la Presentación |

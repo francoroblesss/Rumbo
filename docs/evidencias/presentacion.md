@@ -88,6 +88,13 @@ Hit ratio de 99,0 % (`rumbo_cache_operaciones_total`). El flujo cacheado no camb
 | Consistencia de la reserva (D4, [ADR-022](../adr/ADR-022-consistencia-y-concurrencia.md)) | Test con MySQL real: 20 reservas simultáneas sobre 3 lugares dan 3. Prueba de carga sobre una sola franja: 6249 `201` y 6249 lugares ocupados, sin errores, hasta 100 reservas por segundo ([`capacidad/informe-presentacion.md`](../capacidad/informe-presentacion.md)) |
 | Capacidad y principal límite (D13, [ADR-015](../adr/ADR-015-capacidad-y-costos.md)) | Mismo informe: p95 ≤ 62 ms a 100 reservas/s; principal límite `mysql` (21,5 % de un núcleo) |
 | Resiliencia ante la caída de Operaciones (D10, [ADR-008](../adr/ADR-008-resiliencia.md), [ADR-021](../adr/ADR-021-capacidad-de-autoservicio.md)) | [`POSTMORTEM.md`](../POSTMORTEM.md): 8 min de caída provocada, `503` con `Retry-After`, breaker abierto a los 35 s, consultas en `200` todo el tiempo, cero reservas duplicadas o perdidas; evidencia en [`postmortem/`](postmortem/) |
+| Tests (consigna §2.11) | **Unitarios sobre las reglas de negocio:** cobertura de **98,1 %** en `operaciones/dominio` y **91,5 %** en `operaciones/aplicacion`, medida el 09/11 con `go test -short -cover ./dominio/... ./aplicacion/...` en `servicios/operaciones`. **De integración contra dependencias reales** (testcontainers), que corren en el CI:
+  - Operaciones: MySQL y Solr;
+  - Identidad y Notificaciones: MongoDB;
+  - Integración: MongoDB y Memcached;
+  - `comun`: MySQL y RabbitMQ.
+
+  El gateway no tiene almacenamiento propio. **De carga:** [`capacidad/`](../capacidad/) |
 | Flujo de punta a punta | Job `e2e` del CI ([ADR-028](../adr/ADR-028-tests-de-punta-a-punta.md)): flujo principal, idempotencia, franja llena, cancelación y sin token, en cada PR |
 | Búsqueda (D6, [ADR-011](../adr/ADR-011-busqueda.md)) | §10: tests con Solr real; demora de indexación de 0,51 s (objetivo ≤ 5 s); `503` solo en la búsqueda con Solr caído (CA-43); reindexación de 12 505 traslados en ~61 s |
 | Tiempo real (bonus, [ADR-027](../adr/ADR-027-avisos-en-tiempo-real.md), CA-41) | `demora_ms` 912–935 en el stream ([`recorrido-integrado.txt`](presentacion/recorrido-integrado.txt)) |

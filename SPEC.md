@@ -275,7 +275,7 @@ Qué se implementa para la Presentación Grupal y qué queda documentado sin imp
 | F-06 | Cubierta por F-31 (cancelación de reservas) | — |
 | F-07 | Cubierta por F-31 (consulta de reservas) | — |
 | F-08 a F-25 | Fuera de alcance (ADR-024) | — |
-| F-26 | API, stream y web implementados; falta probarlos juntos | Sofia (Notificaciones), Delap (web) |
+| F-26 | Implementada | Sofia (Notificaciones), Delap (web) |
 | F-27 | Implementada | Llanca (Solr), Delap (web) |
 | F-28 | Implementada (contrato 4.0.1) | Llanca (4.0.1) |
 | F-29 | Implementada (ADR-025) | Llanca |

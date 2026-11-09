@@ -44,8 +44,12 @@ export function Buscar() {
 
   function buscar(evento: FormEvent) {
     evento.preventDefault()
+    // Con los mismos filtros la consulta no cambia y React Query devolvería lo guardado (por
+    // ejemplo, el 503 de cuando Solr estaba caído): se vuelve a pedir.
+    const mismaConsulta = pagina === 1 && JSON.stringify(buscado) === JSON.stringify(formulario)
     setBuscado({ ...formulario })
     setPagina(1)
+    if (mismaConsulta) void resultados.refetch()
   }
 
   const cambiar = <K extends keyof Formulario>(campo: K, valor: Formulario[K]) =>

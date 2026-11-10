@@ -1,7 +1,7 @@
 # ADR-020 — Contrato de clima 2.0.1 del proveedor (reemplaza parcialmente a ADR-012)
 
 - **Fecha:** 2026-10-23
-- **Estado:** aceptada — la copia fijada 2.0.1 queda **reemplazada por [ADR-032](ADR-032-contrato-clima-2-1.md)** (copia 2.1.0, compatible). El resto sigue vigente.
+- **Estado:** aceptada — la copia fijada 2.0.1 queda **reemplazada por [ADR-032](ADR-032-contrato-clima-2-1.md)** (copia 2.1.0, compatible). El resto sigue vigente. Cuándo se consulta el clima y cómo se reconoce el aeropuerto quedan **reemplazados parcialmente por [ADR-025](ADR-025-clima-en-las-reservas.md)**.
 - **Reemplaza a:**
   - la ruta de la viñeta "Llamada" de [ADR-012](ADR-012-consumo-clima.md): `GET {CLIMA_URL}/v1/airports/{CLIMA_ICAO}/conditions` pasa a `GET {CLIMA_URL}/airports/{CLIMA_ICAO}/conditions`;
   - la copia de la viñeta "Contrato fijado" de ADR-012: `docs/contracts/consumidos/clima-v1.yaml` (1.0.0) pasa a `docs/contracts/consumidos/clima.yaml` (2.0.1).

@@ -1,7 +1,7 @@
 # ADR-001 — Límites de los servicios (D1)
 
 - **Fecha:** 2026-10-04
-- **Estado:** aceptada (preliminar para la Entrega 1; se valida en la Entrega 2)
+- **Estado:** aceptada (preliminar para la Entrega 1; se valida en la Entrega 2) Validada en [ADR-013](ADR-013-validacion-d1-d3.md); para la Presentación, Recursos queda sin funcionalidad (**reemplazada parcialmente por [ADR-024](ADR-024-alcance-de-la-presentacion.md)**).
 - **Revisión 2026-10-04:** se agrega el servicio **Integración de carga**, que separa la capacidad publicada en su propio microservicio, por indicación del profesor en clase. La revisión se hizo antes de entregar el ADR, por eso no se creó uno nuevo que lo reemplace.
 
 ## Contexto

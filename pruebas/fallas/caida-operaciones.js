@@ -4,8 +4,9 @@
 // sistema externo pedido en setup():
 //   - 0,4 reservas por segundo (POST /traslados), cada una con su Idempotency-Key, sobre franjas
 //     de los próximos días;
-//   - 0,4 consultas por segundo (GET /traslados/{id}) de traslados reservados en setup().
-// Son 48 pedidos por minuto: no llega al límite del gateway (60 por minuto por organización).
+//   - 0,4 consultas por segundo (GET /traslados/{id}) de traslados reservados en setup();
+//   - 0,1 consultas por segundo de GET /disponibilidad de mañana (también depende de Operaciones).
+// Son 54 pedidos por minuto: no llega al límite del gateway (60 por minuto por organización).
 //
 // Cada pedido queda en la salida JSON de k6 (--out json) con su hora, la operación, el estado HTTP
 // (tag status) y, en las reservas, la Idempotency-Key y la franja (tags clave y franja): con esos
@@ -41,6 +42,15 @@ export const options = {
       preAllocatedVUs: 4,
       maxVUs: 20,
       exec: 'consultar',
+    },
+    disponibilidad: {
+      executor: 'constant-arrival-rate',
+      rate: 1,
+      timeUnit: '10s', // 0,1 por segundo
+      duration: DURACION,
+      preAllocatedVUs: 2,
+      maxVUs: 10,
+      exec: 'consultarDisponibilidad',
     },
   },
   setupTimeout: '120s',
@@ -116,4 +126,18 @@ export function consultar(datos) {
     tags: { operacion: 'consultar' },
   });
   check(res, { 'consulta 200': (r) => r.status === 200 });
+}
+
+// consultarDisponibilidad pide las franjas de mañana (fecha de Córdoba, AAAA-MM-DD). Con Operaciones
+// caído tiene que responder 503 reintentable con Retry-After (ADR-008, ADR-021).
+export function consultarDisponibilidad(datos) {
+  const manana = new Date(Date.now() - 3 * 3600 * 1000 + 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const res = http.get(`${GATEWAY}/disponibilidad?fecha=${manana}&peso_kg=50`, {
+    headers: { Authorization: `Bearer ${datos.token}` },
+    tags: { operacion: 'disponibilidad' },
+  });
+  check(res, {
+    'disponibilidad 200': (r) => r.status === 200,
+    '503 con Retry-After': (r) => r.status !== 503 || !!r.headers['Retry-After'],
+  });
 }

@@ -4,7 +4,7 @@
 # ninguna clave que recibió solo 503 puede haber dejado una reserva. Necesita mysql levantado.
 # Desde la raíz: bash pruebas/fallas/verificar-reservas.sh > docs/evidencias/postmortem/reservas.txt
 set -euo pipefail
-EV=docs/evidencias/postmortem
+EV="${EVIDENCIAS:-docs/evidencias/postmortem}"
 PASS=$(grep -E '^OPERACIONES_DB_PASSWORD=' .env | cut -d= -f2-)
 sql() { docker compose exec -T mysql mysql --default-character-set=utf8mb4 -uoperaciones -p"$PASS" operaciones -N -e "$1" 2>/dev/null; }
 

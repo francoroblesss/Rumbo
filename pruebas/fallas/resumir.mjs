@@ -45,7 +45,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const pedidos = leerPedidos(entrada).filter((p) => p.operacion !== 'token');
   const t0 = Math.min(...pedidos.map((p) => p.hora.getTime()));
   const estados = [...new Set(pedidos.map((p) => p.estado))].sort();
-  const operaciones = ['reservar', 'consultar'];
+  const operaciones = ['reservar', 'consultar', 'disponibilidad'];
 
   const porMinuto = new Map();
   for (const p of pedidos) {

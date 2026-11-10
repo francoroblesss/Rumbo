@@ -1,0 +1,13 @@
+2026-11-10T14:02:35.467Z clave=e07e47ff-5b0a-48c9-b8b1-dd760b32eb1a (503 a las 2026-11-10T13:53:15.124Z) → 201 id=sol-70159d79-4aa2-4feb-8a65-6faf10778beb estado=PROGRAMADO
+2026-11-10T14:02:35.477Z clave=95e95dc2-a770-410e-9477-15758f0a1486 (503 a las 2026-11-10T13:57:30.020Z) → 201 id=sol-94ed4ae5-d59e-443d-8862-30c79d3e919f estado=PROGRAMADO
+2026-11-10T14:02:35.483Z clave=e5555f48-e91b-4860-83cd-529a0db0ddcf (503 a las 2026-11-10T14:01:10.030Z) → 201 id=sol-ff098af0-4219-41fe-8d77-7c61d6774c0b estado=PROGRAMADO
+CLAVES=e07e47ff-5b0a-48c9-b8b1-dd760b32eb1a,95e95dc2-a770-410e-9477-15758f0a1486,e5555f48-e91b-4860-83cd-529a0db0ddcf
+
+Filas en operaciones.claves_idempotencia por clave reintentada (endpoint reserva):
++--------------------------------------+-------+-------------+
+| clave                                | filas | estado_http |
++--------------------------------------+-------+-------------+
+| 95e95dc2-a770-410e-9477-15758f0a1486 |     1 |         201 |
+| e07e47ff-5b0a-48c9-b8b1-dd760b32eb1a |     1 |         201 |
+| e5555f48-e91b-4860-83cd-529a0db0ddcf |     1 |         201 |
++--------------------------------------+-------+-------------+

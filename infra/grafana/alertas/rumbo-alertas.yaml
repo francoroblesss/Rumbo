@@ -132,3 +132,91 @@ groups:
               conditions:
                 - evaluator: { type: gt, params: [0] }
               refId: C
+
+  - orgId: 1
+    name: rumbo-dependencias
+    folder: Rumbo
+    interval: 1m
+    rules:
+      # Acción de mejora 2 del postmortem: el breaker se abrió a los 35 s y la alerta del SLO tardó 7 min 34 s.
+      - uid: rumbo-circuito-abierto
+        title: Circuito abierto
+        condition: C
+        for: 1m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severidad: alta
+        annotations:
+          summary: "Circuito abierto hacia {{ $labels.dependencia }}"
+          description: "El circuit breaker hacia {{ $labels.dependencia }} está abierto hace más de 1 minuto: las llamadas se cortan sin intentar (503 para Operaciones; clima no verificado para el clima). Ver el panel 8 del tablero."
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              datasource: { type: prometheus, uid: prometheus }
+              # 0 = cerrado, 1 = semiabierto, 2 = abierto. Una serie (y una alerta) por dependencia.
+              expr: 'max by (dependencia) (rumbo_circuito_estado)'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              settings: { mode: dropNN }
+              refId: B
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [1] }
+              refId: C
+
+      # ARCHITECTURE §10: con RabbitMQ caído los servicios siguen vivos pero no consumen; hasta ahora
+      # solo se veía en los logs y en el panel 6. El gauge cuenta las filas pendientes en MySQL en cada
+      # exportación (relay.go), así que se actualiza aunque el broker esté caído.
+      - uid: rumbo-outbox-sin-publicar
+        title: Outbox sin publicar
+        condition: C
+        for: 3m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severidad: alta
+        annotations:
+          summary: "Hay eventos sin publicar en el outbox hace más de 3 minutos"
+          description: "El relay publica cada 500 ms: si el outbox no se vacía en 3 minutos, RabbitMQ está caído o el relay está trabado, y los consumidores (Integración, Notificaciones, clima, búsqueda) no reciben eventos. Ver el panel 6 del tablero."
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              datasource: { type: prometheus, uid: prometheus }
+              expr: 'max(rumbo_outbox_pendientes)'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              settings: { mode: dropNN }
+              refId: B
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+              refId: C

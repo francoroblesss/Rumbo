@@ -13,7 +13,7 @@ Cada decisión se conserva en un archivo independiente `ADR-NNN-titulo-corto.md`
 | D6 | Búsqueda | E2 | [ADR-011](ADR-011-busqueda.md) |
 | D7 | Caché | E2 | [ADR-007](ADR-007-cache.md) |
 | D8 | Contrato propio | E1 (actualizar en E2 si cambió) | [ADR-002](ADR-002-contrato-propio.md), contrato reemplazado por [ADR-006](ADR-006-contrato-generico-v2.md) (v2), rutas sin versión en [ADR-019](ADR-019-contrato-sin-version-en-la-ruta.md) (3.0.0), autoservicio con reserva de franja en [ADR-021](ADR-021-capacidad-de-autoservicio.md) (4.0.0), ciclo reducido del traslado y contrato 4.0.1 en [ADR-024](ADR-024-alcance-de-la-presentacion.md) |
-| D9 | Consumo del proveedor | E2 | [ADR-012](ADR-012-consumo-clima.md), contrato del proveedor 2.0.1 en [ADR-020](ADR-020-contrato-clima-2.md), consulta en las reservas en [ADR-025](ADR-025-clima-en-las-reservas.md) |
+| D9 | Consumo del proveedor | E2 | [ADR-012](ADR-012-consumo-clima.md), contrato del proveedor 2.0.1 en [ADR-020](ADR-020-contrato-clima-2.md) (copia 2.1.0 en [ADR-032](ADR-032-contrato-clima-2-1.md)), consulta en las reservas en [ADR-025](ADR-025-clima-en-las-reservas.md) |
 | D10 | Resiliencia | E2 | [ADR-008](ADR-008-resiliencia.md), reconexión reemplazada por [ADR-017](ADR-017-reconexion-broker-y-balanceador.md), secreto interno y arranque en frío en la nube en [ADR-026](ADR-026-despliegue-en-render.md), monitor externo que la mantiene despierta en [ADR-030](ADR-030-monitor-externo-en-render.md) |
 | D11 | Observabilidad | E2 primera versión | [ADR-014](ADR-014-observabilidad.md), logs en MySQL en [ADR-023](ADR-023-logs-en-mysql.md) |
 | D12 | Balanceo de carga | E2 | [ADR-009](ADR-009-balanceo.md), reintento y detección de réplicas caídas en [ADR-031](ADR-031-balanceador-solo-fallas-de-replica.md) |
@@ -38,6 +38,7 @@ Cada decisión se conserva en un archivo independiente `ADR-NNN-titulo-corto.md`
 | [ADR-029](ADR-029-aplicacion-web.md) | Aplicación web con React, Vite, TypeScript y Mantine: SPA servida por NGINX en local, cliente HTTP único con `Idempotency-Key` por intención, sesión en `sessionStorage` y avisos en tiempo real por SSE leído con `fetch`; no reserva franjas |
 | [ADR-030](ADR-030-monitor-externo-en-render.md) | Monitor externo (UptimeRobot) que le pide `/salud` a los servicios de Render cada 5 minutos hasta la Presentación, porque un servicio dormido no despierta con el tráfico de otro servicio de Render (reemplaza parcialmente a ADR-026) |
 | [ADR-031](ADR-031-balanceador-solo-fallas-de-replica.md) | El balanceador reintenta en la otra réplica y la saca de rotación solo por error de conexión o timeout; un `503` de una dependencia caída se devuelve tal cual (reemplaza parcialmente a ADR-009) |
+| [ADR-032](ADR-032-contrato-clima-2-1.md) | Copia fijada del contrato de clima 2.1.0 del proveedor (suma el `500 INTERNAL_ERROR`, compatible; el adaptador no cambia) (reemplaza parcialmente a ADR-020) |
 
 ## Formato
 ```

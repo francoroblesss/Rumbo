@@ -1,0 +1,7 @@
+claves con 201: 172 · con 503 (sin reintentar): 194 · con 409: 0
+Verificación contra MySQL de Operaciones (2026-11-10T14:42:25Z)
+- claves con 201 que tienen fila en claves_idempotencia (endpoint reserva, estado 201): 172
+- filas por clave (máximo; la clave primaria impide más de una): 1
+- claves que recibieron solo 503 y tienen fila (reserva hecha sin que el consumidor lo sepa): 0
+- solicitudes con referencia_externa = una clave con 201 (el cuerpo usa la clave como referencia): 172
+- referencias externas repetidas entre esas solicitudes: 0

@@ -1,0 +1,153 @@
+### 2026-11-10T14:29:01Z · min 2, antes de la caída
+  consulta: rumbo_circuito_estado
+    {'dependencia': 'operaciones', 'job': 'integracion', 'service_instance_id': 'integracion-2', 'service_name': 'integracion'} = 0
+    {'dependencia': 'operaciones', 'job': 'integracion', 'service_instance_id': 'integracion-1', 'service_name': 'integracion'} = 0
+    {'dependencia': 'clima', 'job': 'operaciones', 'service_instance_id': 'e37b48f49790', 'service_name': 'operaciones'} = 0
+  consulta: sum by (job) (rate(rumbo_http_duracion_segundos_seconds_count{estado=~"5.."}[5m]))
+    (sin series)
+  consulta: sum by (job, estado) (rate(rumbo_http_duracion_segundos_seconds_count{job="gateway",ruta="/traslados"}[5m]))
+    {'estado': '201', 'job': 'gateway'} = 0.15683333333333332
+    {'estado': '200', 'job': 'gateway'} = 0.15016666666666667
+  alertas (/api/prometheus/grafana/api/v1/alerts):
+    Circuito abierto: Normal desde 2026-11-10T14:27:40Z
+    Circuito abierto: Normal desde 2026-11-10T14:27:40Z
+    Outbox sin publicar: Normal desde 2026-11-10T14:27:40Z
+    Mensajes en DLQ: Normal (NoData) desde 2026-11-10T14:27:30Z
+    SLO errores traslados: Normal (NoData) desde 2026-11-10T14:27:30Z
+    SLO latencia traslados: Normal (NoData) desde 2026-11-10T14:27:30Z
+
+### 2026-11-10T14:30:21Z · min 3, Operaciones caído
+  consulta: rumbo_circuito_estado
+    {'dependencia': 'operaciones', 'job': 'integracion', 'service_instance_id': 'integracion-2', 'service_name': 'integracion'} = 0
+    {'dependencia': 'operaciones', 'job': 'integracion', 'service_instance_id': 'integracion-1', 'service_name': 'integracion'} = 0
+    {'dependencia': 'clima', 'job': 'operaciones', 'service_instance_id': 'e37b48f49790', 'service_name': 'operaciones'} = 0
+  consulta: sum by (job) (rate(rumbo_http_duracion_segundos_seconds_count{estado=~"5.."}[5m]))
+    (sin series)
+  consulta: sum by (job, estado) (rate(rumbo_http_duracion_segundos_seconds_count{job="gateway",ruta="/traslados"}[5m]))
+    {'estado': '201', 'job': 'gateway'} = 0.263372
+    {'estado': '200', 'job': 'gateway'} = 0.2567053333333333
+  alertas (/api/prometheus/grafana/api/v1/alerts):
+    SLO latencia traslados: Normal (NoData) desde 2026-11-10T14:27:30Z
+    SLO latencia traslados: Normal desde 2026-11-10T14:29:30Z
+    Circuito abierto: Normal desde 2026-11-10T14:27:40Z
+    Circuito abierto: Normal desde 2026-11-10T14:27:40Z
+    Outbox sin publicar: Normal desde 2026-11-10T14:27:40Z
+    Mensajes en DLQ: Normal (NoData) desde 2026-11-10T14:27:30Z
+    SLO errores traslados: Normal (NoData) desde 2026-11-10T14:27:30Z
+
+### 2026-11-10T14:32:21Z · min 5, Operaciones caído
+  consulta: rumbo_circuito_estado
+    {'dependencia': 'operaciones', 'job': 'integracion', 'service_instance_id': 'integracion-2', 'service_name': 'integracion'} = 2
+    {'dependencia': 'operaciones', 'job': 'integracion', 'service_instance_id': 'integracion-1', 'service_name': 'integracion'} = 2
+    {'dependencia': 'clima', 'job': 'operaciones', 'service_instance_id': 'e37b48f49790', 'service_name': 'operaciones'} = 0
+  consulta: sum by (job) (rate(rumbo_http_duracion_segundos_seconds_count{estado=~"5.."}[5m]))
+    {'job': 'integracion'} = 0.20467598919964
+    {'job': 'gateway'} = 0.22787000000000002
+  consulta: sum by (job, estado) (rate(rumbo_http_duracion_segundos_seconds_count{job="gateway",ruta="/traslados"}[5m]))
+    {'estado': '201', 'job': 'gateway'} = 0.249996875039062
+    {'estado': '200', 'job': 'gateway'} = 0.3999950000624992
+    {'estado': '503', 'job': 'gateway'} = 0.18234266666666668
+  alertas (/api/prometheus/grafana/api/v1/alerts):
+    Circuito abierto: Normal desde 2026-11-10T14:27:40Z
+    Circuito abierto: Alerting desde 2026-11-10T14:31:40Z
+    Outbox sin publicar: Normal desde 2026-11-10T14:27:40Z
+    Mensajes en DLQ: Normal (NoData) desde 2026-11-10T14:27:30Z
+    SLO errores traslados: Normal (NoData) desde 2026-11-10T14:27:30Z
+    SLO latencia traslados: Normal desde 2026-11-10T14:29:30Z
+
+### 2026-11-10T14:34:21Z · min 7, Operaciones caído
+  consulta: rumbo_circuito_estado
+    {'dependencia': 'operaciones', 'job': 'integracion', 'service_instance_id': 'integracion-2', 'service_name': 'integracion'} = 2
+    {'dependencia': 'operaciones', 'job': 'integracion', 'service_instance_id': 'integracion-1', 'service_name': 'integracion'} = 2
+    {'dependencia': 'clima', 'job': 'operaciones', 'service_instance_id': 'e37b48f49790', 'service_name': 'operaciones'} = 0
+  consulta: sum by (job) (rate(rumbo_http_duracion_segundos_seconds_count{estado=~"5.."}[5m]))
+    {'job': 'integracion'} = 0.41888142740825857
+    {'job': 'gateway'} = 0.42822456541908094
+  consulta: sum by (job, estado) (rate(rumbo_http_duracion_segundos_seconds_count{job="gateway",ruta="/traslados"}[5m]))
+    {'estado': '201', 'job': 'gateway'} = 0.04999916668055532
+    {'estado': '200', 'job': 'gateway'} = 0.39999333344444254
+    {'estado': '503', 'job': 'gateway'} = 0.3426169854611919
+  alertas (/api/prometheus/grafana/api/v1/alerts):
+    Mensajes en DLQ: Normal (NoData) desde 2026-11-10T14:27:30Z
+    SLO errores traslados: Pending desde 2026-11-10T14:32:30Z
+    SLO latencia traslados: Normal desde 2026-11-10T14:29:30Z
+    Circuito abierto: Normal desde 2026-11-10T14:27:40Z
+    Circuito abierto: Alerting desde 2026-11-10T14:31:40Z
+    Outbox sin publicar: Normal desde 2026-11-10T14:27:40Z
+
+### 2026-11-10T14:36:21Z · min 9, Operaciones caído
+  consulta: rumbo_circuito_estado
+    {'dependencia': 'operaciones', 'job': 'integracion', 'service_instance_id': 'integracion-2', 'service_name': 'integracion'} = 2
+    {'dependencia': 'operaciones', 'job': 'integracion', 'service_instance_id': 'integracion-1', 'service_name': 'integracion'} = 2
+  consulta: sum by (job) (rate(rumbo_http_duracion_segundos_seconds_count{estado=~"5.."}[5m]))
+    {'job': 'integracion'} = 0.4999812507030986
+    {'job': 'gateway'} = 0.49997291813360106
+  consulta: sum by (job, estado) (rate(rumbo_http_duracion_segundos_seconds_count{job="gateway",ruta="/traslados"}[5m]))
+    {'estado': '201', 'job': 'gateway'} = 0
+    {'estado': '200', 'job': 'gateway'} = 0.39997833450688086
+    {'estado': '503', 'job': 'gateway'} = 0.39997833450688086
+  alertas (/api/prometheus/grafana/api/v1/alerts):
+    Circuito abierto: Alerting desde 2026-11-10T14:31:40Z
+    Outbox sin publicar: Normal (NoData) desde 2026-11-10T14:27:40Z
+    Mensajes en DLQ: Normal (NoData) desde 2026-11-10T14:27:30Z
+    SLO errores traslados: Pending desde 2026-11-10T14:32:30Z
+    SLO latencia traslados: Normal desde 2026-11-10T14:29:30Z
+
+### 2026-11-10T14:38:01Z · min 11, Operaciones caído (justo antes de volver)
+  consulta: rumbo_circuito_estado
+    {'dependencia': 'operaciones', 'job': 'integracion', 'service_instance_id': 'integracion-2', 'service_name': 'integracion'} = 2
+    {'dependencia': 'operaciones', 'job': 'integracion', 'service_instance_id': 'integracion-1', 'service_name': 'integracion'} = 2
+  consulta: sum by (job) (rate(rumbo_http_duracion_segundos_seconds_count{estado=~"5.."}[5m]))
+    {'job': 'integracion'} = 0.49997389025455813
+    {'job': 'gateway'} = 0.49997291813360106
+  consulta: sum by (job, estado) (rate(rumbo_http_duracion_segundos_seconds_count{job="gateway",ruta="/traslados"}[5m]))
+    {'estado': '201', 'job': 'gateway'} = 0
+    {'estado': '200', 'job': 'gateway'} = 0.39997833450688086
+    {'estado': '503', 'job': 'gateway'} = 0.39997833450688086
+  alertas (/api/prometheus/grafana/api/v1/alerts):
+    Outbox sin publicar: Normal (NoData) desde 2026-11-10T14:27:40Z
+    Mensajes en DLQ: Normal (NoData) desde 2026-11-10T14:27:30Z
+    SLO errores traslados: Alerting desde 2026-11-10T14:37:30Z
+    SLO latencia traslados: Normal desde 2026-11-10T14:29:30Z
+    Circuito abierto: Alerting desde 2026-11-10T14:31:40Z
+
+### 2026-11-10T14:40:01Z · min 13, recuperación
+  consulta: rumbo_circuito_estado
+    {'dependencia': 'operaciones', 'job': 'integracion', 'service_instance_id': 'integracion-2', 'service_name': 'integracion'} = 0
+    {'dependencia': 'operaciones', 'job': 'integracion', 'service_instance_id': 'integracion-1', 'service_name': 'integracion'} = 0
+    {'dependencia': 'clima', 'job': 'operaciones', 'service_instance_id': 'e37b48f49790', 'service_name': 'operaciones'} = 0
+  consulta: sum by (job) (rate(rumbo_http_duracion_segundos_seconds_count{estado=~"5.."}[5m]))
+    {'job': 'integracion'} = 0.3541563371068344
+    {'job': 'gateway'} = 0.36517283621393687
+  consulta: sum by (job, estado) (rate(rumbo_http_duracion_segundos_seconds_count{job="gateway",ruta="/traslados"}[5m]))
+    {'estado': '201', 'job': 'gateway'} = 0.04507769573937344
+    {'estado': '200', 'job': 'gateway'} = 0.32455940932348876
+    {'estado': '503', 'job': 'gateway'} = 0.29300502230592734
+  alertas (/api/prometheus/grafana/api/v1/alerts):
+    Circuito abierto: Normal desde 2026-11-10T14:39:40Z
+    Circuito abierto: Normal desde 2026-11-10T14:38:40Z
+    Outbox sin publicar: Normal desde 2026-11-10T14:27:40Z
+    Mensajes en DLQ: Normal (NoData) desde 2026-11-10T14:27:30Z
+    SLO errores traslados: Alerting desde 2026-11-10T14:37:30Z
+    SLO latencia traslados: Normal desde 2026-11-10T14:29:30Z
+
+### 2026-11-10T14:42:12Z · min 15, fin del tráfico
+  consulta: rumbo_circuito_estado
+    {'dependencia': 'operaciones', 'job': 'integracion', 'service_instance_id': 'integracion-2', 'service_name': 'integracion'} = 0
+    {'dependencia': 'operaciones', 'job': 'integracion', 'service_instance_id': 'integracion-1', 'service_name': 'integracion'} = 0
+    {'dependencia': 'clima', 'job': 'operaciones', 'service_instance_id': 'e37b48f49790', 'service_name': 'operaciones'} = 0
+  consulta: sum by (job) (rate(rumbo_http_duracion_segundos_seconds_count{estado=~"5.."}[5m]))
+    {'job': 'integracion'} = 0.10435163992545135
+    {'job': 'gateway'} = 0.08749854169097182
+  consulta: sum by (job, estado) (rate(rumbo_http_duracion_segundos_seconds_count{job="gateway",ruta="/traslados"}[5m]))
+    {'estado': '201', 'job': 'gateway'} = 0.34166097231712805
+    {'estado': '200', 'job': 'gateway'} = 0.39999333344444254
+    {'estado': '503', 'job': 'gateway'} = 0.07083215279745338
+  alertas (/api/prometheus/grafana/api/v1/alerts):
+    Circuito abierto: Normal desde 2026-11-10T14:39:40Z
+    Circuito abierto: Normal desde 2026-11-10T14:38:40Z
+    Outbox sin publicar: Normal desde 2026-11-10T14:27:40Z
+    Mensajes en DLQ: Normal (NoData) desde 2026-11-10T14:27:30Z
+    SLO errores traslados: Alerting desde 2026-11-10T14:37:30Z
+    SLO latencia traslados: Normal desde 2026-11-10T14:29:30Z
+

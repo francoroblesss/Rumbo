@@ -1,0 +1,18 @@
+2026-11-10T13:50:10Z inicio de k6 (15 min de tráfico por el gateway)
+2026-11-10T13:52:10Z consulta a Grafana: min 2, antes de la caída
+2026-11-10T13:53:10Z CAÍDA PROVOCADA: docker compose stop operaciones
+2026-11-10T13:53:14Z Operaciones detenido
+2026-11-10T13:53:30Z consulta a Grafana: min 3, Operaciones caído
+2026-11-10T13:55:30Z consulta a Grafana: min 5, Operaciones caído
+2026-11-10T13:57:30Z consulta a Grafana: min 7, Operaciones caído
+2026-11-10T13:59:30Z consulta a Grafana: min 9, Operaciones caído
+2026-11-10T14:01:11Z consulta a Grafana: min 11, Operaciones caído (justo antes de volver)
+2026-11-10T14:01:11Z RECUPERACIÓN: docker compose start operaciones
+2026-11-10T14:01:18Z Operaciones sano (healthcheck)
+2026-11-10T14:02:35Z breaker de Integración hacia Operaciones cerrado (rumbo_circuito_estado = 0)
+2026-11-10T14:02:35Z reintento de 3 reservas que dieron 503, con la misma Idempotency-Key
+2026-11-10T14:03:10Z consulta a Grafana: min 13, recuperación
+2026-11-10T14:05:20Z fin de k6
+2026-11-10T14:05:20Z consulta a Grafana: min 15, fin del tráfico
+2026-11-10T14:05:21Z logs extraídos a docs/evidencias/caida-disponibilidad/logs.txt
+2026-11-10T14:05:21Z resumen de k6 en docs/evidencias/caida-disponibilidad/resumen.md

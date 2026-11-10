@@ -4,7 +4,7 @@ Scripts de la prueba de falla que pide la consigna (§2.9): se tira abajo Operac
 
 | Archivo | Qué hace |
 | --- | --- |
-| `caida-operaciones.js` | k6, 15 min por el gateway con el token del sistema externo: 0,4 reservas por segundo (cada una con su `Idempotency-Key`, sobre franjas de los próximos días) y 0,4 consultas por segundo de `GET /traslados/{id}` de los traslados reservados al empezar. 48 pedidos por minuto: debajo del límite del gateway (60). Guarda cada pedido en `k6.json` (`--out json`) con hora, operación, estado HTTP, clave y franja |
+| `caida-operaciones.js` | k6, 15 min por el gateway con el token del sistema externo: 0,4 reservas por segundo (cada una con su `Idempotency-Key`, sobre franjas de los próximos días), 0,4 consultas por segundo de `GET /traslados/{id}` de los traslados reservados al empezar y 0,1 consultas por segundo de `GET /disponibilidad` de mañana. 54 pedidos por minuto: debajo del límite del gateway (60). Guarda cada pedido en `k6.json` (`--out json`) con hora, operación, estado HTTP, clave y franja |
 | `caida.sh` | Orquesta el procedimiento con los minutos fijos: k6 en el minuto 0, `docker compose stop operaciones` en el 3, consultas a Grafana cada 2 min mientras está caído, `docker compose start operaciones` en el 11, reintento de 3 reservas con `503` y, al terminar, logs y resumen. Anota la hora UTC de cada paso en `linea-temporal.txt` |
 | `reintentar.mjs` | Reintenta por el gateway 3 reservas que dieron `503` con la **misma** `Idempotency-Key` y el mismo cuerpo, como indica el contrato |
 | `resumir.mjs` | Cuenta los estados HTTP por minuto y por operación de `k6.json`, con la duración de las reservas y los hitos (primer y último `503`, primer `201` al volver), y escribe `resumen.md` |
@@ -29,5 +29,11 @@ Requisitos: Docker y Node.js 22 (para `reintentar.mjs` y `resumir.mjs`). Se corr
    - `resumen.md`: estados por minuto y por operación.
 4. Con el sistema todavía levantado: `bash pruebas/fallas/verificar-reservas.sh > docs/evidencias/postmortem/reservas.txt`.
 5. `docker compose down`.
+
+Para guardar una corrida en **otra carpeta** (sin pisar las evidencias del postmortem), los dos scripts aceptan la variable `EVIDENCIAS`, que por defecto es `docs/evidencias/postmortem`:
+```bash
+EVIDENCIAS=docs/evidencias/caida-disponibilidad bash pruebas/fallas/caida.sh
+EVIDENCIAS=docs/evidencias/caida-disponibilidad bash pruebas/fallas/verificar-reservas.sh > docs/evidencias/caida-disponibilidad/reservas.txt
+```
 
 Memoria: con observabilidad, el sistema usa cerca de 4 GB. Conviene cerrar otras aplicaciones y no compilar nada mientras corre.

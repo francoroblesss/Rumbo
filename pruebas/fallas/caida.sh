@@ -15,7 +15,7 @@
 set -uo pipefail
 export MSYS_NO_PATHCONV=1
 
-EV=docs/evidencias/postmortem
+EV="${EVIDENCIAS:-docs/evidencias/postmortem}"
 mkdir -p "$EV"
 LINEA="$EV/linea-temporal.txt"
 METRICAS="$EV/metricas.txt"

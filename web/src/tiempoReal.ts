@@ -6,6 +6,9 @@
 //   Query y la pantalla abierta vuelve a pedir los datos a la API (se reconcilia sola).
 // - Si se corta, se reconecta con backoff (1, 2, 4… hasta 30 s) mandando Last-Event-ID, y
 //   Notificaciones reenvía lo que se perdió.
+// - Al reconectar, además, se vuelven a pedir los datos a la API (reconciliarAlReconectar): si
+//   todavía no había llegado ningún aviso, no hay Last-Event-ID y Notificaciones arranca "desde
+//   ahora", así que lo que pasó mientras el stream estaba cortado solo se ve consultando.
 
 import { useEffect } from 'react'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
@@ -30,6 +33,16 @@ export function invalidarPorAviso(clienteConsultas: QueryClient, aviso: Aviso): 
     void clienteConsultas.invalidateQueries({ queryKey: ['franjas'] })
     void clienteConsultas.invalidateQueries({ queryKey: ['busqueda'] })
     void clienteConsultas.invalidateQueries({ queryKey: ['solicitud', aviso.entidad.id] })
+  }
+}
+
+/**
+ * Al volver a conectar el stream, invalida todo lo que un aviso perdido podría haber cambiado: la
+ * pantalla abierta lo vuelve a pedir a la API, que es la fuente de verdad.
+ */
+export function reconciliarAlReconectar(clienteConsultas: QueryClient): void {
+  for (const clave of ['avisos', 'solicitudes', 'franjas', 'busqueda', 'solicitud']) {
+    void clienteConsultas.invalidateQueries({ queryKey: [clave] })
   }
 }
 
@@ -93,11 +106,19 @@ export function useAvisosEnTiempoReal(): void {
       invalidarPorAviso(clienteConsultas, aviso)
     }
 
+    let intento = 0
+    // La primera conexión no reconcilia: la pantalla acaba de pedir sus datos.
+    let conectoAntes = false
+    const alConectar = () => {
+      intento = 0
+      if (conectoAntes) reconciliarAlReconectar(clienteConsultas)
+      conectoAntes = true
+    }
+
     void (async () => {
-      let intento = 0
       while (!control.signal.aborted) {
         try {
-          await leerStream(ultimoId, alAviso, () => (intento = 0), control.signal)
+          await leerStream(ultimoId, alAviso, alConectar, control.signal)
         } catch (error) {
           if (control.signal.aborted) return
           // 401: la sesión venció; api.ts ya volvió al ingreso y el efecto se limpia solo.

@@ -1,6 +1,6 @@
 # Proyecto final — Rumbo
 
-**Estado (09/11/2026):** Entrega 1 (tag `entrega-1`) y Entrega 2 (tag `entrega-2`) entregadas. En curso: **Presentación Grupal** (mié 11 o vie 13/11/2026), con el alcance de ADR-024. Implementado y en `main`: Operaciones (reserva de franjas, API de la web, avance de estado, clima en las reservas, búsqueda con Solr), Notificaciones (bandeja y tiempo real), Identidad (perfil y usuarios de demo), la aplicación web, la capacidad publicada desplegada en Render (https://rumbo-gateway.onrender.com, ADR-026 y ADR-030), tests e2e en el CI, prueba de carga sobre una franja, el postmortem y la corrección de los buckets del histograma de latencia. Falta: la clave real del clima, el ensayo y el tag `presentacion`. Proyecto **grupal**.
+**Estado (10/11/2026):** Entrega 1 (tag `entrega-1`) y Entrega 2 (tag `entrega-2`) entregadas. En curso: **Presentación Grupal** (mié 11 o vie 13/11/2026), con el alcance de ADR-024. Implementado y en `main`: Operaciones (reserva de franjas, API de la web, avance de estado, clima en las reservas, búsqueda con Solr), Notificaciones (bandeja y tiempo real), Identidad (perfil y usuarios de demo), la aplicación web, la capacidad publicada desplegada en Render (https://rumbo-gateway.onrender.com, ADR-026 y ADR-030), tests e2e en el CI, prueba de carga sobre una franja, el postmortem y sus acciones de mejora (buckets del histograma, alertas de circuito abierto y de outbox, `GET /disponibilidad` en la caída), el balanceador que no saca réplicas sanas por un `503` (ADR-031), los avisos que se recuperan al reconectar el stream y la copia del contrato de clima 2.1.0 (ADR-032). Ensayo completo hecho el 10/11. Falta: verificar contra el servicio real del clima (su fuente de datos respondía `503`) y el tag `presentacion`. Proyecto **grupal**.
 
 ## Archivos
 - `consigna.md` — transcripción fiel de `Enunciado TP Final.pdf`.
@@ -19,7 +19,7 @@ La estructura de la consigna §3 está en la raíz del repo: `README.md`, `SPEC.
 | Límites de servicios, responsabilidades y datos (D1) | ADR-001 |
 | Capacidad propia documentada + mock (D8) | ADR-002 (contrato vigente: ADR-006, v2), `docs/contracts/` |
 | D3 y D5 iniciales | ADR-003 (motor: ADR-005, MySQL), ADR-004 |
-| Estructura inicial de servicios y dependencias | `servicios/`, `frontend/`, `infra/`, `compose.yaml` (probado con Docker) |
+| Estructura inicial de servicios y dependencias | `servicios/`, `frontend/` (hoy `web/`, ADR-029), `infra/`, `compose.yaml` (probado con Docker) |
 
 ## Presentación Grupal (mié 11 o vie 13/11)
 | Punto de la consigna | Dónde |

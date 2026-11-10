@@ -43,7 +43,7 @@ Cinco microservicios detrás de un API Gateway. Justificación en [ADR-001](adr/
 | **Operaciones** | Las franjas y su cupo, las reservas y el ciclo del traslado | Solicitudes, franjas y su cupo, traslados (y, cuando se implementen, planes, recorridos, asignaciones e incidentes) | Reserva, disponibilidad, API de la web, avance de estado, cancelación, clima y búsqueda |
 | **Recursos** | Con qué y con quién se traslada, y cuánto le corresponde a cada chofer | Choferes, vehículos, actividad, tarifas, preliquidaciones | **Esqueleto:** arranca y responde `/salud`. Sin recorridos no tiene consumidor ni pantalla (ADR-024) |
 | **Notificaciones** | Hacer llegar los avisos | Avisos por rol y por organización | Consumidor de eventos, bandeja y stream SSE ([ADR-027](adr/ADR-027-avisos-en-tiempo-real.md)) |
-| **Integración de carga** | Atender el contrato público "Reservar traslado" y traducirlo al modelo interno | Copia de las reservas externas (idempotencia, último estado conocido) | Sin cambios desde la Entrega 2 |
+| **Integración de carga** | Atender el contrato público "Reservar traslado" y traducirlo al modelo interno | Copia de las reservas externas (idempotencia, último estado conocido) | Contrato 4.0.1 de autoservicio: pide la reserva a Operaciones por HTTP ([ADR-021](adr/ADR-021-capacidad-de-autoservicio.md)); caché opcional (en la nube no hay Memcached) |
 
 - **No hay revisión de solicitudes** (ADR-024): la solicitud nace de una reserva de franja, ya aceptada, con su traslado `PROGRAMADO`. El operador avanza el traslado desde la web: `PROGRAMADO` → `EN_CURSO` → `COMPLETADO` (o lo cancela). El flujo de revisión de la Entrega 2 quedó en el tag `entrega-2`.
 - La operación crítica (**reserva de franja**) vive entera en Operaciones ([ADR-022](adr/ADR-022-consistencia-y-concurrencia.md)).
@@ -97,7 +97,7 @@ Detalle en [ADR-004](adr/ADR-004-comunicacion-entre-servicios.md) (D5).
 | Llamada | Timeout | Si falla |
 | --- | --- | --- |
 | Cliente → Gateway → servicio | 5 s total; el gateway no reintenta | 502 / 504; reintenta el cliente con `Idempotency-Key` |
-| Web → Gateway → Notificaciones (stream SSE) | Sin deadline (la conexión dura minutos); comentario `: ping` cada 15 s | La web reconecta con backoff (1, 2, 4… 30 s) y `Last-Event-ID` |
+| Web → Gateway → Notificaciones (stream SSE) | Sin deadline (la conexión dura minutos); comentario `: ping` cada 15 s | La web reconecta con backoff (1, 2, 4… 30 s) y `Last-Event-ID`, y al reconectar vuelve a pedir los datos a la API (por si se perdió un aviso mientras estaba cortado) |
 | Integración de carga → Operaciones (disponibilidad, reserva, cancelación) | 2 s, sin reintento, circuit breaker | 503 al consumidor, que reintenta con la misma clave ([ADR-021](adr/ADR-021-capacidad-de-autoservicio.md)) |
 | Operaciones → clima, al pasar a `EN_CURSO` | 1 s por intento, breaker, caché | Fail-open: el cambio de estado se hace igual, con "clima no verificado" ([ADR-025](adr/ADR-025-clima-en-las-reservas.md)) |
 | Operaciones → Solr | 2 s | Solo la búsqueda responde `503` |
@@ -231,6 +231,7 @@ Los scripts de `infra/` crean, al iniciar por primera vez, una base de datos y u
 | RabbitMQ | CloudAMQP, plan Little Lemur |
 | Monitor externo | UptimeRobot, `/salud` de los cuatro cada 5 minutos, hasta la Presentación |
 
+- **Costo: USD 0.** Todo está en planes gratuitos (Render, MongoDB Atlas M0, Aiven, CloudAMQP y UptimeRobot). Los montos en USD de [ADR-015](adr/ADR-015-capacidad-y-costos.md) y [ADR-018](adr/ADR-018-despliegue-en-la-nube.md) son la **estimación** de lo que costaría con los precios de Railway (≈ USD 24 por mes, D13); el grupo decidió no pagar ([ADR-026](adr/ADR-026-despliegue-en-render.md)).
 - Los secretos (`SECRETO_INTERNO`, `TOKEN_SECRETO`, credenciales de las bases y del broker, clave del clima) se cargan en el panel de Render.
 - **No van a la nube:** la aplicación web, Notificaciones, Recursos, Solr, Memcached, NGINX con la segunda réplica y Grafana. Se demuestran en local. En la nube, las rutas `/api/notificaciones/...` y `/api/recursos/...` responden `502` y la búsqueda `503`: sin `SOLR_URL`, Operaciones no levanta el indexador.
 - **Arranque en frío:** en el plan gratuito un servicio se duerme a los 15 minutos sin tráfico, y **solo lo despierta un pedido desde internet**, no el de otro servicio de Render (medido el 08/11: el despertar del gateway al arrancar recibía `502` al instante). Por eso el monitor externo de ADR-030. Si quedan dormidos: `infra/render/despertar.sh`.
@@ -266,7 +267,7 @@ Los scripts de `infra/` crean, al iniciar por primera vez, una base de datos y u
 **Otros**
 - **El stream de avisos consulta MongoDB cada 1 s por conexión abierta** ([ADR-027](adr/ADR-027-avisos-en-tiempo-real.md)): sin hub en memoria, cualquier réplica sirve cualquier stream y un reinicio no pierde nada, pero el costo crece con la cantidad de pantallas abiertas.
 - **El stream de avisos ocupa conexiones del navegador:** sobre HTTP/1.1, Chrome permite 6 conexiones por servidor, compartidas entre todas las pestañas. En el ensayo del 10/11, con tres pestañas de la web abiertas en la misma ventana, los pedidos nuevos quedaron en espera. Se evita con pocas pestañas por ventana; servir el gateway con HTTP/2 lo resolvería (multiplexa los pedidos en una sola conexión).
-- **El clima real:** el proveedor publicó su URL (contrato 2.0.1, [ADR-020](adr/ADR-020-contrato-clima-2.md)) y su servicio también se duerme sin pedidos (el primer pedido tarda cerca de un minuto). Con nuestro timeout de 1 s, si está dormido la alerta queda "clima no verificado" (fail-open). PENDIENTE-CIERRE: falta la clave del proveedor para medir contra el servicio real; repetir la verificación de [ADR-016](adr/ADR-016-validacion-d5.md) cuando llegue.
+- **El clima real:** el proveedor publicó su URL (contrato 2.1.0, [ADR-020](adr/ADR-020-contrato-clima-2.md) y [ADR-032](adr/ADR-032-contrato-clima-2-1.md)) y su servicio también se duerme sin pedidos (el primer pedido tarda cerca de un minuto). Con nuestro timeout de 1 s, si está dormido la alerta queda "clima no verificado" (fail-open). PENDIENTE-CIERRE: falta la clave del proveedor para medir contra el servicio real; repetir la verificación de [ADR-016](adr/ADR-016-validacion-d5.md) cuando llegue.
 - **El esquema de Solr solo agrega campos:** para cambiar uno que ya existe hay que borrar el volumen `solr-datos` y reindexar (el índice es derivado: no se pierde nada).
 - **Soft commit en cada escritura del indexador:** hace visible el cambio enseguida y la demora medida es la real. Con el volumen de Rumbo no pesa (0,5 s de demora, ~205 traslados por segundo al reindexar); con mucho más volumen habría que agrupar los commits (`commitWithin`).
 - **`grafana/otel-lgtm` es para desarrollo, no para producción.**

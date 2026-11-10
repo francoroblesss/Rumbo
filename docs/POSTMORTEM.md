@@ -124,6 +124,17 @@ La respuesta fue la del procedimiento (arrancar el contenedor a los 8 min), no u
 | 5 | Consultas del orquestador con ventana de 5 min | Tasa de 5xx vacía cada 2 min | Sofia | **Ahora** (hecho: `pruebas/fallas/caida.sh`) |
 | 6 | Agregar `GET /disponibilidad` al tráfico de la prueba | No se verificó su `503` durante la caída | Sofia | Deuda: próxima corrida |
 
+### Seguimiento de las acciones (10/11/2026)
+La tabla de arriba queda como se escribió después de la caída; acá se registra cómo se cerró cada acción.
+
+| # | Estado | Cómo se cerró |
+| --- | --- | --- |
+| 1 | Hecha (PR #30) | Buckets explícitos en segundos: con el mismo tráfico, el p95 del gateway pasó de 4,75 s a 0,236 s ([`ARCHITECTURE.md`](ARCHITECTURE.md) §10) |
+| 2 | Hecha (PR #32) | Regla `Circuito abierto`: *Firing* ~1 min 40 s después de abrirse el breaker. Se agregó también `Outbox sin publicar` (RabbitMQ caído) |
+| 3 | Sigue como deuda | Segunda réplica de Operaciones ([`ARCHITECTURE.md`](ARCHITECTURE.md) §10) |
+| 4 y 5 | Hechas en la corrida | — |
+| 6 | Hecha (PR #33) | `GET /disponibilidad` responde `503` con `Retry-After` durante la caída y vuelve a `200` ([evidencia](evidencias/caida-disponibilidad/README.md)). La corrida mostró además que el balanceador marcaba las dos réplicas como caídas por los `503` y respondía `502`; se corrigió con [ADR-031](adr/ADR-031-balanceador-solo-fallas-de-replica.md) (PR #34, [evidencia](evidencias/caida-balanceador/README.md)) |
+
 ## Evidencia
 En [`docs/evidencias/postmortem/`](evidencias/postmortem/) (sin tokens ni secretos):
 - [`linea-temporal.txt`](evidencias/postmortem/linea-temporal.txt): hora UTC de cada paso, anotada por `caida.sh`.

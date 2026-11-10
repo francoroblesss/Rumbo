@@ -22,7 +22,7 @@ El dominio completo (solicitudes, planificación de recorridos, asignación de c
 6. Operador y cliente **buscan traslados** con texto libre y filtros ([ADR-011](docs/adr/ADR-011-busqueda.md)).
 
 ## Ejecución local
-Requisitos: Docker Desktop (con Docker Compose v2). Para desarrollar sin Docker: Go 1.26+ (o cualquier Go ≥ 1.21, que descarga la 1.26 solo) y Node.js 20+.
+Requisitos: Docker Desktop (con Docker Compose v2). Para desarrollar sin Docker: Go 1.26+ (o cualquier Go ≥ 1.21, que descarga la 1.26 solo) y Node.js 22.
 
 ```bash
 cp .env.example .env          # una sola vez; cambiar las contraseñas de desarrollo
@@ -62,13 +62,13 @@ infra/            inicialización de MySQL y MongoDB, NGINX (balanceador), Grafa
 pruebas/carga/    pruebas de carga con k6 (ADR-015)
 pruebas/e2e/      tests de punta a punta contra el sistema levantado (ADR-028; corren en el CI)
 pruebas/fallas/   caída provocada de Operaciones (postmortem)
-docs/             arquitectura, ADR, contrato publicado, capacidad, evidencias, postmortem y lista de la demo
+docs/             arquitectura, ADR, contrato publicado y consumido, capacidad, evidencias y postmortem
 compose.yaml      levanta todo el sistema
 render.yaml       despliegue de la capacidad publicada en Render (ADR-026)
 ```
 
 ## Parte desplegada
-**URL pública del API Gateway: https://rumbo-gateway.onrender.com** (capacidad publicada "Reservar traslado", contrato [4.0.1](docs/contracts/README.md)).
+**URL pública del API Gateway: https://rumbo-gateway.onrender.com** (capacidad publicada "Reservar traslado", contrato [4.0.1](docs/contracts/README.md)). Costo: USD 0, todo en planes gratuitos.
 
 Se despliega en **Render**, plan gratuito, con el Blueprint [`render.yaml`](render.yaml) ([ADR-026](docs/adr/ADR-026-despliegue-en-render.md), que reemplaza parcialmente a [ADR-018](docs/adr/ADR-018-despliegue-en-la-nube.md)). Render vuelve a desplegar solo con cada merge a `main`.
 
@@ -91,7 +91,7 @@ El proyecto sigue un enfoque guiado por especificación: primero el dominio y la
 | Ramas | Una por tarea, corta y creada desde `main`: `feat/…`, `fix/…`, `docs/…`, `adr/…` (ej. `feat/asignacion-recorridos`, `adr/d6-busqueda`). |
 | Commits | En español, con prefijo de tipo: `feat: asignar chofer a recorrido`, `docs: ADR-005 búsqueda`. |
 | Pull requests | Cada PR describe qué cambia y qué ADR o funcionalidad (`F-xx` de `SPEC.md`) toca. Se integra a `main` cuando pasa la **verificación automática**. La revisión de otro integrante se suma cuando es posible. |
-| Integración continua | GitHub Actions (`.github/workflows/ci.yml`) verifica cada PR: formato, compilación, `go vet` y tests de los siete módulos Go (los seis servicios y `comun`), y los tests de punta a punta contra el sistema levantado (`pruebas/e2e`). |
+| Integración continua | GitHub Actions (`.github/workflows/ci.yml`) verifica cada PR: formato, compilación, `go vet` y tests de los siete módulos Go (los seis servicios y `comun`), los tests de punta a punta contra el sistema levantado (`pruebas/e2e`) y, para la web, lint, compilación y tests (`web/`). |
 | Entregas | Cada entrega se marca con un tag en `main`: `entrega-1`, `entrega-2`, `presentacion`. |
 | Decisiones | Un ADR ya integrado no se edita: un cambio de decisión se registra con un ADR nuevo que reemplaza al anterior. |
 

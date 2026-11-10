@@ -44,7 +44,7 @@ Antes de cerrar la arquitectura, narrar de punta a punta:
 4. Una cancelación (con 24 h o más, y tardía).
 5. Una avería, con el alcance acotado (registrar + reasignar antes de salir; si ocurre en viaje, interrumpido).
 
-Estos casos siguen pendientes: conviene narrarlos antes de implementar Operaciones (sirven también como base de los criterios de aceptación de `SPEC.md`).
+Histórico: estos casos se pensaron antes de implementar Operaciones. Con el alcance de la Presentación (ADR-024) aplican el 3 (la reserva del otro grupo) y el 4 (la cancelación, también tardía); los demás quedan para cuando haya recorridos.
 
 ## 5. Lo dicho en la clase de presentación del proyecto
 Fuente: `contexto/Transcripcion - Universidad Catolica de Cordoba.txt` (transcripción automática; los minutos sirven para buscar en el audio).

@@ -19,8 +19,8 @@ Rumbo es una plataforma única de gestión operativa de **traslados programados 
 - Avisos dentro de Rumbo para clientes, choferes y operadores.
 - Búsqueda de traslados.
 - Preliquidación mensual de choferes.
-- Capacidad publicada para otros sistemas: **Reservar traslado** de una cosa desde un origen hasta un destino en una franja, de autoservicio (`docs/contracts/`, versión 4.0.0).
-- Consumo de condiciones climáticas del sistema de aeropuerto (flujo a definir con su contrato).
+- Capacidad publicada para otros sistemas: **Reservar traslado** de una cosa desde un origen hasta un destino en una franja, de autoservicio (`docs/contracts/`, versión vigente 4.0.1).
+- Consumo de condiciones climáticas del sistema de aeropuerto: alerta climática en los traslados al aeropuerto (F-29, R-46; ADR-012 y ADR-025).
 
 ### 1.3 Fuera de alcance
 - Facturación y cobros a clientes, incluidas multas por cancelación.
@@ -291,7 +291,7 @@ Anunciados en la Entrega 2 (consigna §7). Se implementan para la Presentación 
 | **Actualizaciones en tiempo real** | El operador y el cliente ven en la aplicación web los cambios de estado de solicitudes y traslados apenas ocurren, sin recargar, a partir de los eventos que ya publica Operaciones | Un cambio de estado aparece en la pantalla abierta en menos de 2 s |
 | **Tests de punta a punta (e2e)** | Tests automatizados del flujo principal a través del sistema levantado: reserva por el contrato público → gateway → Integración → Operaciones → cambio de estado visible por consulta | Corren en el CI contra el sistema levantado con Docker Compose |
 
-Estado (2026-11-06): **Tiempo real** en curso (Sofia, [ADR-027](docs/adr/ADR-027-avisos-en-tiempo-real.md); Delap, web). Se verifica con CA-41. **Tests de punta a punta** implementados (job `e2e` del CI) (Sofia, [ADR-028](docs/adr/ADR-028-tests-de-punta-a-punta.md)): corren en el CI contra el sistema levantado con Docker Compose y recorren el flujo de ADR-024.
+Estado (2026-11-10): **Tiempo real** implementado (Sofia, [ADR-027](docs/adr/ADR-027-avisos-en-tiempo-real.md); Delap, web). CA-41 medido: ~0,9 s desde que se guarda el aviso hasta que sale por el stream ([evidencia](docs/evidencias/presentacion.md)). **Tests de punta a punta** implementados (job `e2e` del CI) (Sofia, [ADR-028](docs/adr/ADR-028-tests-de-punta-a-punta.md)): corren en el CI contra el sistema levantado con Docker Compose y recorren el flujo de ADR-024.
 
 ## 8. Registro de cambios
 | Fecha | Cambio | Motivo |
@@ -304,3 +304,4 @@ Estado (2026-11-06): **Tiempo real** en curso (Sofia, [ADR-027](docs/adr/ADR-027
 | 2026-11-06 | Se agrega la sección "Implementación para la Presentación": qué F-xx se implementan y cuáles quedan fuera. Se agregan F-30 y F-31 | Alcance de la Presentación (ADR-024) |
 | 2026-11-06 | R-41 reemplazada por R-46: el aeropuerto se detecta por nombre o dirección y el clima se consulta después de la reserva y al pasar a `EN_CURSO`. CA-30 y CA-31 reemplazados por CA-35 y CA-36 | Las reservas no pasan por un operador que acepte (ADR-025) |
 | 2026-11-06 | R-47: ciclo reducido del traslado, avanzado por el operador. CA-37 a CA-43 | ADR-024, ADR-027 |
+| 2026-11-10 | Alcance (§1.2) al día: contrato vigente 4.0.1 y consumo del clima definido (F-29, R-46). Estado de los bonus: tiempo real implementado | Revisión de la documentación para la Presentación |

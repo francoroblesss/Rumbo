@@ -1,7 +1,7 @@
 # ADR-009 — Balanceo de carga de Integración de carga (D12)
 
 - **Fecha:** 2026-10-14
-- **Estado:** aceptada — el reclamo atómico del relay entre réplicas queda **reemplazado por [ADR-021](ADR-021-capacidad-de-autoservicio.md)**: Integración ya no tiene relay. El resto sigue vigente.
+- **Estado:** aceptada — el reclamo atómico del relay entre réplicas queda **reemplazado por [ADR-021](ADR-021-capacidad-de-autoservicio.md)**: Integración ya no tiene relay. El resto sigue vigente; el reintento ante 502 y 503 queda **reemplazado por [ADR-031](ADR-031-balanceador-solo-fallas-de-replica.md)**
 
 ## Contexto
 La consigna (§2.3) pide balancear al menos un servicio desplegado en **dos o más instancias**, que el mecanismo **reconozca cuando una instancia no está disponible**, y que la distribución y el estado de las instancias se puedan **comprobar con la observabilidad**.

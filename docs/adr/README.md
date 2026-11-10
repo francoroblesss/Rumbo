@@ -16,7 +16,7 @@ Cada decisión se conserva en un archivo independiente `ADR-NNN-titulo-corto.md`
 | D9 | Consumo del proveedor | E2 | [ADR-012](ADR-012-consumo-clima.md), contrato del proveedor 2.0.1 en [ADR-020](ADR-020-contrato-clima-2.md), consulta en las reservas en [ADR-025](ADR-025-clima-en-las-reservas.md) |
 | D10 | Resiliencia | E2 | [ADR-008](ADR-008-resiliencia.md), reconexión reemplazada por [ADR-017](ADR-017-reconexion-broker-y-balanceador.md), secreto interno y arranque en frío en la nube en [ADR-026](ADR-026-despliegue-en-render.md), monitor externo que la mantiene despierta en [ADR-030](ADR-030-monitor-externo-en-render.md) |
 | D11 | Observabilidad | E2 primera versión | [ADR-014](ADR-014-observabilidad.md), logs en MySQL en [ADR-023](ADR-023-logs-en-mysql.md) |
-| D12 | Balanceo de carga | E2 | [ADR-009](ADR-009-balanceo.md) |
+| D12 | Balanceo de carga | E2 | [ADR-009](ADR-009-balanceo.md), reintento y detección de réplicas caídas en [ADR-031](ADR-031-balanceador-solo-fallas-de-replica.md) |
 | D13 | Capacidad y costos | E2 | [ADR-015](ADR-015-capacidad-y-costos.md) |
 
 ## Otras decisiones
@@ -37,6 +37,7 @@ Cada decisión se conserva en un archivo independiente `ADR-NNN-titulo-corto.md`
 | [ADR-028](ADR-028-tests-de-punta-a-punta.md) | Tests de punta a punta en el CI (bonus): módulo Go `pruebas/e2e` con la librería estándar, solo por el gateway, contra el sistema levantado con Docker Compose; lo asíncrono se espera con sondeo y plazo |
 | [ADR-029](ADR-029-aplicacion-web.md) | Aplicación web con React, Vite, TypeScript y Mantine: SPA servida por NGINX en local, cliente HTTP único con `Idempotency-Key` por intención, sesión en `sessionStorage` y avisos en tiempo real por SSE leído con `fetch`; no reserva franjas |
 | [ADR-030](ADR-030-monitor-externo-en-render.md) | Monitor externo (UptimeRobot) que le pide `/salud` a los servicios de Render cada 5 minutos hasta la Presentación, porque un servicio dormido no despierta con el tráfico de otro servicio de Render (reemplaza parcialmente a ADR-026) |
+| [ADR-031](ADR-031-balanceador-solo-fallas-de-replica.md) | El balanceador reintenta en la otra réplica y la saca de rotación solo por error de conexión o timeout; un `503` de una dependencia caída se devuelve tal cual (reemplaza parcialmente a ADR-009) |
 
 ## Formato
 ```

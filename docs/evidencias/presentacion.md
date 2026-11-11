@@ -2,8 +2,6 @@
 
 Una sección por cada punto que pide la consigna para la Presentación Grupal (`contexto/proyecto/consigna.md`, "Miércoles 11 o viernes 13 de noviembre"). Cada una dice qué se verificó, cómo y dónde está el resultado. Las verificaciones de la Entrega 2 que siguen valiendo están en [`entrega-2.md`](entrega-2.md).
 
-Los puntos marcados **PENDIENTE-CIERRE** se completan en el ensayo final del 11/11/2026.
-
 ## 1. Frontend completo, desde el ingreso hasta la funcionalidad compartida
 - **Qué hay:** aplicación web (`web/`, [ADR-029](../adr/ADR-029-aplicacion-web.md)) con ingreso, menú por rol y las pantallas de operador (franjas, traslados, avance de estado, cancelación, búsqueda, avisos), cliente de organización (sus traslados, cancelación, búsqueda, avisos) y administrador (además, reconstruir el índice). La funcionalidad compartida es la del flujo de la capacidad: lo que reserva el sistema externo por la API, el operador lo ve y lo avanza, y el sistema externo y el cliente ven el resultado.
 - **Verificado:**
@@ -34,7 +32,7 @@ Gateway, Identidad, Operaciones, Integración (dos réplicas) y Notificaciones i
   - test de contrato con `kin-openapi` contra el contrato 2.1.0 fijado ([ADR-032](../adr/ADR-032-contrato-clima-2-1.md)) en [`contracts/consumidos/`](../contracts/consumidos/README.md) (`servicios/operaciones/adaptadores/clima/contrato_test.go`): ejemplos de respuesta, errores, validación de pedidos y breaker;
   - tests de los casos de uso de clima en reservas y al pasar a `EN_CURSO` (`aplicacion/solicitudes_test.go`, `TestRevisarClimaDeReserva` y `TestAvanzarEstado`).
   - contra el **servicio real** del proveedor (`https://clima-aeropuerto.onrender.com`, con la clave que nos asignaron el 10/11): sin clave responde `401`; el 10/11 respondió `503 WEATHER_SOURCE_UNAVAILABLE` con `Retry-After: 60` (lo medimos de 13:14 a 14:02 UTC; según el proveedor, hasta que el cupo se reinició a la medianoche UTC), porque su fuente (Open-Meteo, plan gratuito) le devolvía `429` por el cupo diario de su IP de salida, que Render comparte (diagnóstico del proveedor, en sus logs); el 11/11 a las 02:40 UTC, con el cupo reiniciado, respondió **`200`** en 0,66 s (SACO, `operable: true`). Nuestro adaptador trata ese `503` como falla del proveedor: la operación sigue con "clima no verificado" (fail-open), que es lo que el proveedor recomienda.
-- PENDIENTE-CIERRE: verificación de punta a punta con Rumbo apuntando al servicio real (reserva al aeropuerto → `clima revisado después de la reserva` con su resultado), en el ensayo final del 11/11.
+  - verificado de punta a punta el 11/11 a las 14:31 UTC, con Operaciones apuntando al servicio real y nuestra clave: una reserva al aeropuerto dio `201` y el consumidor de clima recibió `503` (su cupo se había vuelto a agotar), así que registró `clima revisado después de la reserva` con `resultado: no_verificado` y la reserva siguió normal (fail-open).
 
 ## 6. Al menos dos tipos de almacenamiento integrados al flujo
 En una misma reserva ([`recorrido-integrado.txt`](presentacion/recorrido-integrado.txt)):

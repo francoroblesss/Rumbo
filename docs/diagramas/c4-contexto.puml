@@ -4,22 +4,20 @@
 
 title Rumbo · C4 nivel 1 · Contexto
 
-Person(cliente, "Cliente", "De una organización cliente. Mantiene su padrón, solicita traslados, responde contrapropuestas y consulta el estado.")
-Person(operador, "Operador", "Revisa solicitudes, planifica recorridos, asigna choferes y vehículos y gestiona incidentes.")
-Person(chofer, "Chofer", "Consulta su recorrido del día y registra paradas, abordajes, ausencias, incidentes y km.")
-Person(admin, "Administrador", "Administra usuarios, clientes, choferes, vehículos y tarifas; cierra las preliquidaciones.")
+Person(cliente, "Cliente de organización", "Usuario de la organización que reserva por la API. Ve y cancela sus traslados, los busca y recibe avisos.")
+Person(operador, "Operador", "Ve las franjas con su ocupación y los traslados reservados, los avanza (en curso, completado) o los cancela, busca y recibe avisos.")
+Person(admin, "Administrador", "Lo mismo que el operador, y reconstruye el índice de búsqueda.")
 
-System(rumbo, "Rumbo", "Traslados programados de personas o carga para organizaciones cliente: solicitudes, planificación, asignación, ejecución, incidentes y preliquidación.")
+System(rumbo, "Rumbo", "Traslados de carga para organizaciones cliente: reserva de franjas con cupo, seguimiento del traslado y avisos en tiempo real.")
 
 System_Ext(almacenamiento, "Sistema de gestión de almacenamiento", "Otro grupo. Consume la capacidad publicada de Rumbo.")
 System_Ext(aeropuerto, "Sistema de aeropuerto", "Otro grupo. Expone las condiciones climáticas del aeropuerto.")
 
 Rel(cliente, rumbo, "Usa", "web")
 Rel(operador, rumbo, "Usa", "web")
-Rel(chofer, rumbo, "Usa", "web")
 Rel(admin, rumbo, "Usa", "web")
 Rel(almacenamiento, rumbo, "Reserva traslados en una franja (cosa, origen, destino) y consulta su estado", "API REST /disponibilidad, /traslados, token")
-Rel(rumbo, aeropuerto, "Consulta la operabilidad del aeropuerto", "API REST, síncrono")
+Rel(rumbo, aeropuerto, "Consulta la operabilidad del aeropuerto en los traslados al aeropuerto", "API REST, X-API-Key")
 
 SHOW_LEGEND()
 @enduml

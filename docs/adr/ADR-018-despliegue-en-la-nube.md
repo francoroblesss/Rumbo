@@ -1,7 +1,7 @@
 # ADR-018 — Despliegue en la nube: Vercel para la web y Railway para el backend
 
 - **Fecha:** 2026-10-16 (acordado por el grupo el 2026-10-15)
-- **Estado:** aceptada (se implementa para la Presentación Grupal)
+- **Estado:** aceptada (se implementa para la Presentación Grupal) — **reemplazada parcialmente por [ADR-026](ADR-026-despliegue-en-render.md)**: el backend se despliega en el **plan gratuito de Render** (no en Railway) y la web no se despliega (no hay Vercel). **No se paga nada**: el costo de ≈ USD 24 por mes de este ADR es la estimación con los precios de Railway (ADR-015), que el grupo decidió no pagar.
 
 ## Contexto
 - La consigna (§4.1) pide que la primera versión operativa de la capacidad publicada esté **en un entorno accesible** y se mantenga operativa hasta el final de la evaluación. Para la Presentación Grupal (§6) pide la capacidad propia **desplegada en la nube y accesible mediante una URL pública**.

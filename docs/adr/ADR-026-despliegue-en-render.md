@@ -1,7 +1,7 @@
 # ADR-026 — Despliegue de la capacidad publicada en Render (plan gratuito)
 
 - **Fecha:** 2026-11-06
-- **Estado:** aceptada
+- **Estado:** aceptada — el arranque en frío (punto 4) queda **reemplazado parcialmente por [ADR-030](ADR-030-monitor-externo-en-render.md)** (monitor externo hasta la Presentación).
 - **Reemplaza parcialmente a:** [ADR-018](ADR-018-despliegue-en-la-nube.md). Cambian la plataforma del backend (Railway → Render) y qué se despliega (solo la capacidad, sin la web en Vercel). Se mantienen: una sola URL pública como punto de entrada a la capacidad, secretos como variables de la plataforma y nada de AWS.
 
 ## Contexto

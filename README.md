@@ -12,16 +12,17 @@ Rumbo presta servicios de traslado a organizaciones (clínicas, colegios, empres
 - registrar la actividad de los choferes para su preliquidación mensual.
 
 ## Flujo principal
-1. Un **cliente** solicita un traslado: qué personas o qué carga, origen, destino, hora y si es puntual o recurrente.
-2. Un **operador** revisa la solicitud: la acepta, propone otro horario o la rechaza.
-3. El operador **planifica los recorridos** y **asigna chofer y vehículo**. Rumbo valida que no haya compromisos superpuestos, que alcance la capacidad y que se cumplan los horarios comprometidos.
-4. El **chofer** ejecuta el recorrido: inicia, marca paradas, abordajes y ausencias, reporta incidentes y cierra informando los km.
-5. El cliente consulta el estado de sus traslados. La actividad registrada alimenta la **preliquidación** de los choferes.
+El dominio completo (solicitudes, planificación de recorridos, asignación de chofer y vehículo, ejecución, incidentes y preliquidación) está en [`SPEC.md`](SPEC.md). Para la **Presentación Grupal** se implementa el flujo de las **reservas de franjas** ([ADR-024](docs/adr/ADR-024-alcance-de-la-presentacion.md)):
 
-Además, otros sistemas pueden **reservar el traslado de una cosa desde un origen hasta un destino** en una franja horaria, por API y con respuesta inmediata (sin revisión del operador), a través del contrato publicado en [`docs/contracts/`](docs/contracts/README.md) (versión vigente del contrato: 4.0.0, ADR-021; las rutas no llevan versión, ADR-019).
+1. Un **sistema externo** (el de gestión de almacenamiento, de otro grupo) consulta las franjas con lugar y **reserva el traslado** de una cosa desde un origen hasta un destino, por API y con respuesta inmediata, con el contrato publicado en [`docs/contracts/`](docs/contracts/README.md) (versión vigente: 4.0.1; las rutas no llevan versión, ADR-019).
+2. Si el traslado va o viene del aeropuerto, Rumbo revisa el **clima** con el servicio de otro grupo y marca una alerta si no es operable ([ADR-025](docs/adr/ADR-025-clima-en-las-reservas.md)).
+3. El **operador** ve en la web las franjas con su ocupación y los traslados reservados, y los avanza: `EN_CURSO` → `COMPLETADO`.
+4. El sistema externo consulta su traslado y lo ve avanzar; un **usuario de esa organización** lo ve en la web y puede cancelarlo.
+5. **Notificaciones** avisa en tiempo real al operador y a la organización ([ADR-027](docs/adr/ADR-027-avisos-en-tiempo-real.md)).
+6. Operador y cliente **buscan traslados** con texto libre y filtros ([ADR-011](docs/adr/ADR-011-busqueda.md)).
 
 ## Ejecución local
-Requisitos: Docker Desktop (con Docker Compose v2). Para desarrollar sin Docker: Go 1.26+ (o cualquier Go ≥ 1.21, que descarga la 1.26 solo) y Node.js 20+.
+Requisitos: Docker Desktop (con Docker Compose v2). Para desarrollar sin Docker: Go 1.26+ (o cualquier Go ≥ 1.21, que descarga la 1.26 solo) y Node.js 22.
 
 ```bash
 cp .env.example .env          # una sola vez; cambiar las contraseñas de desarrollo
@@ -36,32 +37,38 @@ Consumo de memoria: el sistema completo usa unos **2,5–3,5 GB** de RAM; convie
 
 | Componente | Dirección |
 | --- | --- |
-| Aplicación web (operador, cliente y administrador; usuarios de demo en `.env`, ver [`web/README.md`](web/README.md)) | http://localhost:5173 |
+| Aplicación web (operador, cliente y administrador; usuarios de demo abajo) | http://localhost:5173 |
 | API Gateway (único punto de entrada) | http://localhost:8080 — contrato público en `/auth/token`, `/disponibilidad` y `/traslados`, API interna en `/api/<servicio>/...` |
 | Panel de RabbitMQ | http://localhost:15672 |
 | Grafana: logs (MySQL), métricas, trazas y tablero (`admin`/`admin`; solo con el perfil `observabilidad`) | http://localhost:3000 |
+| Panel de Solr (búsqueda) | http://localhost:8983 |
 | Mock del clima que consume Rumbo | http://localhost:4020 |
 | MySQL (por ejemplo, desde SQL Workbench) | `localhost:13306` |
+
+**Usuarios de demostración** (se siembran al arrancar con los valores de `.env`, [`interfaces-internas.md`](docs/interfaces-internas.md) §15): operador (`OPERADOR_EMAIL` / `OPERADOR_PASSWORD`), cliente de la organización `org-almacenamiento` (`CLIENTE_EMAIL` / `CLIENTE_PASSWORD`) y administrador (`ADMIN_EMAIL` / `ADMIN_PASSWORD`). Con el `.env.example` sin cambios son `operador@rumbo.local`, `cliente@almacenamiento.local` y `admin@rumbo.local`. El sistema externo usa `EXTERNO_CLIENT_ID` / `EXTERNO_CLIENT_SECRET` en `POST /auth/token`.
 
 ## Estructura del repositorio
 ```
 servicios/        un módulo Go por microservicio + el gateway (go.work los agrupa)
-  comun/          piezas compartidas: observabilidad, mensajería, identidad y errores (docs/interfaces-internas.md)
-  gateway/        API Gateway: ruteo, correlation id, autenticación y límite de tráfico
+  comun/          piezas compartidas: observabilidad, /salud, mensajería, identidad, secreto interno y errores (docs/interfaces-internas.md)
+  gateway/        API Gateway: ruteo, correlation id, autenticación, límite de tráfico, CORS y secreto interno
   identidad/      Identidad y clientes (capas)          → MongoDB
-  operaciones/    Operaciones, núcleo (hexagonal)        → MySQL
-  recursos/       Recursos y preliquidación (capas)      → MySQL
+  operaciones/    Operaciones, núcleo (hexagonal)        → MySQL y Solr
+  recursos/       Recursos y preliquidación (capas)      → MySQL (esqueleto en esta etapa)
   notificaciones/ Notificaciones (capas)                 → MongoDB
   integracion/    Integración de carga (capas)           → MongoDB
 web/              aplicación web (React + Vite + TypeScript + Mantine, ADR-029)
-infra/            inicialización de MySQL y MongoDB, NGINX (balanceador) y Grafana (tablero y alertas)
+infra/            inicialización de MySQL y MongoDB, NGINX (balanceador), Grafana (tablero y alertas) y Render (despertar)
 pruebas/carga/    pruebas de carga con k6 (ADR-015)
-docs/             arquitectura, ADR, contrato publicado, capacidad, evidencias y postmortem
+pruebas/e2e/      tests de punta a punta contra el sistema levantado (ADR-028; corren en el CI)
+pruebas/fallas/   caída provocada de Operaciones (postmortem)
+docs/             arquitectura, ADR, contrato publicado y consumido, capacidad, evidencias y postmortem
 compose.yaml      levanta todo el sistema
+render.yaml       despliegue de la capacidad publicada en Render (ADR-026)
 ```
 
 ## Parte desplegada
-**URL pública del API Gateway: https://rumbo-gateway.onrender.com** (capacidad publicada "Reservar traslado", contrato [4.0.1](docs/contracts/README.md)).
+**URL pública del API Gateway: https://rumbo-gateway.onrender.com** (capacidad publicada "Reservar traslado", contrato [4.0.1](docs/contracts/README.md)). Costo: USD 0, todo en planes gratuitos.
 
 Se despliega en **Render**, plan gratuito, con el Blueprint [`render.yaml`](render.yaml) ([ADR-026](docs/adr/ADR-026-despliegue-en-render.md), que reemplaza parcialmente a [ADR-018](docs/adr/ADR-018-despliegue-en-la-nube.md)). Render vuelve a desplegar solo con cada merge a `main`.
 
@@ -84,7 +91,7 @@ El proyecto sigue un enfoque guiado por especificación: primero el dominio y la
 | Ramas | Una por tarea, corta y creada desde `main`: `feat/…`, `fix/…`, `docs/…`, `adr/…` (ej. `feat/asignacion-recorridos`, `adr/d6-busqueda`). |
 | Commits | En español, con prefijo de tipo: `feat: asignar chofer a recorrido`, `docs: ADR-005 búsqueda`. |
 | Pull requests | Cada PR describe qué cambia y qué ADR o funcionalidad (`F-xx` de `SPEC.md`) toca. Se integra a `main` cuando pasa la **verificación automática**. La revisión de otro integrante se suma cuando es posible. |
-| Integración continua | GitHub Actions (`.github/workflows/ci.yml`) verifica cada PR: formato, compilación, `go vet` y tests de los siete módulos Go (los seis servicios y `comun`), y los tests de punta a punta contra el sistema levantado (`pruebas/e2e`). |
+| Integración continua | GitHub Actions (`.github/workflows/ci.yml`) verifica cada PR: formato, compilación, `go vet` y tests de los siete módulos Go (los seis servicios y `comun`), los tests de punta a punta contra el sistema levantado (`pruebas/e2e`) y, para la web, lint, compilación y tests (`web/`). |
 | Entregas | Cada entrega se marca con un tag en `main`: `entrega-1`, `entrega-2`, `presentacion`. |
 | Decisiones | Un ADR ya integrado no se edita: un cambio de decisión se registra con un ADR nuevo que reemplaza al anterior. |
 
@@ -96,7 +103,7 @@ El proyecto sigue un enfoque guiado por especificación: primero el dominio y la
 | [`docs/adr/`](docs/adr/README.md) | Registro de decisiones arquitectónicas (un ADR por decisión) |
 | [`docs/contracts/`](docs/contracts/README.md) | Capacidad publicada: contrato versionado, ejemplos y errores; contratos consumidos en `docs/contracts/consumidos/` |
 | [`docs/interfaces-internas.md`](docs/interfaces-internas.md) | Contrato interno entre servicios: mensajes, endpoints internos, identidad, errores, logs, métricas y trazas |
-| [`docs/capacidad/`](docs/capacidad/informe-entrega-2.md) | Informe de las pruebas de carga (capacidad, caché y balanceo); scripts en [`pruebas/carga/`](pruebas/carga/README.md) |
-| [`docs/evidencias/`](docs/evidencias/entrega-2.md) | Evidencia de observabilidad: traza distribuida, logs correlacionados, balanceo y pruebas de fallas |
+| [`docs/capacidad/`](docs/capacidad/informe-presentacion.md) | Informes de las pruebas de carga: [Entrega 2](docs/capacidad/informe-entrega-2.md) (capacidad, caché y balanceo) y [Presentación](docs/capacidad/informe-presentacion.md) (reservas simultáneas sobre la misma franja); scripts en [`pruebas/carga/`](pruebas/carga/README.md) |
+| [`docs/evidencias/`](docs/evidencias/presentacion.md) | Evidencias por requisito: [Presentación](docs/evidencias/presentacion.md) y [Entrega 2](docs/evidencias/entrega-2.md) (traza distribuida, logs correlacionados, balanceo y fallas) |
 | [`docs/diagramas/`](docs/diagramas/README.md) | Diagramas C4 como código (C4-PlantUML) |
-| [`docs/POSTMORTEM.md`](docs/POSTMORTEM.md) | Informe de la caída provocada |
+| [`docs/POSTMORTEM.md`](docs/POSTMORTEM.md) | Informe de la caída provocada de Operaciones; evidencia en [`docs/evidencias/postmortem/`](docs/evidencias/postmortem/) |

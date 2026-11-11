@@ -1,6 +1,6 @@
 # Pruebas de carga (ADR-015), medición de D5 (ADR-016) y reservas sobre la misma franja (ADR-022)
 
-Scripts de [k6](https://grafana.com/docs/k6/) que miden la capacidad publicada "Solicitar traslado" con el método de [ADR-015](../../docs/adr/ADR-015-capacidad-y-costos.md). Los resultados y su análisis están en [`docs/capacidad/informe-entrega-2.md`](../../docs/capacidad/informe-entrega-2.md).
+Scripts de [k6](https://grafana.com/docs/k6/) que miden la capacidad publicada "Reservar traslado" (en la Entrega 2 se llamaba "Solicitar traslado") con el método de [ADR-015](../../docs/adr/ADR-015-capacidad-y-costos.md). Los resultados y su análisis están en [`docs/capacidad/informe-entrega-2.md`](../../docs/capacidad/informe-entrega-2.md).
 
 | Archivo | Qué hace |
 | --- | --- |

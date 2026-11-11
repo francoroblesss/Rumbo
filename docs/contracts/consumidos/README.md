@@ -23,3 +23,5 @@ El servicio del proveedor se duerme sin uso. Unos minutos antes de la demo, desp
 curl --max-time 120 -H "X-API-Key: <clave>" https://clima-aeropuerto.onrender.com/airports/SACO/conditions
 ```
 Mientras está dormido, Rumbo sigue funcionando y los traslados al aeropuerto quedan "clima no verificado" ([ADR-020](../../adr/ADR-020-contrato-clima-2.md)).
+
+Si responde `503 WEATHER_SOURCE_UNAVAILABLE` aunque esté despierto, es el cupo diario de su fuente (Open-Meteo, por IP, que Render comparte entre muchos usuarios): pasó el 10/11 desde las 13:14 UTC. Se reinicia a la medianoche UTC (21:00 en Argentina) y no depende del proveedor. Mientras tanto, Rumbo sigue con "clima no verificado".

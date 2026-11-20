@@ -113,3 +113,20 @@ export interface Aviso {
   creado_en: string
   leido: boolean
 }
+
+/** Clima actual del aeropuerto para la web (§13.5, ADR-034). */
+export interface ClimaAeropuerto {
+  aeropuerto: { icao: string; nombre: string }
+  observado_en: string
+  operable: boolean
+  motivos: string[]
+  condiciones: {
+    temperatura_c: number
+    viento_kmh: number
+    rafagas_kmh: number
+    direccion_viento_grados: number
+    visibilidad_m: number
+    precipitacion_mm: number
+    tormenta: boolean
+  }
+}

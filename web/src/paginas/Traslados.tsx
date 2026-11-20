@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router'
 import { listarSolicitudes } from '../api'
 import { Insignias } from '../componentes/Insignias'
 import { MensajeError } from '../componentes/MensajeError'
+import { TarjetaClima } from '../componentes/TarjetaClima'
 import { ESTADOS_TRASLADO, franja } from '../formato'
 import { esPersonal, useSesion } from '../sesion'
 
@@ -48,6 +49,7 @@ export function Traslados() {
   return (
     <Stack>
       <Title order={2}>{titulo}</Title>
+      <TarjetaClima />
       <Group align="flex-end">
         <TextInput type="date" label="Fecha" value={fecha} onChange={(e) => cambiar({ fecha: e.currentTarget.value })} />
         <Select

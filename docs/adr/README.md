@@ -39,6 +39,7 @@ Cada decisión se conserva en un archivo independiente `ADR-NNN-titulo-corto.md`
 | [ADR-030](ADR-030-monitor-externo-en-render.md) | Monitor externo (UptimeRobot) que le pide `/salud` a los servicios de Render cada 5 minutos hasta la Presentación, porque un servicio dormido no despierta con el tráfico de otro servicio de Render (reemplaza parcialmente a ADR-026) |
 | [ADR-031](ADR-031-balanceador-solo-fallas-de-replica.md) | El balanceador reintenta en la otra réplica y la saca de rotación solo por error de conexión o timeout; un `503` de una dependencia caída se devuelve tal cual (reemplaza parcialmente a ADR-009) |
 | [ADR-032](ADR-032-contrato-clima-2-1.md) | Copia fijada del contrato de clima 2.1.0 del proveedor (suma el `500 INTERNAL_ERROR`, compatible; el adaptador no cambia) (reemplaza parcialmente a ADR-020) |
+| [ADR-033](ADR-033-busqueda-todas-las-palabras.md) | La búsqueda exige todas las palabras del texto (`mm=100%`), y la web ordena por relevancia por defecto (reemplaza parcialmente a ADR-011) |
 
 ## Formato
 ```

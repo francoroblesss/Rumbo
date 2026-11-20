@@ -17,6 +17,7 @@ import (
 	"github.com/getkin/kin-openapi/routers/legacy"
 	"github.com/sony/gobreaker/v2"
 
+	"github.com/francoroblesss/Rumbo/servicios/operaciones/dominio"
 	"github.com/francoroblesss/Rumbo/servicios/operaciones/puertos"
 )
 
@@ -167,6 +168,12 @@ func TestContratoEjemplosDeRespuesta(t *testing.T) {
 		}
 		if !o.Operable || len(o.Motivos) != 0 || !o.ObservadoEn.Equal(time.Date(2026, 10, 9, 14, 0, 0, 0, time.UTC)) {
 			t.Fatalf("operabilidad inesperada: %+v", o)
+		}
+		// Las condiciones observadas se copian tal cual (ADR-034): solo se muestran en la web.
+		esperadas := dominio.CondicionesClima{TemperaturaC: 22.4, VientoKmh: 18.0, RafagasKmh: 27.5,
+			DireccionVientoGrados: 340, VisibilidadM: 10000, PrecipitacionMm: 0.0, Tormenta: false}
+		if o.Condiciones != esperadas || o.AeropuertoNombre != "Aeropuerto Internacional Ingeniero Aeronáutico Ambrosio Taravella" {
+			t.Fatalf("condiciones inesperadas: %+v, aeropuerto %q", o.Condiciones, o.AeropuertoNombre)
 		}
 	})
 

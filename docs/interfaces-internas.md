@@ -315,6 +315,20 @@ Reemplaza a la consulta "al aceptar" de [ADR-012](adr/ADR-012-consumo-clima.md):
 ### 13.4 Métrica
 `rumbo_clima_consultas_total` agrega el atributo **`momento`** (`reserva` o `inicio`).
 
+### 13.5 Clima actual para la web (ADR-034)
+- **`GET /clima`** (en Operaciones; por el gateway, `/api/operaciones/clima`), roles `operador`, `administrador` y `cliente`.
+- Usa el mismo adaptador de clima (timeout de 1 s, un reintento, breaker y **la misma caché de 5 min**): la web no suma pedidos al proveedor. No registra alertas ni cuenta en `rumbo_clima_consultas_total`.
+- `200`:
+  ```json
+  { "aeropuerto": { "icao": "SACO", "nombre": "Aeropuerto Internacional Ingeniero Aeronáutico Ambrosio Taravella" },
+    "observado_en": "2026-10-09T11:00:00-03:00",
+    "operable": true, "motivos": [],
+    "condiciones": { "temperatura_c": 22.4, "viento_kmh": 18.0, "rafagas_kmh": 27.5, "direccion_viento_grados": 340,
+                     "visibilidad_m": 10000, "precipitacion_mm": 0.0, "tormenta": false } }
+  ```
+  `motivos`: los de `operability.reasons` del proveedor (`HIGH_WIND`, `HIGH_GUSTS`, `LOW_VISIBILITY`, `THUNDERSTORM`); `[]` si es operable.
+- `503 SERVICIO_NO_DISPONIBLE` con `Retry-After: 60` si el clima no responde o el breaker está abierto. No se responde un clima inventado ni uno viejo (teórico 7).
+
 ## 14. Notificaciones (ADR-027)
 Base `notificaciones` (MongoDB). Estilo en capas (ADR-010).
 

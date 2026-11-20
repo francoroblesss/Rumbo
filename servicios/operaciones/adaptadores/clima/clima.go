@@ -50,6 +50,7 @@ type Cliente struct {
 	cache   *ccache.Cache[dominio.Operabilidad]
 
 	cacheOperaciones metric.Int64Counter
+	reintentos       metric.Int64Counter
 }
 
 var _ puertos.ConsultaClima = (*Cliente)(nil)
@@ -66,6 +67,9 @@ func NuevoCliente(baseURL, apiKey, prefer string) *Cliente {
 		metric.WithDescription("Estado del circuit breaker: 0 cerrado, 1 semiabierto, 2 abierto"))
 	cacheOperaciones, _ := medidor.Int64Counter("rumbo_cache_operaciones_total",
 		metric.WithDescription("Operaciones de caché por resultado"))
+	// Mismo nombre y descripción que el contador de Integración: un solo panel de reintentos.
+	reintentos, _ := medidor.Int64Counter("rumbo_reintentos_total",
+		metric.WithDescription("Reintentos de llamadas salientes, por dependencia y operación"))
 	dependencia := metric.WithAttributes(attribute.String("dependencia", nombreDependencia))
 	estadoCircuito.Record(context.Background(), int64(gobreaker.StateClosed), dependencia)
 
@@ -92,6 +96,7 @@ func NuevoCliente(baseURL, apiKey, prefer string) *Cliente {
 		}),
 		cache:            ccache.New(ccache.Configure[dominio.Operabilidad]().MaxSize(TamanioCache)),
 		cacheOperaciones: cacheOperaciones,
+		reintentos:       reintentos,
 	}
 }
 
@@ -129,6 +134,8 @@ func (c *Cliente) consultar(ctx context.Context, icao string) (dominio.Operabili
 		return dominio.Operabilidad{}, ctx.Err()
 	case <-time.After(e.espera):
 	}
+	c.reintentos.Add(ctx, 1, metric.WithAttributes(attribute.String("dependencia", nombreDependencia), attribute.String("operacion", "condiciones")))
+	slog.WarnContext(ctx, "reintento al clima", slog.String("error", e.Error()), slog.Int64("espera_ms", e.espera.Milliseconds()))
 	return c.breaker.Execute(func() (dominio.Operabilidad, error) { return c.intento(ctx, icao) })
 }
 
@@ -153,7 +160,19 @@ func jitter() time.Duration {
 
 // respuesta es lo único que Rumbo lee del contrato (se ignoran los campos desconocidos).
 type respuesta struct {
-	ObservedAt  time.Time `json:"observed_at"`
+	Airport struct {
+		Name string `json:"name"`
+	} `json:"airport"`
+	ObservedAt time.Time `json:"observed_at"`
+	Conditions struct {
+		TemperatureC     float64 `json:"temperature_c"`
+		WindSpeedKmh     float64 `json:"wind_speed_kmh"`
+		WindGustKmh      float64 `json:"wind_gust_kmh"`
+		WindDirectionDeg int     `json:"wind_direction_deg"`
+		VisibilityM      float64 `json:"visibility_m"`
+		PrecipitationMm  float64 `json:"precipitation_mm"`
+		Thunderstorm     bool    `json:"thunderstorm"`
+	} `json:"conditions"`
 	Operability struct {
 		Operable bool     `json:"operable"`
 		Reasons  []string `json:"reasons"`
@@ -185,7 +204,16 @@ func (c *Cliente) intento(ctx context.Context, icao string) (dominio.Operabilida
 		if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
 			return dominio.Operabilidad{}, &errorIntento{causa: fmt.Errorf("respuesta del clima inválida: %w", err)}
 		}
-		return dominio.Operabilidad{Operable: r.Operability.Operable, Motivos: r.Operability.Reasons, ObservadoEn: r.ObservedAt.UTC()}, nil
+		return dominio.Operabilidad{
+			Operable: r.Operability.Operable, Motivos: r.Operability.Reasons, ObservadoEn: r.ObservedAt.UTC(),
+			AeropuertoNombre: r.Airport.Name,
+			Condiciones: dominio.CondicionesClima{
+				TemperaturaC: r.Conditions.TemperatureC, VientoKmh: r.Conditions.WindSpeedKmh,
+				RafagasKmh: r.Conditions.WindGustKmh, DireccionVientoGrados: r.Conditions.WindDirectionDeg,
+				VisibilidadM: r.Conditions.VisibilityM, PrecipitacionMm: r.Conditions.PrecipitationMm,
+				Tormenta: r.Conditions.Thunderstorm,
+			},
+		}, nil
 
 	case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable:
 		// Límite superado o fuente caída: se reintenta solo si el proveedor pide esperar poco.

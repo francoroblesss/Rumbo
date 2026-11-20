@@ -26,7 +26,7 @@ const TAMANIO = 20
 
 type Formulario = Omit<FiltrosBusqueda, 'pagina' | 'tamanio'>
 
-const VACIO: Formulario = { q: '', estado: '', desde: '', hasta: '', alerta: false, orden: 'fecha' }
+const VACIO: Formulario = { q: '', estado: '', desde: '', hasta: '', alerta: false, orden: 'relevancia' }
 
 /** /buscar: búsqueda de traslados en Solr (§16). Al cliente, Operaciones le fuerza su organización. */
 export function Buscar() {
@@ -67,7 +67,7 @@ export function Buscar() {
         <Stack>
           <TextInput
             label="Texto"
-            description="Descripción, origen, destino o referencia externa"
+            description="Descripción, origen, destino o referencia externa. Se muestran los traslados que tienen todas las palabras."
             value={formulario.q}
             onChange={(e) => cambiar('q', e.currentTarget.value)}
           />

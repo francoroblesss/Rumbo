@@ -179,6 +179,9 @@ func (c *Cliente) Buscar(ctx context.Context, f puertos.FiltroBusqueda) ([]puert
 		p.Set("q", "*:*")
 	} else {
 		p.Set("q", texto)
+		// mm=100%: el traslado tiene que tener TODAS las palabras del texto (en cualquiera de los campos
+		// de qf), no alguna. Sin mm, eDisMax usa q.op=OR y "caja grafana" traía todas las cajas (ADR-033).
+		p.Set("mm", "100%")
 	}
 	p.Set("defType", "edismax")
 	p.Set("qf", camposTexto)

@@ -203,7 +203,7 @@ Es la misma forma que `SolicitudTraslado` del contrato público (`docs/contracts
 | `trace_id`, `span_id` | si hay traza | Tomados del contexto |
 | Específicos | según el caso | `solicitud_id`, `tipo_mensaje`, `cola`, `ruta`, `estado_http`, `duracion_ms`, `error` |
 
-Usar siempre `slog.InfoContext(ctx, …)` / `ErrorContext` (con el contexto, para que salgan `trace_id` y `correlation_id`). **Nunca** loguear tokens, contraseñas, secretos ni el cuerpo completo de un pedido.
+Usar siempre `slog.InfoContext(ctx, …)` / `ErrorContext` (con el contexto, para que salgan `trace_id` y `correlation_id`). **Nunca** loguear tokens, contraseñas, secretos ni el cuerpo completo de un pedido. Los valores de las columnas se recortan a su largo (correlation_id 64, trace_id 32, servicio 32, instancia 64, mensaje 1000): un valor largo no puede hacer fallar el lote.
 
 ## 8. Métricas (nombres fijos)
 Todos los servicios Gin registran automáticamente, con `observabilidad.Instrumentar`, **`rumbo_http_duracion_segundos`** (histograma con `metodo`, `ruta`, `estado` e `instancia`): de ahí salen la tasa de requests, los errores y la latencia de cada servicio (RED). Las métricas propias:
@@ -220,6 +220,7 @@ Todos los servicios Gin registran automáticamente, con `observabilidad.Instrume
 | `rumbo_solicitudes_total` | contador | `origen`, `estado` | Operaciones |
 | `rumbo_traslados_estado_total` | contador | `estado` | Operaciones (una vez por transición aplicada, §12) |
 | `rumbo_indexacion_demora_segundos` | histograma | — | Operaciones (indexador de Solr, §16) |
+| `rumbo_cache_lectura_duracion_segundos` | histograma | `cache`, `resultado` (`hit`, `miss`, `error`) | Integración (consulta por id con Memcached) |
 
 ## 9. Trazas
 OpenTelemetry (`go.opentelemetry.io/otel`), exportadas por OTLP a `OTEL_EXPORTER_OTLP_ENDPOINT` (en Docker, `http://lgtm:4318`). Propagación **W3C Trace Context**:

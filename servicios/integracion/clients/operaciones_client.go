@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/cenkalti/backoff/v5"
 	"github.com/sony/gobreaker/v2"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -43,11 +44,37 @@ func (e ErrRechazo) Error() string {
 	return fmt.Sprintf("Operaciones rechazó el pedido: %d %s", e.Estado, e.Codigo)
 }
 
-// TimeoutOperaciones es el timeout de cada llamada (interfaces-internas §4.1, ADR-004).
-const TimeoutOperaciones = 2 * time.Second
+// Política de reintento hacia Operaciones (ADR-035, interfaces-internas §4.1).
+const (
+	TimeoutOperaciones     = 1 * time.Second        // por intento
+	IntentosOperaciones    = 3                      // 1 + 2 reintentos
+	EsperaInicialReintento = 200 * time.Millisecond // después ×2, con ±50 % de jitter
+	EsperaMaximaReintento  = 1 * time.Second
+	TopeReintentos         = 4 * time.Second // debajo del deadline de 5 s del gateway y de NGINX
+)
 
-// errFallaDependencia marca una respuesta 5xx para que el breaker la cuente como falla.
-var errFallaDependencia = errors.New("Operaciones respondió con error de servidor")
+// errorServidor es una respuesta 5xx de Operaciones: cuenta como falla para el breaker.
+type errorServidor struct{ estado int }
+
+func (e errorServidor) Error() string { return fmt.Sprintf("Operaciones respondió %d", e.estado) }
+
+// reintentable clasifica la falla antes de reintentar (teórico 7): solo las transitorias (red,
+// timeout, 502, 503 y 504). Un 500 es un error de programación, el breaker abierto dice que la
+// dependencia está caída y con el contexto cancelado el que llamó ya no espera la respuesta.
+func reintentable(ctx context.Context, err error) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	if errors.Is(err, gobreaker.ErrOpenState) || errors.Is(err, gobreaker.ErrTooManyRequests) {
+		return false
+	}
+	var es errorServidor
+	if errors.As(err, &es) {
+		return es.estado == http.StatusBadGateway || es.estado == http.StatusServiceUnavailable ||
+			es.estado == http.StatusGatewayTimeout
+	}
+	return true // error de red o timeout del http.Do
+}
 
 // OperacionesClient llama a los endpoints internos de Operaciones (interfaces-internas §4.1).
 type OperacionesClient interface {
@@ -57,13 +84,16 @@ type OperacionesClient interface {
 }
 
 type operacionesHTTP struct {
-	baseURL string
-	http    *http.Client
-	breaker *gobreaker.CircuitBreaker[*http.Response]
+	baseURL    string
+	http       *http.Client
+	breaker    *gobreaker.CircuitBreaker[*http.Response]
+	reintentos metric.Int64Counter
 }
 
-// NewOperacionesClient crea el cliente con timeout de 2 s y circuit breaker (ADR-008). No
-// reintenta: el reintento es del consumidor, con su Idempotency-Key (un solo dueño del reintento).
+// NewOperacionesClient crea el cliente con timeout de 1 s por intento, circuit breaker (ADR-008)
+// y hasta 3 intentos con backoff exponencial y jitter ante fallas transitorias (ADR-035): es la
+// capa inmediatamente superior a Operaciones, así que el reintento es suyo (teórico 7). Los POST
+// repiten la misma Idempotency-Key, así que reintentarlos no duplica la reserva ni la cancelación.
 func NewOperacionesClient(baseURL string) OperacionesClient {
 	estado, _ := observabilidad.Medidor().Int64Gauge("rumbo_circuito_estado",
 		metric.WithDescription("Estado del circuit breaker: 0 cerrado, 1 semiabierto, 2 abierto"))
@@ -85,7 +115,10 @@ func NewOperacionesClient(baseURL string) OperacionesClient {
 				slog.String("desde", desde.String()), slog.String("hacia", hacia.String()))
 		},
 	})
-	return &operacionesHTTP{baseURL: baseURL, http: observabilidad.ClienteInterno(TimeoutOperaciones), breaker: breaker}
+	reintentos, _ := observabilidad.Medidor().Int64Counter("rumbo_reintentos_total",
+		metric.WithDescription("Reintentos de llamadas salientes, por dependencia y operación"))
+	return &operacionesHTTP{baseURL: baseURL, http: observabilidad.ClienteInterno(TimeoutOperaciones), breaker: breaker,
+		reintentos: reintentos}
 }
 
 func (c *operacionesHTTP) Disponibilidad(ctx context.Context, fecha string, pesoKg *float64) (models.Disponibilidad, error) {
@@ -94,25 +127,26 @@ func (c *operacionesHTTP) Disponibilidad(ctx context.Context, fecha string, peso
 		q.Set("peso_kg", strconv.FormatFloat(*pesoKg, 'f', -1, 64))
 	}
 	var d models.Disponibilidad
-	err := c.llamar(ctx, http.MethodGet, "/internas/disponibilidad?"+q.Encode(), "", "", nil, &d)
+	err := c.llamar(ctx, "disponibilidad", http.MethodGet, "/internas/disponibilidad?"+q.Encode(), "", "", nil, &d)
 	return d, err
 }
 
 func (c *operacionesHTTP) Reservar(ctx context.Context, org, claveIdem string, pedido models.PedidoTraslado) (models.VistaSolicitud, error) {
 	var v models.VistaSolicitud
-	err := c.llamar(ctx, http.MethodPost, "/internas/reservas", org, claveIdem, pedido, &v)
+	err := c.llamar(ctx, "reserva", http.MethodPost, "/internas/reservas", org, claveIdem, pedido, &v)
 	return v, err
 }
 
 func (c *operacionesHTTP) Cancelar(ctx context.Context, org, claveIdem, id, motivo string) (models.VistaSolicitud, error) {
 	var v models.VistaSolicitud
-	err := c.llamar(ctx, http.MethodPost, "/internas/solicitudes/"+url.PathEscape(id)+"/cancelacion", org, claveIdem,
+	err := c.llamar(ctx, "cancelacion", http.MethodPost, "/internas/solicitudes/"+url.PathEscape(id)+"/cancelacion", org, claveIdem,
 		map[string]string{"motivo": motivo}, &v)
 	return v, err
 }
 
-// llamar hace la request a través del breaker y decodifica la respuesta 2xx en destino.
-func (c *operacionesHTTP) llamar(ctx context.Context, metodo, ruta, org, claveIdem string, cuerpo, destino any) error {
+// llamar hace la request a través del breaker, la reintenta ante fallas transitorias (ADR-035) y
+// decodifica la respuesta 2xx en destino.
+func (c *operacionesHTTP) llamar(ctx context.Context, operacion, metodo, ruta, org, claveIdem string, cuerpo, destino any) error {
 	var crudo []byte
 	if cuerpo != nil {
 		var err error
@@ -121,8 +155,10 @@ func (c *operacionesHTTP) llamar(ctx context.Context, metodo, ruta, org, claveId
 		}
 	}
 	// Solo cuentan como falla del breaker los errores de red, los timeouts y los 5xx. Un 4xx es
-	// una respuesta válida del negocio, no un problema de la dependencia (teórico 7).
-	resp, err := c.breaker.Execute(func() (*http.Response, error) {
+	// una respuesta válida del negocio, no un problema de la dependencia (teórico 7). Cada intento
+	// arma una request nueva (el cuerpo es un io.Reader que se consume) con los mismos headers,
+	// incluida la misma Idempotency-Key.
+	intento := func() (*http.Response, error) {
 		var body io.Reader
 		if crudo != nil {
 			body = bytes.NewReader(crudo)
@@ -146,10 +182,34 @@ func (c *operacionesHTTP) llamar(ctx context.Context, metodo, ruta, org, claveId
 		}
 		if resp.StatusCode >= http.StatusInternalServerError {
 			resp.Body.Close()
-			return nil, fmt.Errorf("%w: %d", errFallaDependencia, resp.StatusCode)
+			return nil, errorServidor{estado: resp.StatusCode}
 		}
 		return resp, nil
-	})
+	}
+	// Cada intento pasa por el breaker: con Operaciones caída se abre enseguida y desde ahí no se
+	// reintenta (acota la amplificación). La política tiene estado: una nueva por llamada.
+	politica := backoff.NewExponentialBackOff()
+	politica.InitialInterval = EsperaInicialReintento
+	politica.Multiplier = 2
+	politica.RandomizationFactor = 0.5
+	politica.MaxInterval = EsperaMaximaReintento
+	resp, err := backoff.Retry(ctx, func() (*http.Response, error) {
+		resp, err := c.breaker.Execute(intento)
+		if err != nil && !reintentable(ctx, err) {
+			return nil, backoff.Permanent(err)
+		}
+		return resp, err
+	},
+		backoff.WithBackOff(politica),
+		backoff.WithMaxTries(IntentosOperaciones),
+		backoff.WithMaxElapsedTime(TopeReintentos),
+		backoff.WithNotify(func(err error, espera time.Duration) {
+			c.reintentos.Add(ctx, 1, metric.WithAttributes(
+				attribute.String("dependencia", "operaciones"), attribute.String("operacion", operacion)))
+			slog.WarnContext(ctx, "reintento a Operaciones", slog.String("operacion", operacion),
+				slog.String("error", err.Error()), slog.Int64("espera_ms", espera.Milliseconds()))
+		}),
+	)
 	if err != nil {
 		// Incluye el breaker abierto (gobreaker.ErrOpenState / ErrTooManyRequests).
 		slog.WarnContext(ctx, "no se pudo llamar a Operaciones", slog.String("ruta", ruta), slog.String("error", err.Error()))

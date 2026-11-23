@@ -122,7 +122,23 @@ func (a *AlertaClimatica) Igual(otra *AlertaClimatica) bool {
 // Operabilidad es lo que Rumbo necesita saber del clima del aeropuerto, ya traducido del
 // contrato del proveedor (el dominio no conoce su JSON).
 type Operabilidad struct {
-	Operable    bool
-	Motivos     []string
-	ObservadoEn time.Time
+	Operable         bool
+	Motivos          []string
+	ObservadoEn      time.Time
+	AeropuertoNombre string
+	// Condiciones es nil si el proveedor no las mandó o no se pudieron leer: solo se muestran, así
+	// que eso no afecta a la operabilidad (la regla de las reservas sigue andando).
+	Condiciones *CondicionesClima
+}
+
+// CondicionesClima son las condiciones observadas en el aeropuerto, tal como las informa el
+// proveedor (contrato de clima 2.1.0). Solo se muestran: la regla de negocio usa Operable y Motivos.
+type CondicionesClima struct {
+	TemperaturaC          float64
+	VientoKmh             float64
+	RafagasKmh            float64
+	DireccionVientoGrados int
+	VisibilidadM          float64
+	PrecipitacionMm       float64
+	Tormenta              bool
 }

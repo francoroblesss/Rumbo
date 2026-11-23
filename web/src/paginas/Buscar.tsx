@@ -26,7 +26,7 @@ const TAMANIO = 20
 
 type Formulario = Omit<FiltrosBusqueda, 'pagina' | 'tamanio'>
 
-const VACIO: Formulario = { q: '', estado: '', desde: '', hasta: '', alerta: false, orden: 'relevancia' }
+const VACIO: Formulario = { q: '', estado: '', desde: '', hasta: '', alerta: false, orden: 'fecha' }
 
 /** /buscar: búsqueda de traslados en Solr (§16). Al cliente, Operaciones le fuerza su organización. */
 export function Buscar() {

@@ -37,26 +37,29 @@ func buscarTexto(t *testing.T, tokenOperador, q string) paginaBusqueda {
 	return p
 }
 
-// TestBusquedaTodasLasPalabras: "caja grafana" trae solo la caja Grafana, aunque se ordene por
-// fecha (el orden que usaba la web): tienen que aparecer todas las palabras (mm=100%, ADR-033).
+// TestBusquedaTodasLasPalabras: "bulto rojo" trae solo el bulto rojo, aunque se ordene por fecha
+// (el orden por defecto, el de la web): tienen que aparecer todas las palabras (mm=100%, ADR-033).
+// Usa palabras que no aparecen en la demo ("caja grafana"), porque las reservas del e2e quedan en
+// la base: así una corrida sobre un sistema que dura no le suma resultados a esa búsqueda.
 func TestBusquedaTodasLasPalabras(t *testing.T) {
 	externo, operador := pedirToken(t), login(t, "OPERADOR")
 	suf := sufijoLetras(8)
-	f := franjaLibre(t, externo, operador, 5)
+	// Una franja para cada reserva: no depende de que el cupo por franja sea 2 o más.
+	f1, f2 := franjaLibre(t, externo, operador, 5), franjaLibre(t, externo, operador, 6)
 
-	var grafana traslado
-	esperar(t, reservar(t, externo, f, "Caja Grafana "+suf), http.StatusCreated, "reserva de la caja Grafana").leer(t, &grafana)
-	esperar(t, reservar(t, externo, f, "Caja de herramientas "+suf), http.StatusCreated, "reserva de la caja de herramientas")
+	var rojo traslado
+	esperar(t, reservar(t, externo, f1, "Bulto rojo "+suf), http.StatusCreated, "reserva del bulto rojo").leer(t, &rojo)
+	esperar(t, reservar(t, externo, f2, "Bulto azul "+suf), http.StatusCreated, "reserva del bulto azul")
 
 	// El índice es asincrónico (ADR-011 promete ≤ 5 s).
 	esperarHasta(t, plazoAsincrono, func() (bool, string) {
-		p := buscarTexto(t, operador, "caja "+suf)
+		p := buscarTexto(t, operador, "bulto "+suf)
 		return p.Total == 2, fmt.Sprintf("total %d", p.Total)
 	})
 
-	// Sin orden: por fecha, como pedía la web antes del cambio.
-	p := buscarTexto(t, operador, "caja grafana "+suf)
-	if p.Total != 1 || len(p.Resultados) != 1 || p.Resultados[0].SolicitudID != grafana.ID {
-		t.Fatalf("\"caja grafana %s\": total %d, resultados %+v; se esperaba solo %s", suf, p.Total, p.Resultados, grafana.ID)
+	// Sin orden: por fecha, el orden por defecto (el de la web).
+	p := buscarTexto(t, operador, "bulto rojo "+suf)
+	if p.Total != 1 || len(p.Resultados) != 1 || p.Resultados[0].SolicitudID != rojo.ID {
+		t.Fatalf("\"bulto rojo %s\": total %d, resultados %+v; se esperaba solo %s", suf, p.Total, p.Resultados, rojo.ID)
 	}
 }

@@ -7,6 +7,8 @@
 #   cada 1 min consulta a Prometheus, a través de Grafana, el p95 de la consulta por resultado de la
 #              caché (rumbo_cache_lectura_duracion_segundos) y las operaciones de la caché por
 #              resultado (rumbo_cache_operaciones_total), con la hora UTC
+# La ventana de rate() es de 2 min (VENTANA): los servicios exportan las métricas por OTLP cada 60 s,
+# así que en 1 min hay una sola muestra y rate(...[1m]) no devuelve nada.
 # Todo queda en docs/evidencias/observabilidad-final/cache.txt; la salida de k6, en k6-cache.txt.
 #
 # Requisitos: el sistema levantado con el perfil de observabilidad y cupo alto
@@ -25,6 +27,7 @@ PROYECTO="${COMPOSE_PROJECT_NAME:-$(basename "$PWD" | tr '[:upper:]' '[:lower:]'
 RED="${RED:-${PROYECTO}_default}"
 IMAGEN_K6="${IMAGEN_K6:-grafana/k6:1.3.0}"
 GRAFANA="${GRAFANA:-http://localhost:3000}"
+VENTANA="${VENTANA:-2m}"
 # Secreto interno de .env (ADR-026): sin él Integración responde 401.
 SECRETO_INTERNO=$(grep -E '^SECRETO_INTERNO=' .env | head -1 | cut -d= -f2-)
 
@@ -43,8 +46,8 @@ prometheus() {
 consultar() {
   {
     echo "### $(date -u +%Y-%m-%dT%H:%M:%SZ) · $1"
-    prometheus 'histogram_quantile(0.95, sum by (le, resultado) (rate(rumbo_cache_lectura_duracion_segundos_seconds_bucket{cache="solicitudes"}[1m])))'
-    prometheus 'sum by (resultado) (rate(rumbo_cache_operaciones_total{cache="solicitudes"}[1m]))'
+    prometheus "histogram_quantile(0.95, sum by (le, resultado) (rate(rumbo_cache_lectura_duracion_segundos_seconds_bucket{cache=\"solicitudes\"}[$VENTANA])))"
+    prometheus "sum by (resultado) (rate(rumbo_cache_operaciones_total{cache=\"solicitudes\"}[$VENTANA]))"
     echo
   } >> "$SALIDA"
 }

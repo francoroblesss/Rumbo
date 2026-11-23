@@ -58,4 +58,5 @@ bash pruebas/carga/cache-encendida-apagada.sh   # ~10 min
 
 - **Destino:** `http://balanceador-integracion`, como `traslados.js`, con los headers de identidad del gateway y el secreto interno (`X-Rumbo-Interno` de `.env`, ADR-026). Durante la prueba no se reserva.
 - **Fases:** `docker compose stop memcached` en el minuto 3 y `docker compose start memcached` en el 6. Con Memcached apagado, cada consulta paga el timeout corto de la caché (100 ms) o el error de conexión, y después MongoDB.
+- **Ventana de 2 min** en las consultas (`VENTANA`, por defecto `2m`): los servicios exportan las métricas por OTLP cada 60 s, así que con `[1m]` hay una sola muestra y `rate()` sale vacío (pasó en la primera corrida).
 - Necesita Node.js para leer las respuestas de Prometheus.

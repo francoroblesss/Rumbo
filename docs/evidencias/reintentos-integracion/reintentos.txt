@@ -1,0 +1,1 @@
+(sin reintentos manuales del consumidor: los reintentos los hace Integración, ver metricas.txt y logs.txt)

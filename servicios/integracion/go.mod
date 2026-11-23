@@ -17,7 +17,6 @@ require (
 	github.com/bytedance/sonic v1.15.4 // indirect
 	github.com/bytedance/sonic/loader v0.5.2 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
-	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudwego/base64x v0.1.7 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
@@ -112,6 +111,7 @@ require (
 
 require (
 	github.com/bradfitz/gomemcache v0.0.0-20260422231931-4d751bb6e37c
+	github.com/cenkalti/backoff/v5 v5.0.3
 	github.com/francoroblesss/Rumbo/servicios/comun v0.0.0
 	github.com/getkin/kin-openapi v0.150.0
 	github.com/sony/gobreaker/v2 v2.4.0

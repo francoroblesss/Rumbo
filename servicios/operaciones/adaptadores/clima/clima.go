@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"math/rand/v2"
 	"net/http"
 	"net/url"
@@ -67,7 +68,7 @@ func NuevoCliente(baseURL, apiKey, prefer string) *Cliente {
 		metric.WithDescription("Estado del circuit breaker: 0 cerrado, 1 semiabierto, 2 abierto"))
 	cacheOperaciones, _ := medidor.Int64Counter("rumbo_cache_operaciones_total",
 		metric.WithDescription("Operaciones de caché por resultado"))
-	// Mismo nombre y descripción que el contador de Integración: un solo panel de reintentos.
+	// Nombre genérico, por dependencia y operación, por si otro adaptador también reintenta.
 	reintentos, _ := medidor.Int64Counter("rumbo_reintentos_total",
 		metric.WithDescription("Reintentos de llamadas salientes, por dependencia y operación"))
 	dependencia := metric.WithAttributes(attribute.String("dependencia", nombreDependencia))
@@ -129,6 +130,11 @@ func (c *Cliente) consultar(ctx context.Context, icao string) (dominio.Operabili
 	if err == nil || !errors.As(err, &e) || !e.reintentable {
 		return o, err
 	}
+	// Si esa falla abrió el breaker, el segundo intento no llamaría al proveedor: no se espera ni se
+	// cuenta un reintento que no ocurre.
+	if c.breaker.State() == gobreaker.StateOpen {
+		return o, err
+	}
 	select {
 	case <-ctx.Done():
 		return dominio.Operabilidad{}, ctx.Err()
@@ -158,25 +164,48 @@ func jitter() time.Duration {
 	return EsperaMinima + rand.N(EsperaMaxima-EsperaMinima+1)
 }
 
-// respuesta es lo único que Rumbo lee del contrato (se ignoran los campos desconocidos).
+// respuesta es lo único que Rumbo lee del contrato (se ignoran los campos desconocidos). El
+// aeropuerto y las condiciones quedan crudos y se leen aparte: son solo para mostrar en la web, y
+// un campo con otro tipo (por ejemplo, la dirección como 340.0) no puede tirar la operabilidad,
+// que es lo que usa la regla de las reservas.
 type respuesta struct {
-	Airport struct {
-		Name string `json:"name"`
-	} `json:"airport"`
-	ObservedAt time.Time `json:"observed_at"`
-	Conditions struct {
-		TemperatureC     float64 `json:"temperature_c"`
-		WindSpeedKmh     float64 `json:"wind_speed_kmh"`
-		WindGustKmh      float64 `json:"wind_gust_kmh"`
-		WindDirectionDeg int     `json:"wind_direction_deg"`
-		VisibilityM      float64 `json:"visibility_m"`
-		PrecipitationMm  float64 `json:"precipitation_mm"`
-		Thunderstorm     bool    `json:"thunderstorm"`
-	} `json:"conditions"`
+	Airport     json.RawMessage `json:"airport"`
+	ObservedAt  time.Time       `json:"observed_at"`
+	Conditions  json.RawMessage `json:"conditions"`
 	Operability struct {
 		Operable bool     `json:"operable"`
 		Reasons  []string `json:"reasons"`
 	} `json:"operability"`
+}
+
+type condiciones struct {
+	TemperatureC     float64 `json:"temperature_c"`
+	WindSpeedKmh     float64 `json:"wind_speed_kmh"`
+	WindGustKmh      float64 `json:"wind_gust_kmh"`
+	WindDirectionDeg float64 `json:"wind_direction_deg"` // entero en el contrato; float por tolerancia
+	VisibilityM      float64 `json:"visibility_m"`
+	PrecipitationMm  float64 `json:"precipitation_mm"`
+	Thunderstorm     bool    `json:"thunderstorm"`
+}
+
+// leerParaMostrar devuelve el nombre del aeropuerto y las condiciones, o nil si no se pudieron leer.
+func leerParaMostrar(ctx context.Context, r respuesta) (string, *dominio.CondicionesClima) {
+	var aeropuerto struct {
+		Name string `json:"name"`
+	}
+	if len(r.Airport) > 0 && json.Unmarshal(r.Airport, &aeropuerto) != nil {
+		slog.WarnContext(ctx, "aeropuerto del clima ilegible: se sigue sin el nombre")
+	}
+	var k condiciones
+	if len(r.Conditions) == 0 || json.Unmarshal(r.Conditions, &k) != nil {
+		slog.WarnContext(ctx, "condiciones del clima ilegibles: se sigue solo con la operabilidad")
+		return aeropuerto.Name, nil
+	}
+	return aeropuerto.Name, &dominio.CondicionesClima{
+		TemperaturaC: k.TemperatureC, VientoKmh: k.WindSpeedKmh, RafagasKmh: k.WindGustKmh,
+		DireccionVientoGrados: int(math.Round(k.WindDirectionDeg)), VisibilidadM: k.VisibilityM,
+		PrecipitacionMm: k.PrecipitationMm, Tormenta: k.Thunderstorm,
+	}
 }
 
 func (c *Cliente) intento(ctx context.Context, icao string) (dominio.Operabilidad, error) {
@@ -204,15 +233,10 @@ func (c *Cliente) intento(ctx context.Context, icao string) (dominio.Operabilida
 		if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
 			return dominio.Operabilidad{}, &errorIntento{causa: fmt.Errorf("respuesta del clima inválida: %w", err)}
 		}
+		nombre, cond := leerParaMostrar(ctx, r)
 		return dominio.Operabilidad{
 			Operable: r.Operability.Operable, Motivos: r.Operability.Reasons, ObservadoEn: r.ObservedAt.UTC(),
-			AeropuertoNombre: r.Airport.Name,
-			Condiciones: dominio.CondicionesClima{
-				TemperaturaC: r.Conditions.TemperatureC, VientoKmh: r.Conditions.WindSpeedKmh,
-				RafagasKmh: r.Conditions.WindGustKmh, DireccionVientoGrados: r.Conditions.WindDirectionDeg,
-				VisibilidadM: r.Conditions.VisibilityM, PrecipitacionMm: r.Conditions.PrecipitationMm,
-				Tormenta: r.Conditions.Thunderstorm,
-			},
+			AeropuertoNombre: nombre, Condiciones: cond,
 		}, nil
 
 	case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable:

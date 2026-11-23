@@ -29,10 +29,12 @@ func (h *HandlerClima) Registrar(r gin.IRouter) {
 }
 
 func (h *HandlerClima) consultar(c *gin.Context) {
-	clima, err := h.casos.Consultar(c.Request.Context())
+	actual, err := h.casos.Consultar(c.Request.Context())
 	if errors.Is(err, puertos.ErrClimaNoDisponible) {
 		// Fallback honesto (teórico 7): se dice que no se sabe, no se inventa un clima.
-		c.Header("Retry-After", "60")
+		// 30 s = lo que tarda el breaker del adaptador de clima en dejar probar de nuevo
+		// (TiempoAbierto), igual que el 503 de Integración (§3).
+		c.Header("Retry-After", "30")
 		problema.Escribir(c, http.StatusServiceUnavailable, "SERVICIO_NO_DISPONIBLE", "Clima no disponible",
 			"No se pudo consultar el clima del aeropuerto. Reintentar en unos minutos.")
 		return
@@ -43,5 +45,5 @@ func (h *HandlerClima) consultar(c *gin.Context) {
 			"Operaciones no puede procesar el pedido ahora. Reintentar más tarde.")
 		return
 	}
-	c.JSON(http.StatusOK, clima)
+	c.JSON(http.StatusOK, actual)
 }

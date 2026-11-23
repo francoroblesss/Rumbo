@@ -61,7 +61,7 @@ func TestClima(t *testing.T) {
 	t.Run("503 con Retry-After si el clima no responde", func(t *testing.T) {
 		f := &climaActualFalso{err: fmt.Errorf("%w: breaker abierto", puertos.ErrClimaNoDisponible)}
 		w, p := pedirClima(t, f, cliente)
-		if w.Code != 503 || p["codigo"] != "SERVICIO_NO_DISPONIBLE" || w.Header().Get("Retry-After") != "60" {
+		if w.Code != 503 || p["codigo"] != "SERVICIO_NO_DISPONIBLE" || w.Header().Get("Retry-After") != "30" {
 			t.Fatalf("estado = %d, codigo = %v, Retry-After = %q", w.Code, p["codigo"], w.Header().Get("Retry-After"))
 		}
 	})

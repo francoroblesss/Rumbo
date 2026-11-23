@@ -19,7 +19,7 @@ func TestClimaActual(t *testing.T) {
 	t.Run("operable: campos mapeados, hora con -03:00 y motivos vacíos", func(t *testing.T) {
 		clima := &climaFalso{operabilidad: dominio.Operabilidad{
 			Operable: true, ObservadoEn: observado, AeropuertoNombre: "Aeropuerto Taravella",
-			Condiciones: dominio.CondicionesClima{TemperaturaC: 22.4, VientoKmh: 18, RafagasKmh: 27.5,
+			Condiciones: &dominio.CondicionesClima{TemperaturaC: 22.4, VientoKmh: 18, RafagasKmh: 27.5,
 				DireccionVientoGrados: 340, VisibilidadM: 10000, PrecipitacionMm: 0, Tormenta: false},
 		}}
 		c, err := NuevoClimaActual(clima, "SACO").Consultar(ctx)
@@ -45,13 +45,21 @@ func TestClimaActual(t *testing.T) {
 	})
 
 	t.Run("no operable: operable=false y los motivos", func(t *testing.T) {
-		clima := &climaFalso{operabilidad: dominio.Operabilidad{Operable: false, Motivos: []string{"HIGH_WIND", "HIGH_GUSTS"}, ObservadoEn: observado}}
+		clima := &climaFalso{operabilidad: dominio.Operabilidad{Operable: false, Motivos: []string{"HIGH_WIND", "HIGH_GUSTS"}, ObservadoEn: observado,
+			Condiciones: &dominio.CondicionesClima{VientoKmh: 58.3, RafagasKmh: 81}}}
 		c, err := NuevoClimaActual(clima, "SACO").Consultar(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if c.Operable || fmt.Sprint(c.Motivos) != "[HIGH_WIND HIGH_GUSTS]" {
 			t.Fatalf("operable = %v, motivos = %v", c.Operable, c.Motivos)
+		}
+	})
+
+	t.Run("sin condiciones: ErrClimaNoDisponible (no se muestran ceros)", func(t *testing.T) {
+		clima := &climaFalso{operabilidad: dominio.Operabilidad{Operable: true, Motivos: []string{}, ObservadoEn: observado}}
+		if _, err := NuevoClimaActual(clima, "SACO").Consultar(ctx); !errors.Is(err, puertos.ErrClimaNoDisponible) {
+			t.Fatalf("err = %v, se esperaba ErrClimaNoDisponible", err)
 		}
 	})
 

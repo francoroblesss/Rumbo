@@ -44,9 +44,10 @@ function visibilidad(metros: number): string {
   return metros >= 1000 ? `${numero(metros / 1000)} km` : `${numero(metros)} m`
 }
 
-/** Verde hasta el 70 % del límite, naranja hasta el límite y rojo al llegar o pasarlo. */
+/** Verde hasta el 70 % del límite, naranja hasta el límite y rojo al pasarlo: el proveedor deja de
+ * operar con "más de" el límite, así que justo en el límite sigue operable. */
 function colorBarra(porcentaje: number): string {
-  if (porcentaje >= 100) return 'red'
+  if (porcentaje > 100) return 'red'
   if (porcentaje >= 70) return 'orange'
   return 'green'
 }
@@ -83,6 +84,9 @@ export function TarjetaClima() {
     queryFn: obtenerClima,
     staleTime: CINCO_MINUTOS,
     refetchInterval: CINCO_MINUTOS,
+    // Sin reintentos: un 503 dice que el clima no responde, y reintentar enseguida solo le suma
+    // pedidos al proveedor. Se vuelve a pedir en el próximo refetch (5 min).
+    retry: false,
   })
 
   let contenido: ReactNode

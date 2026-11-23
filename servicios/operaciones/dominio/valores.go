@@ -126,7 +126,9 @@ type Operabilidad struct {
 	Motivos          []string
 	ObservadoEn      time.Time
 	AeropuertoNombre string
-	Condiciones      CondicionesClima
+	// Condiciones es nil si el proveedor no las mandó o no se pudieron leer: solo se muestran, así
+	// que eso no afecta a la operabilidad (la regla de las reservas sigue andando).
+	Condiciones *CondicionesClima
 }
 
 // CondicionesClima son las condiciones observadas en el aeropuerto, tal como las informa el

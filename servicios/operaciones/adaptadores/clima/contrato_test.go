@@ -172,7 +172,7 @@ func TestContratoEjemplosDeRespuesta(t *testing.T) {
 		// Las condiciones observadas se copian tal cual (ADR-034): solo se muestran en la web.
 		esperadas := dominio.CondicionesClima{TemperaturaC: 22.4, VientoKmh: 18.0, RafagasKmh: 27.5,
 			DireccionVientoGrados: 340, VisibilidadM: 10000, PrecipitacionMm: 0.0, Tormenta: false}
-		if o.Condiciones != esperadas || o.AeropuertoNombre != "Aeropuerto Internacional Ingeniero Aeronáutico Ambrosio Taravella" {
+		if o.Condiciones == nil || *o.Condiciones != esperadas || o.AeropuertoNombre != "Aeropuerto Internacional Ingeniero Aeronáutico Ambrosio Taravella" {
 			t.Fatalf("condiciones inesperadas: %+v, aeropuerto %q", o.Condiciones, o.AeropuertoNombre)
 		}
 	})
@@ -334,5 +334,44 @@ func TestPrefer(t *testing.T) {
 		if recibido != prefer {
 			t.Fatalf("Prefer = %q, se esperaba %q", recibido, prefer)
 		}
+	}
+}
+
+// TestCondicionesNoTiranLaOperabilidad: las condiciones son solo para mostrar. Si llegan con otro
+// tipo o ilegibles, la operabilidad (lo que usa la regla de las reservas) se lee igual.
+func TestCondicionesNoTiranLaOperabilidad(t *testing.T) {
+	casos := []struct {
+		nombre      string
+		condiciones string
+		esperadas   *dominio.CondicionesClima
+	}{
+		{"dirección como decimal", `{"temperature_c":22.4,"wind_speed_kmh":18,"wind_gust_kmh":27.5,"wind_direction_deg":340.0,"visibility_m":10000,"precipitation_mm":0,"thunderstorm":false}`,
+			&dominio.CondicionesClima{TemperaturaC: 22.4, VientoKmh: 18, RafagasKmh: 27.5, DireccionVientoGrados: 340, VisibilidadM: 10000}},
+		{"condiciones ilegibles", `{"temperature_c":"caluroso"}`, nil},
+		{"sin condiciones", ``, nil},
+	}
+	for _, cs := range casos {
+		t.Run(cs.nombre, func(t *testing.T) {
+			cuerpo := `{"airport":{"icao":"SACO","name":"Córdoba"},"observed_at":"2026-11-20T15:00:00Z",`
+			if cs.condiciones != "" {
+				cuerpo += `"conditions":` + cs.condiciones + `,`
+			}
+			cuerpo += `"operability":{"operable":false,"reasons":["HIGH_WIND"]}}`
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(cuerpo))
+			}))
+			defer srv.Close()
+			o, err := NuevoCliente(srv.URL, "clave-de-prueba", "").Operabilidad(context.Background(), "SACO")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if o.Operable || len(o.Motivos) != 1 || o.Motivos[0] != "HIGH_WIND" {
+				t.Fatalf("operabilidad = %+v", o)
+			}
+			if (cs.esperadas == nil) != (o.Condiciones == nil) || (cs.esperadas != nil && *o.Condiciones != *cs.esperadas) {
+				t.Fatalf("condiciones = %+v, se esperaba %+v", o.Condiciones, cs.esperadas)
+			}
+		})
 	}
 }

@@ -317,7 +317,7 @@ Reemplaza a la consulta "al aceptar" de [ADR-012](adr/ADR-012-consumo-clima.md):
 
 ### 13.5 Clima actual para la web (ADR-034)
 - **`GET /clima`** (en Operaciones; por el gateway, `/api/operaciones/clima`), roles `operador`, `administrador` y `cliente`.
-- Usa el mismo adaptador de clima (timeout de 1 s, un reintento, breaker y **la misma caché de 5 min**): la web no suma pedidos al proveedor. No registra alertas ni cuenta en `rumbo_clima_consultas_total`.
+- Usa el mismo adaptador de clima (timeout de 1 s, un reintento, breaker y **la misma caché de 5 min**): la web suma a lo sumo un pedido al proveedor cada 5 min por aeropuerto, tenga cuantas pestañas abiertas tenga. La web no reintenta un `503`. No registra alertas ni cuenta en `rumbo_clima_consultas_total`.
 - `200`:
   ```json
   { "aeropuerto": { "icao": "SACO", "nombre": "Aeropuerto Internacional Ingeniero Aeronáutico Ambrosio Taravella" },
@@ -327,7 +327,7 @@ Reemplaza a la consulta "al aceptar" de [ADR-012](adr/ADR-012-consumo-clima.md):
                      "visibilidad_m": 10000, "precipitacion_mm": 0.0, "tormenta": false } }
   ```
   `motivos`: los de `operability.reasons` del proveedor (`HIGH_WIND`, `HIGH_GUSTS`, `LOW_VISIBILITY`, `THUNDERSTORM`); `[]` si es operable.
-- `503 SERVICIO_NO_DISPONIBLE` con `Retry-After: 60` si el clima no responde o el breaker está abierto. No se responde un clima inventado ni uno viejo (teórico 7).
+- `503 SERVICIO_NO_DISPONIBLE` con `Retry-After: 30` (lo que tarda el breaker en dejar probar de nuevo) si el clima no responde o el breaker está abierto. No se responde un clima inventado ni uno viejo (teórico 7).
 
 ## 14. Notificaciones (ADR-027)
 Base `notificaciones` (MongoDB). Estilo en capas (ADR-010).

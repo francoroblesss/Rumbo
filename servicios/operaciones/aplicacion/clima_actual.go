@@ -2,14 +2,15 @@ package aplicacion
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/francoroblesss/Rumbo/servicios/operaciones/puertos"
 )
 
 // ClimaActual muestra en la web las condiciones actuales del aeropuerto (§13.5, ADR-034). Usa el
-// mismo adaptador que las reservas, con su timeout, reintento, breaker y caché de 5 min: la web no
-// suma pedidos al proveedor. Solo lee: no registra alertas, no escribe en MySQL y no cuenta en
+// mismo adaptador que las reservas, con su timeout, reintento, breaker y caché de 5 min: la web suma
+// a lo sumo un pedido al proveedor cada 5 min por aeropuerto (ADR-034). Solo lee: no registra alertas, no escribe en MySQL y no cuenta en
 // rumbo_clima_consultas_total, que es la métrica de la regla de las reservas (§13.4).
 type ClimaActual struct {
 	clima puertos.ConsultaClima
@@ -30,11 +31,16 @@ func (s *ClimaActual) Consultar(ctx context.Context) (puertos.ClimaAeropuerto, e
 		slog.WarnContext(ctx, "clima no disponible para la web", slog.String("error", err.Error()))
 		return puertos.ClimaAeropuerto{}, err
 	}
+	if o.Condiciones == nil {
+		// La operabilidad llegó pero las condiciones no: sin ellas no hay nada que mostrar.
+		slog.WarnContext(ctx, "clima sin condiciones para la web")
+		return puertos.ClimaAeropuerto{}, fmt.Errorf("%w: el proveedor no informó las condiciones", puertos.ErrClimaNoDisponible)
+	}
 	motivos := o.Motivos
 	if motivos == nil {
 		motivos = []string{}
 	}
-	c := o.Condiciones
+	c := *o.Condiciones
 	return puertos.ClimaAeropuerto{
 		Aeropuerto:  puertos.AeropuertoClima{ICAO: s.icao, Nombre: o.AeropuertoNombre},
 		ObservadoEn: hora(o.ObservadoEn),

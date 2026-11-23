@@ -117,6 +117,12 @@ func NewOperacionesClient(baseURL string) OperacionesClient {
 	})
 	reintentos, _ := observabilidad.Medidor().Int64Counter("rumbo_reintentos_total",
 		metric.WithDescription("Reintentos de llamadas salientes, por dependencia y operación"))
+	// Cada serie arranca en 0: si naciera con el primer reintento, Prometheus no tendría una
+	// muestra anterior e increase() no lo contaría (el panel 18 quedaría en 0).
+	for _, operacion := range []string{"disponibilidad", "reserva", "cancelacion"} {
+		reintentos.Add(context.Background(), 0, metric.WithAttributes(
+			attribute.String("dependencia", "operaciones"), attribute.String("operacion", operacion)))
+	}
 	return &operacionesHTTP{baseURL: baseURL, http: observabilidad.ClienteInterno(TimeoutOperaciones), breaker: breaker,
 		reintentos: reintentos}
 }

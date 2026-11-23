@@ -171,6 +171,7 @@ services:
     environment:
       PUERTO: "8081"
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      LOGS_MYSQL_DSN: ${LOGS_MYSQL_DSN:-}
       MONGO_URI: mongodb://identidad:${IDENTIDAD_DB_PASSWORD}@mongo:27017/identidad?authSource=identidad
       TOKEN_SECRETO: ${TOKEN_SECRETO}
       ADMIN_EMAIL: ${ADMIN_EMAIL}
@@ -186,6 +187,7 @@ services:
       SECRETO_INTERNO: ${SECRETO_INTERNO}
     depends_on:
       mongo: { condition: service_healthy }
+      mysql-logs: { condition: service_healthy, required: false }
 
   operaciones:
     <<: *servicio-go
@@ -213,6 +215,7 @@ services:
     depends_on:
       mysql: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
+      mysql-logs: { condition: service_healthy, required: false }
 
   recursos:
     <<: *servicio-go
@@ -226,6 +229,7 @@ services:
     depends_on:
       mysql: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
+      mysql-logs: { condition: service_healthy, required: false }
 
   notificaciones:
     <<: *servicio-go
@@ -239,6 +243,7 @@ services:
     depends_on:
       mongo: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
+      mysql-logs: { condition: service_healthy, required: false }
 
   integracion-1:
     <<: *servicio-go
@@ -255,6 +260,7 @@ services:
     depends_on:
       mongo: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
+      mysql-logs: { condition: service_healthy, required: false }
 
   integracion-2:
     <<: *servicio-go
@@ -267,6 +273,7 @@ services:
     depends_on:
       mongo: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
+      mysql-logs: { condition: service_healthy, required: false }
 
   # Balanceador de Integración de carga (ADR-009): round robin entre las dos réplicas.
   balanceador-integracion:
@@ -303,6 +310,7 @@ services:
       recursos: { condition: service_healthy }
       notificaciones: { condition: service_healthy }
       balanceador-integracion: { condition: service_started }
+      mysql-logs: { condition: service_healthy, required: false }
 
   # ---------------- Aplicación web ----------------
   # SPA de los usuarios de Rumbo (ADR-029), servida por NGINX. Habla solo con el gateway

@@ -117,7 +117,7 @@
     {
       "id": 3,
       "type": "timeseries",
-      "title": "3. Latencia p95 por servicio",
+      "title": "3. Latencia p95 por servicio (sin el stream de avisos)",
       "description": "Percentil 95 de la duración de los pedidos HTTP de cada servicio (RED: duration).",
       "datasource": {
         "type": "prometheus",
@@ -130,7 +130,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, job) (rate(rumbo_http_duracion_segundos_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le, job) (rate(rumbo_http_duracion_segundos_seconds_bucket{ruta!~\".*/stream\"}[5m])))",
           "legendFormat": "{{job}}",
           "range": true
         }
@@ -941,6 +941,228 @@
       "gridPos": {
         "x": 0,
         "y": 52,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "16. Consulta por id: latencia p95 según la caché",
+      "description": "Duración de la consulta por id según el resultado de la caché: hit (Memcached), miss (MongoDB) y error (Memcached caído: timeout corto más MongoDB), y la del pedido HTTP completo (ADR-007).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, resultado) (rate(rumbo_cache_lectura_duracion_segundos_seconds_bucket{cache=\"solicitudes\"}[5m])))",
+          "legendFormat": "{{resultado}}",
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(rumbo_http_duracion_segundos_seconds_bucket{job=\"integracion\",ruta=\"/traslados/:id\",metodo=\"GET\"}[5m])))",
+          "legendFormat": "GET /traslados/{id} (HTTP)",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 52,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "17. Búsqueda de traslados: latencia p50 y p95",
+      "description": "Duración de GET /traslados/busqueda en Operaciones (consulta a Solr, ADR-011).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(rumbo_http_duracion_segundos_seconds_bucket{job=\"operaciones\",ruta=\"/traslados/busqueda\",metodo=\"GET\"}[5m])))",
+          "legendFormat": "p50",
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(rumbo_http_duracion_segundos_seconds_bucket{job=\"operaciones\",ruta=\"/traslados/busqueda\",metodo=\"GET\"}[5m])))",
+          "legendFormat": "p95",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 60,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "18. Reintentos por dependencia y operación",
+      "description": "Reintentos de llamadas salientes en los últimos 5 min: Integración → Operaciones (ADR-035) y Operaciones → clima (ADR-034).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (dependencia, operacion) (increase(rumbo_reintentos_total[5m])) or vector(0)",
+          "legendFormat": "{{dependencia}} · {{operacion}}",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 60,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 60,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "19. Caché de la consulta por id: operaciones por resultado",
+      "description": "Operaciones de la caché de solicitudes por resultado (hit, miss y error). A diferencia del panel 5, muestra los error: cuándo Memcached deja de responder.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (resultado) (rate(rumbo_cache_operaciones_total{cache=\"solicitudes\"}[5m]))",
+          "legendFormat": "{{resultado}}",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 60,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 68,
         "w": 12,
         "h": 8
       }

@@ -12,6 +12,7 @@ Scripts de [k6](https://grafana.com/docs/k6/) que miden la capacidad publicada "
 | `misma-franja.js` | Reservas simultáneas (`POST /traslados`) en escalones de 10, 25, 50 y 100 reservas/s (`ramping-arrival-rate`, 5 s de rampa y 30 s de meseta). `MODO=misma`: todas sobre una franja; `MODO=repartidas`: control, rotando entre 173 franjas. Escribe `resultado-<modo>.json` |
 | `ejecutar-misma-franja.sh` | Corre los dos modos. Guarda los contadores de esperas por bloqueo de InnoDB cada 2 s en `bloqueos-<modo>.txt` y la ocupación de la franja antes y después en `verificacion-misma.json` |
 | `resumir-misma-franja.mjs` | Arma la tabla del [informe de la Presentación](../../docs/capacidad/informe-presentacion.md) y verifica que la franja no se sobrerreservó |
+| `consulta-por-id.js` y `cache-encendida-apagada.sh` | 20 req/s constantes de `GET /traslados/{id}` durante 9 min, con Memcached prendido (minutos 0–3), apagado (3–6) y prendido otra vez (6–9). Cada minuto consulta a Prometheus el p95 de la consulta por resultado de la caché y las operaciones de la caché por resultado, y lo deja en `docs/evidencias/observabilidad-final/cache.txt` |
 
 ## Cómo correrlo
 Requisitos: Docker y Node.js (solo para `resumir.mjs` y `latencias-d5.mjs`). La observabilidad tiene que estar activa (`COMPOSE_PROFILES=observabilidad` y `OTEL_EXPORTER_OTLP_ENDPOINT=http://lgtm:4318` en `.env`) para medir D5.
@@ -45,3 +46,17 @@ node pruebas/carga/resumir-misma-franja.mjs   # tabla por escalón y verificaci�
 - **Destino:** igual que `traslados.js`, `http://balanceador-integracion` desde un contenedor de k6 en la red de Compose, porque el límite del gateway (60 pedidos por minuto) cortaría la prueba. En `setup()` se pide **un** token al gateway (`POST http://gateway:8080/auth/token` con `EXTERNO_CLIENT_ID` y `EXTERNO_CLIENT_SECRET` de `.env`) y de sus claims salen los headers de identidad que pondría el gateway (`X-Rumbo-Usuario`, `X-Rumbo-Organizacion`, `X-Rumbo-Roles`). Se agrega `X-Rumbo-Interno` con `SECRETO_INTERNO` de `.env`: sin él, Integración responde `401` (ADR-026).
 - **Bloqueos:** contadores `Innodb_row_lock_waits`, `Innodb_row_lock_time` e `Innodb_row_lock_current_waits` (`SHOW GLOBAL STATUS`, con el usuario root de MySQL), cada 2 s. Se eligieron frente a `SHOW ENGINE INNODB STATUS` porque acumulan las esperas y su tiempo (se resta antes y después de cada meseta), mientras que ese comando solo muestra las esperas del instante. `performance_schema` está apagado en `compose.yaml` para ahorrar memoria.
 - **Verificación:** al final del modo `misma`, `traslados_reservados` de la franja tiene que haber subido exactamente la cantidad de `201` (contador `reservas_201` de k6).
+
+## Consulta por id con Memcached prendido y apagado (final)
+Mide cuánto tarda la consulta por id con la caché y sin ella ([ADR-007](../../docs/adr/ADR-007-cache.md)), con el histograma `rumbo_cache_lectura_duracion_segundos` (paneles 16 y 19 del tablero). Los resultados están en [`docs/evidencias/observabilidad-final/`](../../docs/evidencias/observabilidad-final/).
+
+```bash
+# Con la observabilidad activa en .env y cupo alto (setup reserva 20 traslados).
+FRANJA_CUPO_TRASLADOS=100000 docker compose up --build -d --wait
+bash pruebas/carga/cache-encendida-apagada.sh   # ~10 min
+```
+
+- **Destino:** `http://balanceador-integracion`, como `traslados.js`, con los headers de identidad del gateway y el secreto interno (`X-Rumbo-Interno` de `.env`, ADR-026). Durante la prueba no se reserva.
+- **Fases:** `docker compose stop memcached` en el minuto 3 y `docker compose start memcached` en el 6. Con Memcached apagado, cada consulta paga el timeout corto de la caché (100 ms) o el error de conexión, y después MongoDB.
+- **Ventana de 2 min** en las consultas (`VENTANA`, por defecto `2m`): los servicios exportan las métricas por OTLP cada 60 s, así que con `[1m]` hay una sola muestra y `rate()` sale vacío (pasó en la primera corrida).
+- Necesita Node.js para leer las respuestas de Prometheus.

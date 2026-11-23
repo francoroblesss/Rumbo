@@ -47,6 +47,7 @@ type SolicitudesCache struct {
 	siguiente   SolicitudesRepository
 	cache       ClienteCache
 	operaciones metric.Int64Counter
+	duracion    metric.Float64Histogram
 }
 
 var _ SolicitudesRepository = (*SolicitudesCache)(nil)
@@ -55,21 +56,39 @@ var _ SolicitudesRepository = (*SolicitudesCache)(nil)
 func NewSolicitudesCache(siguiente SolicitudesRepository, cache ClienteCache) *SolicitudesCache {
 	contador, _ := observabilidad.Medidor().Int64Counter("rumbo_cache_operaciones_total",
 		metric.WithDescription("Operaciones de caché por resultado"))
-	return &SolicitudesCache{siguiente: siguiente, cache: cache, operaciones: contador}
+	// Buckets en segundos explícitos: con los de OpenTelemetry (pensados en ms) todo cae en el
+	// primero (docs/POSTMORTEM.md).
+	duracion, _ := observabilidad.Medidor().Float64Histogram("rumbo_cache_lectura_duracion_segundos",
+		metric.WithDescription("Duración de la consulta por id según el resultado de la caché (hit: Memcached; miss y error: MongoDB)"),
+		metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1))
+	return &SolicitudesCache{siguiente: siguiente, cache: cache, operaciones: contador, duracion: duracion}
 }
 
+// BuscarPorID mide la consulta completa (caché y, si hace falta, MongoDB) según el resultado de la
+// caché: así se ve cuánto tarda con Memcached y cuánto sin él (panel 16 del tablero).
 func (c *SolicitudesCache) BuscarPorID(ctx context.Context, organizacionID, id string) (models.SolicitudExterna, error) {
+	inicio := time.Now()
+	resultado := "miss"
+	defer func() {
+		c.duracion.Record(ctx, time.Since(inicio).Seconds(), metric.WithAttributes(
+			attribute.String("cache", nombreCache), attribute.String("resultado", resultado)))
+	}()
+
 	clave := ClaveSolicitud(organizacionID, id)
 	valor, err := c.cache.Get(clave)
 	switch {
 	case err != nil:
+		resultado = "error"
 		c.degradar(ctx, "leer", clave, err)
 	case valor != nil:
 		var s models.SolicitudExterna
 		if errJSON := json.Unmarshal(valor, &s); errJSON != nil {
+			resultado = "error"
 			c.degradar(ctx, "decodificar", clave, errJSON)
 			break
 		}
+		resultado = "hit"
 		c.contar(ctx, "hit")
 		return s, nil
 	default:

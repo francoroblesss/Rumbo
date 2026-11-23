@@ -1,0 +1,90 @@
+2026-11-23T20:16:44Z inicio de k6 (9 min, 20 req/s de GET /traslados/{id}), Memcached prendido
+### 2026-11-23T20:17:44Z · min 1, Memcached prendido
+  consulta: histogram_quantile(0.95, sum by (le, resultado) (rate(rumbo_cache_lectura_duracion_segundos_seconds_bucket{cache="solicitudes"}[2m])))
+    (sin series)
+  consulta: sum by (resultado) (rate(rumbo_cache_operaciones_total{cache="solicitudes"}[2m]))
+    (sin series)
+
+### 2026-11-23T20:18:44Z · min 2, Memcached prendido
+  consulta: histogram_quantile(0.95, sum by (le, resultado) (rate(rumbo_cache_lectura_duracion_segundos_seconds_bucket{cache="solicitudes"}[2m])))
+    {"resultado":"miss"} = 0.004666666666666666
+    {"resultado":"hit"} = 0.0008014925373134329
+    {"resultado":"error"} = NaN
+  consulta: sum by (resultado) (rate(rumbo_cache_operaciones_total{cache="solicitudes"}[2m]))
+    {"resultado":"miss"} = 0.13333111114814752
+    {"resultado":"hit"} = 9.866502224962916
+    {"resultado":"error"} = 0
+
+### 2026-11-23T20:19:44Z · min 3, Memcached prendido (justo antes de apagarlo)
+  consulta: histogram_quantile(0.95, sum by (le, resultado) (rate(rumbo_cache_lectura_duracion_segundos_seconds_bucket{cache="solicitudes"}[2m])))
+    {"resultado":"hit"} = 0.0007800812453175379
+    {"resultado":"error"} = NaN
+    {"resultado":"miss"} = 0.0024099999833332225
+  consulta: sum by (resultado) (rate(rumbo_cache_operaciones_total{cache="solicitudes"}[2m]))
+    {"resultado":"miss"} = 0.3000030556064823
+    {"resultado":"hit"} = 19.700163613838008
+    {"resultado":"error"} = 0
+
+2026-11-23T20:19:45Z MEMCACHED APAGADO: docker compose stop memcached
+### 2026-11-23T20:20:44Z · min 4, Memcached apagado
+  consulta: histogram_quantile(0.95, sum by (le, resultado) (rate(rumbo_cache_lectura_duracion_segundos_seconds_bucket{cache="solicitudes"}[2m])))
+    {"resultado":"miss"} = NaN
+    {"resultado":"hit"} = 0.0007340277777777775
+    {"resultado":"error"} = 0.24240196078431372
+  consulta: sum by (resultado) (rate(rumbo_cache_operaciones_total{cache="solicitudes"}[2m]))
+    {"resultado":"miss"} = 0
+    {"resultado":"hit"} = 7.383333333333333
+    {"resultado":"error"} = 2.6
+
+### 2026-11-23T20:21:44Z · min 5, Memcached apagado
+  consulta: histogram_quantile(0.95, sum by (le, resultado) (rate(rumbo_cache_lectura_duracion_segundos_seconds_bucket{cache="solicitudes"}[2m])))
+    {"resultado":"miss"} = NaN
+    {"resultado":"hit"} = NaN
+    {"resultado":"error"} = 0.2425
+  consulta: sum by (resultado) (rate(rumbo_cache_operaciones_total{cache="solicitudes"}[2m]))
+    {"resultado":"miss"} = 0
+    {"resultado":"hit"} = 0
+    {"resultado":"error"} = 10
+
+### 2026-11-23T20:22:44Z · min 6, Memcached apagado (justo antes de prenderlo)
+  consulta: histogram_quantile(0.95, sum by (le, resultado) (rate(rumbo_cache_lectura_duracion_segundos_seconds_bucket{cache="solicitudes"}[2m])))
+    {"resultado":"miss"} = NaN
+    {"resultado":"hit"} = NaN
+    {"resultado":"error"} = 0.2425
+  consulta: sum by (resultado) (rate(rumbo_cache_operaciones_total{cache="solicitudes"}[2m]))
+    {"resultado":"miss"} = 0
+    {"resultado":"hit"} = 0
+    {"resultado":"error"} = 20
+
+2026-11-23T20:22:44Z MEMCACHED PRENDIDO: docker compose start memcached
+### 2026-11-23T20:23:44Z · min 7, Memcached prendido otra vez
+  consulta: histogram_quantile(0.95, sum by (le, resultado) (rate(rumbo_cache_lectura_duracion_segundos_seconds_bucket{cache="solicitudes"}[2m])))
+    {"resultado":"miss"} = 0.004166666666666667
+    {"resultado":"hit"} = 0.0009641304347826082
+    {"resultado":"error"} = 0.24247349823321554
+  consulta: sum by (resultado) (rate(rumbo_cache_operaciones_total{cache="solicitudes"}[2m]))
+    {"resultado":"miss"} = 0.3333333333333333
+    {"resultado":"hit"} = 5.533333333333333
+    {"resultado":"error"} = 14.166666666666668
+
+### 2026-11-23T20:24:44Z · min 8, Memcached prendido otra vez
+  consulta: histogram_quantile(0.95, sum by (le, resultado) (rate(rumbo_cache_lectura_duracion_segundos_seconds_bucket{cache="solicitudes"}[2m])))
+    {"resultado":"hit"} = 0.0009595808383233534
+    {"resultado":"error"} = NaN
+    {"resultado":"miss"} = 0.005000000000000017
+  consulta: sum by (resultado) (rate(rumbo_cache_operaciones_total{cache="solicitudes"}[2m]))
+    {"resultado":"miss"} = 0.33333333333333337
+    {"resultado":"hit"} = 19.666666666666668
+    {"resultado":"error"} = 0
+
+### 2026-11-23T20:25:44Z · min 9, Memcached prendido otra vez
+  consulta: histogram_quantile(0.95, sum by (le, resultado) (rate(rumbo_cache_lectura_duracion_segundos_seconds_bucket{cache="solicitudes"}[2m])))
+    {"resultado":"miss"} = 0.005749954166666669
+    {"resultado":"hit"} = 0.0008992828046684596
+    {"resultado":"error"} = NaN
+  consulta: sum by (resultado) (rate(rumbo_cache_operaciones_total{cache="solicitudes"}[2m]))
+    {"resultado":"miss"} = 0.283331666694444
+    {"resultado":"hit"} = 19.716501669416623
+    {"resultado":"error"} = 0
+
+2026-11-23T20:25:47Z fin de k6

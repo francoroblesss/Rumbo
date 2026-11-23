@@ -87,6 +87,21 @@ func TestLogsMySQLArmaLaFila(t *testing.T) {
 	}
 }
 
+func TestLogsMySQLRecortaLosValoresAlLargoDeSuColumna(t *testing.T) {
+	e := &escritorFalso{}
+	log, _, vaciar := nuevoLogger(e)
+	log.InfoContext(ConCorrelacion(context.Background(), strings.Repeat("c", 200)), "correlación larga")
+	vaciar()
+
+	filas := e.filas()
+	if len(filas) != 1 {
+		t.Fatalf("filas = %d, se esperaba 1", len(filas))
+	}
+	if n := len(filas[0].CorrelationID); n != largoMaxCorrelacion {
+		t.Fatalf("el correlation_id se recorta a %d caracteres: %d", largoMaxCorrelacion, n)
+	}
+}
+
 func TestLogsMySQLEnLotes(t *testing.T) {
 	e := &escritorFalso{}
 	log, _, vaciar := nuevoLogger(e)
@@ -158,6 +173,8 @@ func TestLogsMySQLContraMySQLReal(t *testing.T) {
 	log := slog.New(manejadorContexto{manejador})
 	log.WarnContext(ConCorrelacion(ctx, "corr-real"), "Operaciones tardó", slog.Duration("demora", 1500*time.Millisecond))
 	log.Info("sin correlación")
+	// En el mismo lote: un correlation id más largo que la columna no puede tirar el INSERT.
+	log.InfoContext(ConCorrelacion(ctx, strings.Repeat("c", 200)), "correlación larga")
 	if err := apagar(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -182,5 +199,13 @@ func TestLogsMySQLContraMySQLReal(t *testing.T) {
 	var total int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM logs WHERE correlation_id IS NULL`).Scan(&total); err != nil || total != 1 {
 		t.Fatalf("logs sin correlación = %d (%v)", total, err)
+	}
+	var largo int
+	if err := db.QueryRow(`SELECT COUNT(*), COALESCE(MAX(CHAR_LENGTH(correlation_id)), 0) FROM logs`).Scan(&total, &largo); err != nil {
+		t.Fatal(err)
+	}
+	if total != 3 || largo != largoMaxCorrelacion {
+		t.Fatalf("se esperaban los 3 logs del lote, con el correlation id recortado a %d: %d logs, largo máximo %d",
+			largoMaxCorrelacion, total, largo)
 	}
 }

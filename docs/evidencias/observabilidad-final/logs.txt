@@ -1,0 +1,62 @@
+Consultas al MySQL de logs (usuario de solo lectura de Grafana), 2026-11-23T20:45:25Z. Horas en UTC.
+Corrida con volúmenes limpios: docker compose down -v y up a las 19:56 UTC; reinicio sin -v a las 20:44 UTC.
+
+## 1. Pedido con X-Correlation-ID de 100 caracteres (19:58:50), filtrado por sus primeros 64
++-------------------------+-------+-------------+---------------+------------------+-------+
+| creado_en               | nivel | servicio    | instancia     | mensaje          | largo |
++-------------------------+-------+-------------+---------------+------------------+-------+
+| 2026-11-23 19:58:51.034 | INFO  | operaciones | 4b8c810ac468  | request atendida |    64 |
+| 2026-11-23 19:58:51.035 | INFO  | integracion | integracion-1 | request atendida |    64 |
+| 2026-11-23 19:58:51.036 | INFO  | gateway     | 026c621fb1cd  | request atendida |    64 |
++-------------------------+-------+-------------+---------------+------------------+-------+
+
+## 2. Servicios con logs (los seis; integracion con sus dos instancias)
++----------------+------------+-------+
+| servicio       | instancias | logs  |
++----------------+------------+-------+
+| gateway        |          2 |   762 |
+| identidad      |          2 |    22 |
+| integracion    |          2 | 37060 |
+| notificaciones |          2 |   270 |
+| operaciones    |          2 |  1064 |
+| recursos       |          2 |    14 |
++----------------+------------+-------+
+
+## 3. Logs de Identidad por mensaje
++--------------------------------------------+----+-------------------------+
+| mensaje                                    | n  | primero                 |
++--------------------------------------------+----+-------------------------+
+| organización del sistema externo sembrada  |  1 | 2026-11-23 19:57:07.953 |
+| usuario sembrado                           |  3 | 2026-11-23 19:57:08.174 |
+| servicio escuchando                        |  2 | 2026-11-23 19:57:08.598 |
+| request atendida                           | 12 | 2026-11-23 19:58:22.086 |
++--------------------------------------------+----+-------------------------+
+
+## 4. Primer log de cada instancia en cada arranque (comparar con docker inspect StartedAt, abajo)
++----------------+---------------+-------------------------+
+| servicio       | instancia     | primero                 |
++----------------+---------------+-------------------------+
+| gateway        | 026c621fb1cd  | 2026-11-23 19:57:17.580 |
+| identidad      | 80fbdf4311d5  | 2026-11-23 19:57:07.953 |
+| integracion    | integracion-1 | 2026-11-23 19:57:06.264 |
+| integracion    | integracion-2 | 2026-11-23 19:57:08.274 |
+| notificaciones | eee9fd31ed73  | 2026-11-23 19:57:06.303 |
+| operaciones    | 4b8c810ac468  | 2026-11-23 19:57:11.439 |
+| recursos       | b987c83e2b82  | 2026-11-23 19:57:11.144 |
++----------------+---------------+-------------------------+
++----------------+-------------------------+
+| servicio       | primero_tras_reinicio   |
++----------------+-------------------------+
+| gateway        | 2026-11-23 20:44:32.075 |
+| identidad      | 2026-11-23 20:44:23.106 |
+| integracion    | 2026-11-23 20:44:25.305 |
+| notificaciones | 2026-11-23 20:44:25.799 |
+| operaciones    | 2026-11-23 20:44:24.954 |
+| recursos       | 2026-11-23 20:44:26.030 |
++----------------+-------------------------+
+StartedAt (arranque con volúmenes limpios): mysql-logs 19:56:37 · integracion-1 19:57:00.5 · integracion-2 19:57:02.3 · notificaciones 19:57:04.7 · identidad 19:57:05.8 · recursos 19:57:10.6 · operaciones 19:57:10.8 · gateway 19:57:16.9
+StartedAt (reinicio sin -v): mysql-logs 20:44:12 · identidad 20:44:21.4 · operaciones 20:44:24.5 · integracion-1 20:44:24.8 · notificaciones 20:44:25.4 · recursos 20:44:25.6 · gateway 20:44:31.4
+
+## 5. rumbo_logs_descartados_total{motivo="mysql"}
+Arranque con volúmenes limpios: integracion-1 = 3, integracion-2 = 3 (19:57:03 y 19:57:05, 'dial tcp 172.23.0.2:3306: connect: connection refused'). Ningún otro servicio. mysql-logs: 'Temporary server started' (port: 0) 19:56:54, healthcheck sano, servidor real escuchando en 3306 recién 19:57:06.
+Reinicio sin -v (20:44): 0 ('se descartaron logs' no aparece en docker compose logs).

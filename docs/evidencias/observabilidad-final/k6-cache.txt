@@ -1,0 +1,39 @@
+
+         /\      Grafana   /‾‾/  
+    /\  /  \     |\  __   /  /   
+   /  \/    \    | |/ /  /   ‾‾\ 
+  /          \   |   (  |  (‾)  |
+ / __________ \  |_|\_\  \_____/ 
+
+     execution: local
+        script: /scripts/consulta-por-id.js
+        output: -
+
+     scenarios: (100.00%) 1 scenario, 80 max VUs, 9m30s max duration (incl. graceful stop):
+              * consultas: 20.00 iterations/s for 9m0s (maxVUs: 20-80, gracefulStop: 30s)
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 10801   19.988397/s
+    checks_succeeded...: 100.00% 10801 out of 10801
+    checks_failed......: 0.00%   0 out of 10801
+
+    ✓ consulta 200
+
+    HTTP
+    http_req_duration..............: avg=68.19ms med=1.86ms p(95)=204.08ms p(99)=205.2ms  max=220.78ms
+      { expected_response:true }...: avg=68.19ms med=1.86ms p(95)=204.08ms p(99)=205.2ms  max=220.78ms
+    http_req_failed................: 0.00%  0 out of 10821
+    http_reqs......................: 10821  20.025409/s
+
+    EXECUTION
+    iteration_duration.............: avg=68.58ms med=2.19ms p(95)=204.39ms p(99)=205.54ms max=221.05ms
+    iterations.....................: 10801  19.988397/s
+    vus............................: 0      min=0          max=4 
+    vus_max........................: 20     min=20         max=20
+
+    NETWORK
+    data_received..................: 8.2 MB 15 kB/s
+    data_sent......................: 3.0 MB 5.6 kB/s
+
+consultas ✓ [ 100% ] 00/20 VUs  9m0s  20.00 iters/s

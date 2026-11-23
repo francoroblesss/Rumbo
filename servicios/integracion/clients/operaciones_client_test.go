@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
@@ -148,5 +151,131 @@ func TestErrorDeRedEsNoDisponible(t *testing.T) {
 	srv.Close() // nadie escucha en esa dirección
 	if _, err := NewOperacionesClient(url).Cancelar(context.Background(), "org-1", "clave-0001", "sol-1", "m"); !errors.Is(err, ErrNoDisponible) {
 		t.Fatalf("un error de red tiene que ser ErrNoDisponible: %v", err)
+	}
+}
+
+// servidorConSecuencia responde con la i-ésima función en el pedido i (la última se repite) y
+// guarda los headers y el cuerpo de cada pedido recibido.
+type pedidoRecibido struct {
+	claveIdem string
+	cuerpo    string
+}
+
+func servidorConSecuencia(t *testing.T, respuestas ...http.HandlerFunc) (*httptest.Server, *[]pedidoRecibido, *sync.Mutex) {
+	t.Helper()
+	var mu sync.Mutex
+	var recibidos []pedidoRecibido
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		crudo, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		i := len(recibidos)
+		recibidos = append(recibidos, pedidoRecibido{claveIdem: r.Header.Get("Idempotency-Key"), cuerpo: string(crudo)})
+		mu.Unlock()
+		respuestas[min(i, len(respuestas)-1)](w, r)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &recibidos, &mu
+}
+
+func responder(estado int, cuerpo any) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(estado)
+		_ = json.NewEncoder(w).Encode(cuerpo)
+	}
+}
+
+func TestReintentaUn503YDespuesResponde(t *testing.T) {
+	srv, recibidos, mu := servidorConSecuencia(t,
+		responder(http.StatusServiceUnavailable, map[string]string{}),
+		responder(http.StatusCreated, models.VistaSolicitud{ID: "sol-1", Estado: "ACEPTADA", Version: 1}))
+	pedido := models.PedidoTraslado{Cosa: models.Cosa{Descripcion: "cajas", Cantidad: 2}}
+	vista, err := NewOperacionesClient(srv.URL).Reservar(context.Background(), "org-1", "clave-0001", pedido)
+	if err != nil || vista.ID != "sol-1" {
+		t.Fatalf("vista = %+v, err = %v", vista, err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(*recibidos) != 2 {
+		t.Fatalf("se esperaban 2 pedidos, llegaron %d", len(*recibidos))
+	}
+	primero, segundo := (*recibidos)[0], (*recibidos)[1]
+	if primero.claveIdem != "clave-0001" || segundo.claveIdem != primero.claveIdem {
+		t.Fatalf("el reintento tiene que llevar la misma Idempotency-Key: %q y %q", primero.claveIdem, segundo.claveIdem)
+	}
+	if primero.cuerpo == "" || segundo.cuerpo != primero.cuerpo {
+		t.Fatalf("el reintento tiene que llevar el mismo cuerpo: %q y %q", primero.cuerpo, segundo.cuerpo)
+	}
+}
+
+func TestReintentaUnaDisponibilidadQueTardaDemasiado(t *testing.T) {
+	srv, recibidos, mu := servidorConSecuencia(t,
+		func(w http.ResponseWriter, r *http.Request) {
+			// Más que el timeout por intento (1 s); se corta antes si el cliente ya se fue.
+			select {
+			case <-time.After(1500 * time.Millisecond):
+			case <-r.Context().Done():
+			}
+		},
+		responder(http.StatusOK, models.Disponibilidad{Fecha: "2026-11-20", Franjas: []models.FranjaDisponible{{Disponible: true}}}))
+	d, err := NewOperacionesClient(srv.URL).Disponibilidad(context.Background(), "2026-11-20", nil)
+	if err != nil || len(d.Franjas) != 1 {
+		t.Fatalf("d = %+v, err = %v", d, err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(*recibidos) != 2 {
+		t.Fatalf("se esperaban 2 pedidos, llegaron %d", len(*recibidos))
+	}
+}
+
+func TestAgotaLosTresIntentos(t *testing.T) {
+	srv, llamadas := servidorQueResponde(t, http.StatusServiceUnavailable, map[string]string{})
+	inicio := time.Now()
+	_, err := NewOperacionesClient(srv.URL).Reservar(context.Background(), "org-1", "clave-0001", models.PedidoTraslado{})
+	duracion := time.Since(inicio)
+	if !errors.Is(err, ErrNoDisponible) {
+		t.Fatalf("se esperaba ErrNoDisponible, se obtuvo %v", err)
+	}
+	if n := llamadas.Load(); n != IntentosOperaciones {
+		t.Fatalf("se esperaban %d pedidos, llegaron %d", IntentosOperaciones, n)
+	}
+	if duracion >= TopeReintentos {
+		t.Fatalf("los intentos tienen que terminar antes del tope de %s: tardaron %s", TopeReintentos, duracion)
+	}
+}
+
+func TestNoReintentaUn4xx(t *testing.T) {
+	srv, llamadas := servidorQueResponde(t, http.StatusConflict, map[string]string{"codigo": "SIN_DISPONIBILIDAD"})
+	_, err := NewOperacionesClient(srv.URL).Reservar(context.Background(), "org-1", "clave-0001", models.PedidoTraslado{})
+	var r ErrRechazo
+	if !errors.As(err, &r) {
+		t.Fatalf("se esperaba ErrRechazo, se obtuvo %v", err)
+	}
+	if n := llamadas.Load(); n != 1 {
+		t.Fatalf("un 4xx no se reintenta: llegaron %d pedidos", n)
+	}
+}
+
+func TestNoReintentaUn500(t *testing.T) {
+	srv, llamadas := servidorQueResponde(t, http.StatusInternalServerError, map[string]string{})
+	_, err := NewOperacionesClient(srv.URL).Reservar(context.Background(), "org-1", "clave-0001", models.PedidoTraslado{})
+	if !errors.Is(err, ErrNoDisponible) {
+		t.Fatalf("se esperaba ErrNoDisponible, se obtuvo %v", err)
+	}
+	if n := llamadas.Load(); n != 1 {
+		t.Fatalf("un 500 no se reintenta: llegaron %d pedidos", n)
+	}
+}
+
+func TestNoReintentaConElContextoCancelado(t *testing.T) {
+	srv, llamadas := servidorQueResponde(t, http.StatusServiceUnavailable, map[string]string{})
+	ctx, cancelar := context.WithCancel(context.Background())
+	cancelar()
+	if _, err := NewOperacionesClient(srv.URL).Reservar(ctx, "org-1", "clave-0001", models.PedidoTraslado{}); err == nil {
+		t.Fatal("con el contexto cancelado se esperaba un error")
+	}
+	if n := llamadas.Load(); n > 1 {
+		t.Fatalf("con el contexto cancelado no se reintenta: llegaron %d pedidos", n)
 	}
 }

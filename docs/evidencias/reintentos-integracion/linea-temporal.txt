@@ -1,0 +1,11 @@
+2026-11-23T19:27:31Z inicio de k6 (4 min de tráfico por el gateway)
+2026-11-23T19:28:32Z PAUSA 1: docker compose pause operaciones
+2026-11-23T19:28:37Z VUELTA 1: docker compose unpause operaciones
+2026-11-23T19:29:31Z PAUSA 2: docker compose pause operaciones
+2026-11-23T19:29:34Z VUELTA 2: docker compose unpause operaciones
+2026-11-23T19:30:31Z PAUSA 3: docker compose pause operaciones
+2026-11-23T19:30:36Z VUELTA 3: docker compose unpause operaciones
+2026-11-23T19:32:04Z fin de k6
+2026-11-23T19:33:18Z métricas en docs/evidencias/reintentos-integracion/metricas.txt
+2026-11-23T19:33:26Z logs extraídos a docs/evidencias/reintentos-integracion/logs.txt
+2026-11-23T19:33:27Z resumen de k6 en docs/evidencias/reintentos-integracion/resumen.md

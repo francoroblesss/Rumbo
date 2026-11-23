@@ -1,6 +1,6 @@
 # ADR-035 — Integración reintenta sus llamadas a Operaciones (reemplaza parcialmente a ADR-004 y ADR-008)
 
-- **Fecha:** <fecha del PR>
+- **Fecha:** 23/11/2026
 - **Estado:** aceptada
 - **Reemplaza parcialmente a:** [ADR-004](ADR-004-comunicacion-entre-servicios.md), en la fila "Integración de carga → Operaciones" (2 s, sin reintento) y en la regla "las escrituras no se reintentan dentro del sistema" para esa llamada; y a [ADR-008](ADR-008-resiliencia.md), en el "No reintenta" del breaker de Integración → Operaciones. El breaker, el `503` con `Retry-After` y el reintento del consumidor con su `Idempotency-Key` siguen vigentes (con ADR-021).
 
@@ -34,5 +34,5 @@
   - si el reintento de una reserva llega mientras el pedido original todavía se está procesando, Operaciones puede responder un error en vez del `201` original; no se duplica la reserva (la clave es única y se guarda en la misma transacción) y el consumidor lo resuelve reintentando con la misma clave.
 
 ## Cómo se verifica
-- Tests de `clients` (con `httptest`): `503` y después `201` con la misma clave y el mismo cuerpo; timeout y después `200`; tres `503` agotan los intentos antes del tope; `4xx`, `500` y contexto cancelado no se reintentan; el breaker sigue abriéndose con 5 fallas: <resultado>.
-- Prueba con el sistema real (`pruebas/fallas/reintentos.sh`, evidencia en `docs/evidencias/reintentos-integracion/`): tres congelamientos de Operaciones de 1,5 s con tráfico por el gateway. <reintentos por operación, `503` que vio el consumidor y resultado de `verificar-reservas.sh`, con fecha>.
+- Tests de `clients` (con `httptest`): `503` y después `201` con la misma clave y el mismo cuerpo; timeout y después `200`; tres `503` agotan los intentos antes del tope; `4xx`, `500` y contexto cancelado no se reintentan; el breaker sigue abriéndose con 5 fallas: **los 12 tests de `clients` pasan** (`go test ./...` de Integración en verde, 23/11/2026; los tests que ya existían no cambiaron).
+- Prueba con el sistema real (`pruebas/fallas/reintentos.sh`, evidencia en `docs/evidencias/reintentos-integracion/`): tres congelamientos de Operaciones de 1,5 s con tráfico por el gateway. Corrida del 23/11/2026 (19:27–19:32 UTC): **3 reintentos** (2 de `reserva` y 1 de `disponibilidad`, todos por timeout de 1 s y con el segundo intento bien), **0 `503` para el consumidor** (225 pedidos, 0 errores), breaker cerrado todo el tiempo, y `verificar-reservas.sh` con 103 claves con `201` y 103 solicitudes, **ninguna duplicada**.

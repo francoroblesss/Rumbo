@@ -63,9 +63,15 @@ func InstrumentarHTTP(h http.Handler, servicio string) http.Handler {
 
 // rutaAgrupada reduce el path a su prefijo estable, sin ids, para que la métrica no tenga una
 // serie por solicitud: /api/<servicio> para la API de la aplicación web y /<recurso> para el
-// contrato público (por ejemplo /traslados). Ninguna ruta lleva versión (ADR-019).
+// contrato público (por ejemplo /traslados). Ninguna ruta lleva versión (ADR-019). Un stream
+// (último segmento "stream", como /api/notificaciones/avisos/stream) queda como ruta propia: dura
+// minutos y, mezclado con las requests comunes, distorsiona la latencia. Es un path fijo, sin ids,
+// así que no suma cardinalidad.
 func rutaAgrupada(path string) string {
 	segmentos := strings.Split(strings.Trim(path, "/"), "/")
+	if segmentos[len(segmentos)-1] == "stream" {
+		return "/" + strings.Join(segmentos, "/")
+	}
 	cantidad := 1
 	if segmentos[0] == "api" {
 		cantidad = 2

@@ -391,7 +391,7 @@ En Operaciones; por el gateway, con el prefijo `/api/operaciones`.
 
 - **`GET /traslados/busqueda?q=&organizacion_id=&estado=&desde=&hasta=&alerta=&orden=fecha|relevancia&pagina=&tamanio=`**
   - roles `operador`, `administrador` y `cliente` (**al cliente se le fuerza su organización**, con un `fq` tomado de la identidad del gateway);
-  - `q`: texto libre sobre la descripción de la cosa, los nombres y direcciones de origen y destino y la referencia externa;
+  - `q`: texto libre sobre la descripción de la cosa, los nombres y direcciones de origen y destino y la referencia externa. **Tienen que aparecer todas las palabras** (en cualquiera de esos campos: `mm=100%` de eDisMax, [ADR-033](adr/ADR-033-busqueda-todas-las-palabras.md)), con el análisis en español (sin mayúsculas, sin tildes, plural a singular y sin stopwords);
   - `estado`: estado del traslado; `desde` y `hasta`: `AAAA-MM-DD` sobre el inicio de la franja; `alerta=true`: solo los que tienen alerta climática;
   - `orden=fecha` (por defecto): por inicio de la franja, ascendente. `orden=relevancia`: por puntaje; sin `q`, se ordena por fecha;
   - responde una página de `{"solicitud_id", "traslado_id", "organizacion_id", "referencia_externa", "descripcion", "origen_nombre", "destino_nombre", "estado_traslado", "franja_inicio", "franja_fin", "alerta_climatica": "NO_OPERABLE" | "NO_VERIFICADO" | null, "cancelacion_tardia": bool}`;

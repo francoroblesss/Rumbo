@@ -1,0 +1,11 @@
+### 2026-11-23T19:33:18Z · al terminar k6 (consultas repetidas con time=2026-11-23T19:33:18Z: en Windows, python3 era el atajo de la Microsoft Store y el script no pudo consultarlas en el momento)
+  consulta: sum by (operacion) (increase(rumbo_reintentos_total{dependencia="operaciones"}[10m])) (evaluada en 2026-11-23T19:33:18Z)
+    {'operacion': 'reserva'} = 1.13631026550369
+    {'operacion': 'disponibilidad'} = 0
+  consulta: max(rumbo_circuito_estado{dependencia="operaciones"}) (evaluada en 2026-11-23T19:33:18Z)
+    {} = 0
+
+Valor acumulado del contador por réplica (increase() no cuenta el primer incremento de una serie que nace en 1):
+  consulta: sum by (job, service_instance_id, operacion) (rumbo_reintentos_total{dependencia="operaciones"}) (evaluada en 2026-11-23T19:33:18Z)
+    {'job': 'integracion', 'operacion': 'reserva', 'service_instance_id': 'integracion-1'} = 2
+    {'job': 'integracion', 'operacion': 'disponibilidad', 'service_instance_id': 'integracion-2'} = 1

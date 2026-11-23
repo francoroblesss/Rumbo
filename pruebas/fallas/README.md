@@ -10,6 +10,7 @@ Scripts de la prueba de falla que pide la consigna (§2.9): se tira abajo Operac
 | `resumir.mjs` | Cuenta los estados HTTP por minuto y por operación de `k6.json`, con la duración de las reservas y los hitos (primer y último `503`, primer `201` al volver), y escribe `resumen.md` |
 | `logs.sh` | Saca del MySQL de logs, con el usuario de solo lectura de Grafana, los `WARN` y `ERROR` de Integración y del gateway, los cambios del breaker y los `INFO` de Operaciones al volver, entre el inicio y el fin de k6. Lo llama `caida.sh` |
 | `verificar-reservas.sh` | Cruza las claves de k6 (y los reintentos) con MySQL de Operaciones: cada `201` tiene una sola fila de clave y una sola solicitud, y ninguna clave que recibió solo `503` dejó una reserva |
+| `reintentos.sh` | Prueba del reintento de Integración a Operaciones ([ADR-035](../../docs/adr/ADR-035-reintento-integracion-operaciones.md)): k6 con `caida-operaciones.js` durante 4 min y, en los minutos 1, 2 y 3, `docker compose pause operaciones` 1,5 s. Al terminar, los reintentos por operación y el estado del breaker (Prometheus), los `WARN` de reintento del MySQL de logs y el resumen de k6, en `docs/evidencias/reintentos-integracion/` |
 
 ## Cómo correrlo
 Requisitos: Docker y Node.js 22 (para `reintentar.mjs` y `resumir.mjs`). Se corre **en local**, nunca contra la nube.
@@ -37,3 +38,11 @@ EVIDENCIAS=docs/evidencias/caida-disponibilidad bash pruebas/fallas/verificar-re
 ```
 
 Memoria: con observabilidad, el sistema usa cerca de 4 GB. Conviene cerrar otras aplicaciones y no compilar nada mientras corre.
+
+## Reintento de Integración a Operaciones
+Es la "validación del endpoint" del reintento del lado del servidor ([ADR-035](../../docs/adr/ADR-035-reintento-integracion-operaciones.md)): se congela Operaciones un instante mientras hay tráfico real por el gateway y se muestra que el consumidor no se entera, porque Integración reintenta (1 s por intento, 3 intentos con backoff exponencial y jitter, tope de 4 s) con la misma `Idempotency-Key`. Las salidas quedan en [`docs/evidencias/reintentos-integracion/`](../../docs/evidencias/reintentos-integracion/).
+
+1. Con observabilidad activa y cupo alto, como en el postmortem (pasos 1 y 2 de arriba).
+2. Desde la raíz: `bash pruebas/fallas/reintentos.sh` (~5 min). Deja `linea-temporal.txt` (hora UTC de cada pausa y de cada vuelta), `k6.json`, `k6-salida.txt`, `metricas.txt` (`rumbo_reintentos_total` por operación y `rumbo_circuito_estado`), `logs.txt` (`reintento a Operaciones` y `no se pudo llamar a Operaciones`) y `resumen.md`.
+3. Con el sistema todavía levantado: `EVIDENCIAS=docs/evidencias/reintentos-integracion bash pruebas/fallas/verificar-reservas.sh > docs/evidencias/reintentos-integracion/reservas.txt`. Ninguna clave puede tener dos solicitudes.
+4. `docker compose down`.

@@ -66,7 +66,8 @@ func main() {
 	if cfg.MemcachedAddr == "" {
 		slog.InfoContext(ctx, "caché deshabilitada", slog.String("motivo", "MEMCACHED_ADDR vacío"))
 	}
-	// Cliente hacia Operaciones con timeout de 2 s y circuit breaker (ADR-008).
+	// Cliente hacia Operaciones con timeout de 1 s por intento, circuit breaker (ADR-008) y
+	// reintento con backoff exponencial y jitter (ADR-035).
 	operaciones := clients.NewOperacionesClient(cfg.OperacionesURL)
 	servicio := services.NewSolicitudesService(repo, operaciones, time.Now)
 	controlador := controllers.NewTrasladosController(servicio)

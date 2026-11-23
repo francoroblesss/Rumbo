@@ -66,7 +66,7 @@ Los `codigo` del contrato público son los de [`contracts/README.md`](contracts/
 ## 4. Endpoints internos (no pasan por el gateway público)
 
 ### 4.1 Operaciones — usados por Integración de carga (capacidad publicada, ADR-021)
-Base: `OPERACIONES_URL` (en Docker, `http://operaciones:8082`). Headers: `X-Correlation-ID` y `traceparent` (los agrega `comun/observabilidad`); en los `POST`, además, `X-Rumbo-Organizacion` e `Idempotency-Key` (**la misma que mandó el consumidor externo**). Timeout del cliente: **2 s**, circuit breaker y sin reintento propio (ADR-004, ADR-008).
+Base: `OPERACIONES_URL` (en Docker, `http://operaciones:8082`). Headers: `X-Correlation-ID` y `traceparent` (los agrega `comun/observabilidad`); en los `POST`, además, `X-Rumbo-Organizacion` e `Idempotency-Key` (**la misma que mandó el consumidor externo**). Timeout del cliente: **1 s por intento**, hasta **3 intentos** con backoff exponencial y jitter (200 ms, ×2, ±50 %, tope total de **4 s**) ante error de red, timeout, `502`, `503` o `504`, y circuit breaker; un `4xx`, un `500` o el breaker abierto no se reintentan. Los `POST` repiten la **misma** `Idempotency-Key` en cada intento ([ADR-035](adr/ADR-035-reintento-integracion-operaciones.md)).
 
 | Método y ruta | Cuerpo | Respuesta |
 | --- | --- | --- |
@@ -221,6 +221,7 @@ Todos los servicios Gin registran automáticamente, con `observabilidad.Instrume
 | `rumbo_traslados_estado_total` | contador | `estado` | Operaciones (una vez por transición aplicada, §12) |
 | `rumbo_indexacion_demora_segundos` | histograma | — | Operaciones (indexador de Solr, §16) |
 | `rumbo_cache_lectura_duracion_segundos` | histograma | `cache`, `resultado` (`hit`, `miss`, `error`) | Integración (consulta por id con Memcached) |
+| `rumbo_reintentos_total` | contador | `dependencia`, `operacion` | Integración (`operaciones`: `disponibilidad`, `reserva`, `cancelacion`; ADR-035), Operaciones (`clima`: `condiciones`; ADR-034) |
 
 ## 9. Trazas
 OpenTelemetry (`go.opentelemetry.io/otel`), exportadas por OTLP a `OTEL_EXPORTER_OTLP_ENDPOINT` (en Docker, `http://lgtm:4318`). Propagación **W3C Trace Context**:

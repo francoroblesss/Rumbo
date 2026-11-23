@@ -41,6 +41,7 @@ Cada decisión se conserva en un archivo independiente `ADR-NNN-titulo-corto.md`
 | [ADR-032](ADR-032-contrato-clima-2-1.md) | Copia fijada del contrato de clima 2.1.0 del proveedor (suma el `500 INTERNAL_ERROR`, compatible; el adaptador no cambia) (reemplaza parcialmente a ADR-020) |
 | [ADR-033](ADR-033-busqueda-todas-las-palabras.md) | La búsqueda exige todas las palabras del texto (`mm=100%`); el orden por defecto sigue siendo por fecha (reemplaza parcialmente a ADR-011) |
 | [ADR-034](ADR-034-clima-visible-en-la-web.md) | Las condiciones actuales del aeropuerto se muestran en la web (`GET /clima` en Operaciones con el mismo adaptador y la misma caché; `503` honesto si el clima no responde) |
+| [ADR-035](ADR-035-reintento-integracion-operaciones.md) | Integración reintenta sus llamadas a Operaciones (3 intentos de 1 s, backoff exponencial con jitter, tope de 4 s, misma `Idempotency-Key`), solo ante fallas transitorias y nunca con el breaker abierto (reemplaza parcialmente a ADR-004 y ADR-008) |
 
 ## Formato
 ```

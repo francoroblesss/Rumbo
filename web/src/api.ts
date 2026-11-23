@@ -8,6 +8,7 @@
 
 import type {
   Aviso,
+  ClimaAeropuerto,
   DiaDeFranjas,
   Pagina,
   Perfil,
@@ -237,6 +238,12 @@ export function buscarTraslados(filtros: FiltrosBusqueda): Promise<Pagina<Result
 
 export function reconstruirIndice(): Promise<{ estado: string }> {
   return pedir<{ estado: string }>('/api/operaciones/admin/reindexacion', { metodo: 'POST' })
+}
+
+// ---------------- Clima (§13.5) ----------------
+
+export function obtenerClima(): Promise<ClimaAeropuerto> {
+  return pedir<ClimaAeropuerto>('/api/operaciones/clima')
 }
 
 // ---------------- Notificaciones (§14) ----------------

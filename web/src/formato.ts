@@ -1,5 +1,7 @@
 // Formato de fechas y textos en la hora de Argentina (docs/interfaces-internas.md §11.1).
 
+import type { ClimaAeropuerto } from './tipos'
+
 const ZONA = 'America/Argentina/Cordoba'
 
 const formatoFechaHora = new Intl.DateTimeFormat('es-AR', {
@@ -63,4 +65,35 @@ export const ESTADOS_TRASLADO = Object.entries(TEXTO_ESTADO).map(([value, label]
 /** Texto en español del estado del traslado. */
 export function textoEstado(estado: string): string {
   return TEXTO_ESTADO[estado] ?? estado
+}
+
+// ---------------- Clima (§13.5, ADR-034) ----------------
+
+// Límites operativos del proveedor (contrato de clima 2.1.0): más de 50 km/h de viento, más de
+// 65 km/h de ráfagas o menos de 800 m de visibilidad hacen que el aeropuerto no sea operable.
+export const LIMITE_VIENTO_KMH = 50
+export const LIMITE_RAFAGAS_KMH = 65
+export const LIMITE_VISIBILIDAD_M = 800
+
+export const MOTIVOS_CLIMA: Record<string, string> = {
+  HIGH_WIND: 'Viento fuerte',
+  HIGH_GUSTS: 'Ráfagas fuertes',
+  LOW_VISIBILITY: 'Baja visibilidad',
+  THUNDERSTORM: 'Tormenta eléctrica',
+}
+
+export type CondicionClima = 'TORMENTA' | 'VIENTO' | 'BAJA_VISIBILIDAD' | 'LLUVIA' | 'BUENO'
+
+/**
+ * Condición para el ícono de la tarjeta; gana la primera que se cumple. Viento y visibilidad salen
+ * de los motivos del proveedor, no de umbrales propios: así la web nunca contradice si el
+ * aeropuerto es operable. Sin dato de nubosidad no se puede decir "soleado": BUENO es "sin
+ * fenómenos adversos".
+ */
+export function condicionClima(c: ClimaAeropuerto): CondicionClima {
+  if (c.condiciones.tormenta || c.motivos.includes('THUNDERSTORM')) return 'TORMENTA'
+  if (c.motivos.includes('HIGH_WIND') || c.motivos.includes('HIGH_GUSTS')) return 'VIENTO'
+  if (c.motivos.includes('LOW_VISIBILITY')) return 'BAJA_VISIBILIDAD'
+  if (c.condiciones.precipitacion_mm > 0) return 'LLUVIA'
+  return 'BUENO'
 }

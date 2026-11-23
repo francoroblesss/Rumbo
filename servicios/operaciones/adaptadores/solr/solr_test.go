@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -128,12 +129,11 @@ func TestSolr(t *testing.T) {
 		b.DestinoDireccion = "Naciones Unidas 346"
 		indexar(t, c, a, b)
 		casos := []struct{ q, id string }{
-			{"CAJA", "sol-texto-1"},            // mayúsculas y singular encuentran "Cajas"
-			{"mercaderia", "sol-texto-2"},      // sin tilde encuentra "mercadería"
-			{"hospital", "sol-texto-2"},        // una palabra del destino
-			{"Naciones", "sol-texto-2"},        // una palabra de la dirección
-			{"TRF-2026-00123", "sol-texto-1"},  // la referencia externa
-			{"camión Hospital", "sol-texto-2"}, // una palabra que no está no impide encontrar
+			{"CAJA", "sol-texto-1"},           // mayúsculas y singular encuentran "Cajas"
+			{"mercaderia", "sol-texto-2"},     // sin tilde encuentra "mercadería"
+			{"hospital", "sol-texto-2"},       // una palabra del destino
+			{"Naciones", "sol-texto-2"},       // una palabra de la dirección
+			{"TRF-2026-00123", "sol-texto-1"}, // la referencia externa
 		}
 		for _, cs := range casos {
 			docs, _ := buscar(t, c, puertos.FiltroBusqueda{Texto: cs.q, Organizacion: org})
@@ -141,13 +141,18 @@ func TestSolr(t *testing.T) {
 				t.Errorf("q=%q: %v, se esperaba %s primero", cs.q, ids(docs), cs.id)
 			}
 		}
+		// Una palabra que no está en ningún campo deja sin resultados: tienen que estar todas (ADR-033).
+		if docs, total := buscar(t, c, puertos.FiltroBusqueda{Texto: "camión Hospital", Organizacion: org}); total != 0 {
+			t.Errorf("q=\"camión Hospital\": %v, no se esperaba ninguno", ids(docs))
+		}
 	})
 
 	t.Run("relevancia: lo que tiene las dos palabras va primero", func(t *testing.T) {
 		org := "org-relevancia"
 		una := doc("sol-rel-1", org)
 		una.Descripcion = "Sillas"
-		una.FranjaInicio = momento(18, 13) // por fecha iría primero
+		una.DestinoNombre = "Oficina Centro" // tiene las dos palabras, pero "oficina" en un campo de menos peso
+		una.FranjaInicio = momento(18, 13)   // por fecha iría primero
 		dos := doc("sol-rel-2", org)
 		dos.Descripcion = "Sillas de oficina"
 		dos.FranjaInicio = momento(25, 13)
@@ -159,6 +164,38 @@ func TestSolr(t *testing.T) {
 		docs, _ = buscar(t, c, puertos.FiltroBusqueda{Texto: "sillas oficina", Organizacion: org, Orden: puertos.OrdenFecha})
 		if !iguales(ids(docs), []string{"sol-rel-1", "sol-rel-2"}) {
 			t.Fatalf("por fecha: %v", ids(docs))
+		}
+	})
+
+	t.Run("todas las palabras del texto tienen que aparecer", func(t *testing.T) {
+		org := "org-palabras"
+		grafana := doc("sol-palabras-1", org)
+		grafana.Descripcion = "Caja Grafana"
+		herramientas := doc("sol-palabras-2", org)
+		herramientas.Descripcion = "Caja de herramientas"
+		vidrio := doc("sol-palabras-3", org)
+		vidrio.Descripcion = "Cajas de vidrio"
+		indexar(t, c, grafana, herramientas, vidrio)
+		casos := []struct {
+			q   string
+			ids []string
+		}{
+			{"caja grafana", []string{"sol-palabras-1"}},
+			{"CAJA Grafana", []string{"sol-palabras-1"}},
+			{"cajas grafana", []string{"sol-palabras-1"}},   // el plural se reduce igual
+			{"caja de grafana", []string{"sol-palabras-1"}}, // "de" es stopword
+			{"caja", []string{"sol-palabras-1", "sol-palabras-2", "sol-palabras-3"}},
+			{"caja herramientas", []string{"sol-palabras-2"}},
+			{"caja inexistente", []string{}},
+		}
+		for _, cs := range casos {
+			// Por fecha, como pedía la web: el que no tiene todas las palabras no tiene que entrar.
+			docs, total := buscar(t, c, puertos.FiltroBusqueda{Texto: cs.q, Organizacion: org, Orden: puertos.OrdenFecha, Limite: 10})
+			obtenidos := ids(docs)
+			slices.Sort(obtenidos)
+			if total != len(cs.ids) || !iguales(obtenidos, cs.ids) {
+				t.Errorf("q=%q: total = %d, ids = %v; se esperaba %v", cs.q, total, obtenidos, cs.ids)
+			}
 		}
 	})
 

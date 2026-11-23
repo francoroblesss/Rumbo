@@ -25,13 +25,19 @@ import (
 // MySQL falla, el log se descarta y se cuenta en rumbo_logs_descartados_total; igual queda en
 // stdout (docker compose logs).
 const (
-	TamanioColaLogs  = 1000            // logs esperando a ser insertados
-	TamanioLoteLogs  = 100             // filas por INSERT
-	IntervaloLogs    = time.Second     // cada cuánto se inserta lo acumulado
-	TimeoutLoteLogs  = 2 * time.Second // tope de cada INSERT
-	largoMaxMensaje  = 1000            // columna logs.mensaje
-	intervaloAvisos  = time.Minute     // como mucho un aviso por minuto de que se descartan logs
-	conexionesMaxima = 2               // el MySQL de logs no puede quedarse sin conexiones (ADR-023)
+	TamanioColaLogs = 1000            // logs esperando a ser insertados
+	TamanioLoteLogs = 100             // filas por INSERT
+	IntervaloLogs   = time.Second     // cada cuánto se inserta lo acumulado
+	TimeoutLoteLogs = 2 * time.Second // tope de cada INSERT
+	largoMaxMensaje = 1000            // columna logs.mensaje
+	// Los demás valores también se recortan al largo de su columna: el INSERT de un lote es una
+	// sola sentencia, y una fila que no entra hace que MySQL rechace el lote entero.
+	largoMaxCorrelacion = 64          // columna logs.correlation_id
+	largoMaxTraza       = 32          // columna logs.trace_id
+	largoMaxServicio    = 32          // columna logs.servicio
+	largoMaxInstancia   = 64          // columna logs.instancia
+	intervaloAvisos     = time.Minute // como mucho un aviso por minuto de que se descartan logs
+	conexionesMaxima    = 2           // el MySQL de logs no puede quedarse sin conexiones (ADR-023)
 )
 
 // filaLog es una fila de la tabla logs.
@@ -148,17 +154,18 @@ func (m manejadorMySQL) Enabled(_ context.Context, nivel slog.Level) bool {
 }
 
 func (m manejadorMySQL) Handle(_ context.Context, r slog.Record) error {
-	f := filaLog{CreadoEn: r.Time.UTC(), Nivel: r.Level.String(), Servicio: m.servicio, Instancia: m.instancia,
-		Mensaje: recortar(r.Message, largoMaxMensaje)}
+	f := filaLog{CreadoEn: r.Time.UTC(), Nivel: r.Level.String(), Servicio: recortar(m.servicio, largoMaxServicio),
+		Instancia: recortar(m.instancia, largoMaxInstancia), Mensaje: recortar(r.Message, largoMaxMensaje)}
 	resto := map[string]any{}
 	// correlation_id y trace_id los agrega manejadorContexto al registro: van a sus columnas sin
 	// importar el grupo en el que se logueó.
 	agregar := func(prefijo string, a slog.Attr) {
 		switch v := a.Value.Resolve(); a.Key {
 		case "correlation_id":
-			f.CorrelationID = v.String()
+			// Llega del consumidor en X-Correlation-ID, sin límite de largo.
+			f.CorrelationID = recortar(v.String(), largoMaxCorrelacion)
 		case "trace_id":
-			f.TraceID = v.String()
+			f.TraceID = recortar(v.String(), largoMaxTraza)
 		default:
 			resto[prefijo+a.Key] = valor(v)
 		}

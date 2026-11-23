@@ -67,7 +67,7 @@ export function Buscar() {
         <Stack>
           <TextInput
             label="Texto"
-            description="Descripción, origen, destino o referencia externa"
+            description="Descripción, origen, destino o referencia externa. Se muestran los traslados que tienen todas las palabras."
             value={formulario.q}
             onChange={(e) => cambiar('q', e.currentTarget.value)}
           />

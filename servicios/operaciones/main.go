@@ -90,6 +90,8 @@ func main() {
 	router.Use(identidad.ExigirSecretoInterno())
 	api.NuevoHandler(solicitudes).Registrar(router)
 	api.NuevoHandlerBusqueda(busqueda).Registrar(router) // sin motor responde 503
+	// Clima actual para la web (§13.5): el mismo adaptador y la misma caché que las reservas.
+	api.NuevoHandlerClima(aplicacion.NuevoClimaActual(consultaClima, cfg.ClimaICAO)).Registrar(router)
 
 	publicador := adaptadormensajeria.NuevoPublicador(conexionRabbit)
 	defer publicador.Cerrar()

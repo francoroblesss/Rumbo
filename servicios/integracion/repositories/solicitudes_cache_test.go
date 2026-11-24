@@ -15,6 +15,7 @@ type cacheFalsa struct {
 	ttls   map[string]time.Duration
 	caida  bool
 	borros []string
+	sets   int
 }
 
 func nuevaCacheFalsa() *cacheFalsa {
@@ -31,6 +32,7 @@ func (c *cacheFalsa) Get(clave string) ([]byte, error) {
 }
 
 func (c *cacheFalsa) Set(clave string, valor []byte, ttl time.Duration) error {
+	c.sets++
 	if c.caida {
 		return errCaida
 	}
@@ -97,6 +99,9 @@ func TestCacheCaidaDegradaAMongo(t *testing.T) {
 	}
 	if mock.LecturasPorID != 1 {
 		t.Fatal("se tenía que leer de MongoDB")
+	}
+	if cache.sets != 0 {
+		t.Fatalf("con la lectura fallida no se intenta guardar (pagaría otro timeout): %d Set", cache.sets)
 	}
 }
 

@@ -20,7 +20,7 @@ Rumbo es una plataforma única de gestión operativa de **traslados programados 
 - Búsqueda de traslados.
 - Preliquidación mensual de choferes.
 - Capacidad publicada para otros sistemas: **Reservar traslado** de una cosa desde un origen hasta un destino en una franja, de autoservicio (`docs/contracts/`, versión vigente 4.0.1).
-- Consumo de condiciones climáticas del sistema de aeropuerto: alerta climática en los traslados al aeropuerto (F-29, R-46; ADR-012 y ADR-025).
+- Consumo de condiciones climáticas del sistema de aeropuerto: alerta climática en los traslados al aeropuerto (F-29, R-46; ADR-012 y ADR-025) y condiciones actuales visibles en la web (F-32, ADR-034).
 
 ### 1.3 Fuera de alcance
 - Facturación y cobros a clientes, incluidas multas por cancelación.
@@ -98,6 +98,7 @@ Rumbo es una plataforma única de gestión operativa de **traslados programados 
 | F-29 | **Alerta climática en traslados al aeropuerto** con la capacidad de clima del sistema de aeropuerto (consulta al aceptar y al iniciar el recorrido) | R-41 |
 | F-30 | **Operador: ver las franjas de un día con su ocupación y los traslados reservados, y avanzar su estado** (`PROGRAMADO` → `EN_CURSO` → `COMPLETADO`) | R-43, R-46, R-47 |
 | F-31 | **Cliente de una organización: consultar en la web los traslados que reservó su organización y cancelarlos** | R-45, R-47 |
+| F-32 | **Ver en la web las condiciones climáticas actuales del aeropuerto** (temperatura, viento, ráfagas, visibilidad, precipitación, tormenta y si es operable), para el operador, el cliente y el administrador | R-46 |
 
 ## 4. Reglas de negocio
 
@@ -265,6 +266,9 @@ RECIBIDA ──operador──> ACEPTADA                   (crea traslados o plan
 - **CA-41** (F-26, bonus) **Dada** la pantalla del operador abierta, **cuando** el sistema externo reserva una franja, **entonces** el aviso "Reserva nueva" aparece en menos de 2 s sin recargar, y la lista de traslados se actualiza sola.
 - **CA-42** (F-26) **Dado** un evento entregado dos veces, **cuando** Notificaciones lo procesa, **entonces** hay un solo aviso; un mensaje ilegible va a la DLQ `notificaciones.avisos.dlq`.
 - **CA-43** (F-27) **Dado** un traslado que cambia de estado, **cuando** pasan 5 s, **entonces** la búsqueda lo devuelve con el estado nuevo; con Solr detenido, la búsqueda responde `503` y avanzar estados sigue funcionando.
+- **CA-44** (F-27) **Dados** traslados con "Caja Grafana", "Caja de herramientas" y "Caja de vidrio", **cuando** se busca "caja grafana" (desde la web o la API, con cualquier orden), **entonces** solo vuelven los traslados que tienen **todas** las palabras; "caja" devuelve los tres (ADR-033).
+- **CA-45** (F-32) **Dado** el operador en la página de traslados, **cuando** el proveedor de clima responde, **entonces** ve una tarjeta con las condiciones actuales del aeropuerto y si es operable; **con el proveedor caído**, la tarjeta dice "Clima no disponible" y nunca muestra un clima inventado o viejo como actual (ADR-034).
+- **CA-46** (F-28) **Dado** Operaciones que deja de responder por menos de 2 s, **cuando** el sistema externo reserva en ese momento, **entonces** recibe el `201` (Integración reintenta con la misma `Idempotency-Key`) y la reserva se registra una sola vez (ADR-035).
 
 ## 6 bis. Implementación para la Presentación
 Qué se implementa para la Presentación Grupal y qué queda documentado sin implementar ([ADR-024](docs/adr/ADR-024-alcance-de-la-presentacion.md)). Cada integrante actualiza la columna "Estado" de sus filas cuando su PR se mergea.
@@ -281,6 +285,7 @@ Qué se implementa para la Presentación Grupal y qué queda documentado sin imp
 | F-29 | Implementada (ADR-025) | Llanca |
 | F-30 | Implementada | Llanca (API), Delap (web) |
 | F-31 | Implementada | Llanca (API), Delap (web) |
+| F-32 | Implementada (ADR-034) | Llanca |
 
 Roles de la web en esta etapa: **operador**, **cliente de organización** y **administrador** (reindexar la búsqueda). Sin rol chofer (ADR-024).
 
@@ -305,3 +310,4 @@ Estado (2026-11-10): **Tiempo real** implementado (Sofia, [ADR-027](docs/adr/ADR
 | 2026-11-06 | R-41 reemplazada por R-46: el aeropuerto se detecta por nombre o dirección y el clima se consulta después de la reserva y al pasar a `EN_CURSO`. CA-30 y CA-31 reemplazados por CA-35 y CA-36 | Las reservas no pasan por un operador que acepte (ADR-025) |
 | 2026-11-06 | R-47: ciclo reducido del traslado, avanzado por el operador. CA-37 a CA-43 | ADR-024, ADR-027 |
 | 2026-11-10 | Alcance (§1.2) al día: contrato vigente 4.0.1 y consumo del clima definido (F-29, R-46). Estado de los bonus: tiempo real implementado | Revisión de la documentación para la Presentación |
+| 2026-11-23 | Se agregan F-32 (clima en la web) y CA-44 a CA-46 (búsqueda con todas las palabras, clima en la web y reintento de la reserva) | Devolución de la Presentación Grupal (ADR-033, ADR-034 y ADR-035) |

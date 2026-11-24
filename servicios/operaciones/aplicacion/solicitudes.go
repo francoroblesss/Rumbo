@@ -50,6 +50,13 @@ func NuevasSolicitudes(uow puertos.UnidadDeTrabajo, clima puertos.ConsultaClima,
 		metric.WithDescription("Transiciones de estado del traslado aplicadas desde la web, por estado resultante"))
 	climaConsultas, _ := medidor.Int64Counter("rumbo_clima_consultas_total",
 		metric.WithDescription("Consultas de clima por resultado y momento (reserva o inicio)"))
+	// Cada serie arranca en 0 para que increase() cuente la primera consulta (panel 9).
+	for _, momento := range []string{momentoReserva, momentoInicio} {
+		for _, resultado := range []string{"operable", "no_operable", "no_verificado"} {
+			climaConsultas.Add(context.Background(), 0, metric.WithAttributes(
+				attribute.String("resultado", resultado), attribute.String("momento", momento)))
+		}
+	}
 	return &Solicitudes{uow: uow, clima: clima, icao: icao, palabras: palabras, calendario: calendario, reloj: reloj,
 		instancia: instancia, solicitudesTotal: solicitudesTotal, trasladosEstado: trasladosEstado, climaConsultas: climaConsultas}
 }

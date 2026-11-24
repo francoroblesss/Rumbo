@@ -73,6 +73,9 @@ func NuevoCliente(baseURL, apiKey, prefer string) *Cliente {
 		metric.WithDescription("Reintentos de llamadas salientes, por dependencia y operación"))
 	dependencia := metric.WithAttributes(attribute.String("dependencia", nombreDependencia))
 	estadoCircuito.Record(context.Background(), int64(gobreaker.StateClosed), dependencia)
+	// La serie arranca en 0 para que increase() cuente el primer reintento (panel 18).
+	reintentos.Add(context.Background(), 0, metric.WithAttributes(
+		attribute.String("dependencia", nombreDependencia), attribute.String("operacion", "condiciones")))
 
 	return &Cliente{
 		url:    baseURL,

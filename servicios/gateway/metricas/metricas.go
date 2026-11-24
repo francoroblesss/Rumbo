@@ -21,6 +21,15 @@ const (
 var rechazos, _ = observabilidad.Medidor().Int64Counter("rumbo_gateway_rechazos_total",
 	metric.WithDescription("Pedidos rechazados por el gateway, por motivo"))
 
+// IniciarSeries arranca cada serie en 0 (ADR-036): si naciera con el primer rechazo, Prometheus no
+// tendría una muestra anterior e increase() no lo contaría (un 401 suelto no se vería en el panel
+// 10). Se llama después de observabilidad.Iniciar: antes, lo medido se pierde.
+func IniciarSeries(ctx context.Context) {
+	for _, motivo := range []string{MotivoNoAutenticado, MotivoLimite, MotivoInterna} {
+		rechazos.Add(ctx, 0, metric.WithAttributes(attribute.String("motivo", motivo)))
+	}
+}
+
 // Rechazo cuenta un pedido rechazado por el gateway.
 func Rechazo(ctx context.Context, motivo string) {
 	rechazos.Add(ctx, 1, metric.WithAttributes(attribute.String("motivo", motivo)))

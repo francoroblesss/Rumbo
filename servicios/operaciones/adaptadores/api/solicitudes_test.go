@@ -207,6 +207,23 @@ func TestMapeoDeErrores(t *testing.T) {
 	}
 }
 
+// Con el contexto del pedido cancelado (el que llamó cortó por su timeout y reintenta), el error
+// no se informa como 503: se registra 499 y no cuenta como falla de Operaciones (ADR-035).
+func TestClienteQueSeFueNoEsUn503(t *testing.T) {
+	ctx, cancelar := context.WithCancel(context.Background())
+	cancelar()
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	NuevoHandler(&casosFalsos{err: context.Canceled}).Registrar(r)
+	req := httptest.NewRequest(http.MethodPost, "/solicitudes/sol-1/estado", strings.NewReader(`{"estado":"COMPLETADO"}`)).WithContext(ctx)
+	req.Header.Set("X-Rumbo-Roles", "operador")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != EstadoClienteSeFue {
+		t.Fatalf("estado = %d, se esperaba %d", w.Code, EstadoClienteSeFue)
+	}
+}
+
 func TestAvanzarEstado(t *testing.T) {
 	f := &casosFalsos{}
 	w, _ := pedir(t, f, http.MethodPost, "/solicitudes/sol-1/estado", `{"estado":"EN_CURSO"}`, operador)

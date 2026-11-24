@@ -1,7 +1,7 @@
 # ADR-007 — Caché en las consultas de traslados del contrato público (D7)
 
 - **Fecha:** 2026-10-14
-- **Estado:** aceptada
+- **Estado:** aceptada — el guardado después de una lectura fallida queda **reemplazado por [ADR-036](ADR-036-ajustes-de-observabilidad-para-el-final.md)**: si `Get` falló, no se intenta el `Set`. El resto sigue vigente.
 
 ## Contexto
 La consigna (§2.7) pide caché en **al menos un flujo de lectura relevante**, elegida por una **necesidad observable** y con **métricas que muestren su impacto**. El profesor pidió además no implementar cachés propias: usar las herramientas vistas en clase.

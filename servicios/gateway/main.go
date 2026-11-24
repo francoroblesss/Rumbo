@@ -16,6 +16,7 @@ import (
 	"github.com/francoroblesss/Rumbo/servicios/gateway/despertar"
 	"github.com/francoroblesss/Rumbo/servicios/gateway/entrada"
 	"github.com/francoroblesss/Rumbo/servicios/gateway/limite"
+	"github.com/francoroblesss/Rumbo/servicios/gateway/metricas"
 	"github.com/francoroblesss/Rumbo/servicios/gateway/proxy"
 )
 
@@ -29,6 +30,7 @@ func main() {
 		terminar("no se pudo iniciar la observabilidad", err)
 	}
 	defer apagar(context.Background())
+	metricas.IniciarSeries(ctx)
 
 	cfg := config.Cargar()
 

@@ -43,7 +43,7 @@ services:
     ports:
       - "13306:3306" # en el host 13306, para no chocar con un MySQL instalado localmente
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
       interval: 5s
       timeout: 3s
       retries: 30
@@ -107,7 +107,7 @@ services:
       - ./infra/mysql-logs:/docker-entrypoint-initdb.d:ro
     command: ["--innodb-buffer-pool-size=64M", "--performance-schema=OFF"]
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
       interval: 5s
       timeout: 3s
       retries: 30

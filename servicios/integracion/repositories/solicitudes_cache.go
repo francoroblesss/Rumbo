@@ -77,8 +77,9 @@ func (c *SolicitudesCache) BuscarPorID(ctx context.Context, organizacionID, id s
 
 	clave := ClaveSolicitud(organizacionID, id)
 	valor, err := c.cache.Get(clave)
+	lecturaFallida := err != nil
 	switch {
-	case err != nil:
+	case lecturaFallida:
 		resultado = "error"
 		c.degradar(ctx, "leer", clave, err)
 	case valor != nil:
@@ -98,6 +99,11 @@ func (c *SolicitudesCache) BuscarPorID(ctx context.Context, organizacionID, id s
 	s, err := c.siguiente.BuscarPorID(ctx, organizacionID, id)
 	if err != nil {
 		return s, err
+	}
+	// Si la lectura ya falló, Memcached está caído o lento: guardar pagaría otro timeout de 100 ms
+	// para nada (la consulta pasaba de ~120 a ~240 ms). Se prueba de nuevo en la próxima lectura.
+	if lecturaFallida {
+		return s, nil
 	}
 	if crudo, errJSON := json.Marshal(s); errJSON == nil {
 		// Jitter en el TTL para que las claves no venzan todas juntas (cache stampede).

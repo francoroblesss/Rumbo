@@ -72,6 +72,11 @@ type destinoLogs struct {
 func nuevoDestinoLogs(escritor escritorLogs, avisos *slog.Logger) *destinoLogs {
 	descartados, _ := Medidor().Int64Counter("rumbo_logs_descartados_total",
 		metric.WithDescription("Logs que no se pudieron guardar en MySQL, por motivo"))
+	// Cada serie arranca en 0: si naciera con el primer descarte, Prometheus no tendría una muestra
+	// anterior e increase() no lo contaría (el panel 13 quedaría en 0 justo cuando importa).
+	for _, motivo := range []string{"cola_llena", "mysql"} {
+		descartados.Add(context.Background(), 0, metric.WithAttributes(attribute.String("motivo", motivo)))
+	}
 	return &destinoLogs{filas: make(chan filaLog, TamanioColaLogs), escritor: escritor, avisos: avisos,
 		descartados: descartados, terminado: make(chan struct{})}
 }

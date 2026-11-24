@@ -12,14 +12,15 @@ Rumbo presta servicios de traslado a organizaciones (clínicas, colegios, empres
 - registrar la actividad de los choferes para su preliquidación mensual.
 
 ## Flujo principal
-El dominio completo (solicitudes, planificación de recorridos, asignación de chofer y vehículo, ejecución, incidentes y preliquidación) está en [`SPEC.md`](SPEC.md). Para la **Presentación Grupal** se implementa el flujo de las **reservas de franjas** ([ADR-024](docs/adr/ADR-024-alcance-de-la-presentacion.md)):
+El dominio completo (solicitudes, planificación de recorridos, asignación de chofer y vehículo, ejecución, incidentes y preliquidación) está en [`SPEC.md`](SPEC.md). Para la **Presentación Grupal** se implementó el flujo de las **reservas de franjas** ([ADR-024](docs/adr/ADR-024-alcance-de-la-presentacion.md)), y para la **Defensa Individual (examen final)** se sumaron los cambios pedidos en su devolución ([ADR-033](docs/adr/ADR-033-busqueda-todas-las-palabras.md) a [ADR-036](docs/adr/ADR-036-ajustes-de-observabilidad-para-el-final.md), resumen en [`docs/evidencias/final.md`](docs/evidencias/final.md)):
 
 1. Un **sistema externo** (el de gestión de almacenamiento, de otro grupo) consulta las franjas con lugar y **reserva el traslado** de una cosa desde un origen hasta un destino, por API y con respuesta inmediata, con el contrato publicado en [`docs/contracts/`](docs/contracts/README.md) (versión vigente: 4.0.1; las rutas no llevan versión, ADR-019).
-2. Si el traslado va o viene del aeropuerto, Rumbo revisa el **clima** con el servicio de otro grupo y marca una alerta si no es operable ([ADR-025](docs/adr/ADR-025-clima-en-las-reservas.md)).
+2. Si el traslado va o viene del aeropuerto, Rumbo revisa el **clima** con el servicio de otro grupo y marca una alerta si no es operable ([ADR-025](docs/adr/ADR-025-clima-en-las-reservas.md)). Las condiciones actuales del aeropuerto también se ven en la web ([ADR-034](docs/adr/ADR-034-clima-visible-en-la-web.md)).
+   Si Operaciones corta por un momento, Integración reintenta la reserva con la misma `Idempotency-Key` y el sistema externo no se entera ([ADR-035](docs/adr/ADR-035-reintento-integracion-operaciones.md)).
 3. El **operador** ve en la web las franjas con su ocupación y los traslados reservados, y los avanza: `EN_CURSO` → `COMPLETADO`.
 4. El sistema externo consulta su traslado y lo ve avanzar; un **usuario de esa organización** lo ve en la web y puede cancelarlo.
 5. **Notificaciones** avisa en tiempo real al operador y a la organización ([ADR-027](docs/adr/ADR-027-avisos-en-tiempo-real.md)).
-6. Operador y cliente **buscan traslados** con texto libre y filtros ([ADR-011](docs/adr/ADR-011-busqueda.md)).
+6. Operador y cliente **buscan traslados** con texto libre y filtros; el texto exige todas sus palabras ([ADR-011](docs/adr/ADR-011-busqueda.md), [ADR-033](docs/adr/ADR-033-busqueda-todas-las-palabras.md)).
 
 ## Ejecución local
 Requisitos: Docker Desktop (con Docker Compose v2). Para desarrollar sin Docker: Go 1.26+ (o cualquier Go ≥ 1.21, que descarga la 1.26 solo) y Node.js 22.
@@ -78,7 +79,7 @@ Se despliega en **Render**, plan gratuito, con el Blueprint [`render.yaml`](rend
 
 - Solo el gateway se usa desde afuera. Los servicios tienen URL propia en Render, pero sin el secreto interno que pone el gateway responden `401` ([ADR-026](docs/adr/ADR-026-despliegue-en-render.md)).
 - Los secretos (`SECRETO_INTERNO`, `TOKEN_SECRETO`, credenciales de las bases y del broker) se cargan en el panel de Render; nunca están en el repositorio.
-- **Siempre despierta durante la evaluación:** en el plan gratuito un servicio se duerme a los 15 minutos sin tráfico, y solo lo despierta un pedido desde internet (no el de otro servicio de Render). Por eso un monitor externo (UptimeRobot) le pide `/salud` a los cuatro cada 5 minutos, hasta la Presentación ([ADR-030](docs/adr/ADR-030-monitor-externo-en-render.md)). Si alguna vez quedan dormidos: `IDENTIDAD_URL=https://rumbo-identidad.onrender.com OPERACIONES_URL=https://rumbo-operaciones.onrender.com INTEGRACION_URL=https://rumbo-integracion.onrender.com sh infra/render/despertar.sh https://rumbo-gateway.onrender.com` (~15 s).
+- **Siempre despierta durante la evaluación:** en el plan gratuito un servicio se duerme a los 15 minutos sin tráfico, y solo lo despierta un pedido desde internet (no el de otro servicio de Render). Por eso un monitor externo (UptimeRobot) le pidió `/salud` a los cuatro cada 5 minutos hasta la Presentación ([ADR-030](docs/adr/ADR-030-monitor-externo-en-render.md)). **Desde el 20/11/2026 los servicios están suspendidos** por la cuota de 750 h por mes del plan gratuito (el riesgo que anticipaba ADR-030); Render los reactiva al empezar diciembre. Si alguna vez quedan dormidos: `IDENTIDAD_URL=https://rumbo-identidad.onrender.com OPERACIONES_URL=https://rumbo-operaciones.onrender.com INTEGRACION_URL=https://rumbo-integracion.onrender.com sh infra/render/despertar.sh https://rumbo-gateway.onrender.com` (~15 s).
 - Las rutas `/api/notificaciones/...` y `/api/recursos/...` responden `502` en la nube: esos servicios no se despliegan.
 
 ## Forma de trabajo
@@ -92,7 +93,7 @@ El proyecto sigue un enfoque guiado por especificación: primero el dominio y la
 | Commits | En español, con prefijo de tipo: `feat: asignar chofer a recorrido`, `docs: ADR-005 búsqueda`. |
 | Pull requests | Cada PR describe qué cambia y qué ADR o funcionalidad (`F-xx` de `SPEC.md`) toca. Se integra a `main` cuando pasa la **verificación automática**. La revisión de otro integrante se suma cuando es posible. |
 | Integración continua | GitHub Actions (`.github/workflows/ci.yml`) verifica cada PR: formato, compilación, `go vet` y tests de los siete módulos Go (los seis servicios y `comun`), los tests de punta a punta contra el sistema levantado (`pruebas/e2e`) y, para la web, lint, compilación y tests (`web/`). |
-| Entregas | Cada entrega se marca con un tag en `main`: `entrega-1`, `entrega-2`, `presentacion`. |
+| Entregas | Cada entrega se marca con un tag en `main`: `entrega-1`, `entrega-2`, `presentacion`, `final`. |
 | Decisiones | Un ADR ya integrado no se edita: un cambio de decisión se registra con un ADR nuevo que reemplaza al anterior. |
 
 ## Documentación
@@ -104,6 +105,6 @@ El proyecto sigue un enfoque guiado por especificación: primero el dominio y la
 | [`docs/contracts/`](docs/contracts/README.md) | Capacidad publicada: contrato versionado, ejemplos y errores; contratos consumidos en `docs/contracts/consumidos/` |
 | [`docs/interfaces-internas.md`](docs/interfaces-internas.md) | Contrato interno entre servicios: mensajes, endpoints internos, identidad, errores, logs, métricas y trazas |
 | [`docs/capacidad/`](docs/capacidad/informe-presentacion.md) | Informes de las pruebas de carga: [Entrega 2](docs/capacidad/informe-entrega-2.md) (capacidad, caché y balanceo) y [Presentación](docs/capacidad/informe-presentacion.md) (reservas simultáneas sobre la misma franja); scripts en [`pruebas/carga/`](pruebas/carga/README.md) |
-| [`docs/evidencias/`](docs/evidencias/presentacion.md) | Evidencias por requisito: [Presentación](docs/evidencias/presentacion.md) y [Entrega 2](docs/evidencias/entrega-2.md) (traza distribuida, logs correlacionados, balanceo y fallas) |
+| [`docs/evidencias/`](docs/evidencias/final.md) | Evidencias por requisito: [examen final](docs/evidencias/final.md) (devolución de la Presentación y requisitos de la Defensa Individual), [Presentación](docs/evidencias/presentacion.md) y [Entrega 2](docs/evidencias/entrega-2.md) (traza distribuida, logs correlacionados, balanceo y fallas) |
 | [`docs/diagramas/`](docs/diagramas/README.md) | Diagramas C4 como código (C4-PlantUML) |
 | [`docs/POSTMORTEM.md`](docs/POSTMORTEM.md) | Informe de la caída provocada de Operaciones; evidencia en [`docs/evidencias/postmortem/`](docs/evidencias/postmortem/) |

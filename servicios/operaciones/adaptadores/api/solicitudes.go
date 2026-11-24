@@ -275,10 +275,22 @@ func (h *Handler) responder(c *gin.Context) func(puertos.Vista, error) {
 	}
 }
 
+// EstadoClienteSeFue es el estado que se registra cuando el que llamó cortó antes de la respuesta
+// (la convención 499 de NGINX, "Client Closed Request"). Nadie lo recibe: es para la métrica y el log.
+const EstadoClienteSeFue = 499
+
 // error traduce los errores del núcleo a Problem Details con los códigos del contrato. Lo que no
 // es un error conocido es una falla de infraestructura (base caída): 503, reintentable.
 func (h *Handler) error(c *gin.Context, err error) {
 	switch {
+	case c.Request.Context().Err() != nil:
+		// El que llamó ya no espera: Integración cortó el intento por su timeout de 1 s y lo
+		// reintenta con la misma Idempotency-Key (ADR-035). La transacción no se confirmó, así que
+		// no es una falla de Operaciones: no se cuenta como 5xx ni se loguea como ERROR (si no, el
+		// panel 2 y la alerta de errores mostrarían caídas que no existieron).
+		slog.WarnContext(c.Request.Context(), "el que llamó cortó antes de la respuesta",
+			slog.String("solicitud_id", c.Param("id")), slog.String("error", err.Error()))
+		c.AbortWithStatus(EstadoClienteSeFue)
 	case errors.Is(err, puertos.ErrNoEncontrada):
 		problema.Escribir(c, http.StatusNotFound, "NO_ENCONTRADA", "Solicitud no encontrada",
 			"La solicitud no existe o es de otra organización.")

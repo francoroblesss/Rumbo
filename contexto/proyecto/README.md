@@ -1,6 +1,6 @@
 # Proyecto final — Rumbo
 
-**Estado (10/11/2026):** Entrega 1 (tag `entrega-1`) y Entrega 2 (tag `entrega-2`) entregadas. En curso: **Presentación Grupal** (mié 11 o vie 13/11/2026), con el alcance de ADR-024. Implementado y en `main`: Operaciones (reserva de franjas, API de la web, avance de estado, clima en las reservas, búsqueda con Solr), Notificaciones (bandeja y tiempo real), Identidad (perfil y usuarios de demo), la aplicación web, la capacidad publicada desplegada en Render (https://rumbo-gateway.onrender.com, ADR-026 y ADR-030), tests e2e en el CI, prueba de carga sobre una franja, el postmortem y sus acciones de mejora (buckets del histograma, alertas de circuito abierto y de outbox, `GET /disponibilidad` en la caída), el balanceador que no saca réplicas sanas por un `503` (ADR-031), los avisos que se recuperan al reconectar el stream y la copia del contrato de clima 2.1.0 (ADR-032). Ensayo completo hecho el 10/11. Falta: verificar contra el servicio real del clima (su fuente de datos respondía `503`) y el tag `presentacion`. Proyecto **grupal**.
+**Estado (23/11/2026):** Entrega 1, Entrega 2 y Presentación Grupal entregadas (tags `entrega-1`, `entrega-2` y `presentacion`). En curso: **Defensa Individual (examen final, 04/12/2026)**. Los cambios pedidos en la devolución de la Presentación están en `main`: búsqueda con todas las palabras (ADR-033), clima en la web (ADR-034), reintento de Integración a Operaciones (ADR-035), logs y paneles de Grafana y los ajustes de ADR-036. Resumen y evidencia en `docs/evidencias/final.md`. Falta: comprobar que Render vuelva (suspendido desde el 20/11 por la cuota del plan gratuito), medir con el sistema levantado los arreglos de ADR-036 y el tag `final`. El examen es **individual**.
 
 ## Archivos
 - `consigna.md` — transcripción fiel de `Enunciado TP Final.pdf`.
@@ -28,6 +28,13 @@ La estructura de la consigna §3 está en la raíz del repo: `README.md`, `SPEC.
 | Arquitectura y limitaciones (§10) | `docs/ARCHITECTURE.md` |
 | Capacidad propia en la nube | `README.md` ("Parte desplegada"), `docs/contracts/README.md`, ADR-026, ADR-030 |
 | Postmortem de la caída provocada | `docs/POSTMORTEM.md` |
+
+## Defensa Individual (examen final, 04/12/2026)
+| Punto | Dónde |
+| --- | --- |
+| Devolución de la Presentación → qué se cambió, y evidencia por requisito | `docs/evidencias/final.md` |
+| Decisiones nuevas | ADR-033 a ADR-036 |
+| Arquitectura y limitaciones al día | `docs/ARCHITECTURE.md` (§10, "Cambios del final") |
 
 ## Decisiones pendientes en la Entrega 2 (histórico)
 D2 (estilos internos: ya hay una estructura preliminar), D6 (búsqueda), D7 (caché), D9 (consumo del clima, cuando se conozca el contrato), D10 (resiliencia), D12 (balanceo), D13 (capacidad y costos), validación de D1/D3/D5 (en D5: ajustar timeouts con latencias medidas, por la devolución del profesor), primera versión de D11. D4 (consistencia) se apoya en la transacción con bloqueo por recurso prevista en ADR-005 (MySQL). Bonus: anunciarlos en la Entrega 2.

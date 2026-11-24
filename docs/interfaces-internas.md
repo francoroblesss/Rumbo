@@ -63,6 +63,8 @@ Token bucket por organización (o por usuario si no tiene organización), con `g
 ```
 Los `codigo` del contrato público son los de [`contracts/README.md`](contracts/README.md#errores). Los endpoints internos usan los mismos.
 
+**Pedido abandonado** ([ADR-036](adr/ADR-036-ajustes-de-observabilidad-para-el-final.md)): si el que llamó cortó antes de la respuesta (por ejemplo, Integración por su timeout de 1 s, que después reintenta), Operaciones registra **`499`** (convención de NGINX) y un log `WARN`, no `503` ni `ERROR`. Nadie recibe esa respuesta: es para que la métrica de `5xx` y la alerta de errores muestren solo fallas reales.
+
 ## 4. Endpoints internos (no pasan por el gateway público)
 
 ### 4.1 Operaciones — usados por Integración de carga (capacidad publicada, ADR-021)
@@ -222,6 +224,8 @@ Todos los servicios Gin registran automáticamente, con `observabilidad.Instrume
 | `rumbo_indexacion_demora_segundos` | histograma | — | Operaciones (indexador de Solr, §16) |
 | `rumbo_cache_lectura_duracion_segundos` | histograma | `cache`, `resultado` (`hit`, `miss`, `error`) | Integración (consulta por id con Memcached) |
 | `rumbo_reintentos_total` | contador | `dependencia`, `operacion` | Integración (`operaciones`: `disponibilidad`, `reserva`, `cancelacion`; ADR-035), Operaciones (`clima`: `condiciones`; ADR-034) |
+
+Los contadores con atributos conocidos **arrancan cada serie en 0** al crearse (`rumbo_reintentos_total`, `rumbo_logs_descartados_total`, `rumbo_clima_consultas_total`, `rumbo_gateway_rechazos_total`): una serie que nace con su primer valor no tiene muestra anterior y `increase()` no cuenta ese primer evento ([ADR-036](adr/ADR-036-ajustes-de-observabilidad-para-el-final.md)).
 
 ## 9. Trazas
 OpenTelemetry (`go.opentelemetry.io/otel`), exportadas por OTLP a `OTEL_EXPORTER_OTLP_ENDPOINT` (en Docker, `http://lgtm:4318`). Propagación **W3C Trace Context**:
